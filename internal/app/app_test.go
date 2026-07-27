@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"bb_erp_echo/internal/domain"
+	"bb_erp_echo/internal/auth"
+	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/role"
 )
 
+// TestInitializationHealthReadyAndSQLiteWAL 验证应用能完成初始化，并确认健康检查、
+// 就绪检查和 SQLite WAL 模式都按后台框架要求工作。
 func TestInitializationHealthReadyAndSQLiteWAL(t *testing.T) {
 	erp := newTestApp(t)
 
@@ -34,6 +38,7 @@ func TestInitializationHealthReadyAndSQLiteWAL(t *testing.T) {
 	}
 }
 
+// TestLoginMeAndInvalidCredentials 验证登录成功、密码错误和当前用户信息返回。
 func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	erp := newTestApp(t)
 
@@ -53,7 +58,7 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 
 	var body map[string]any
 	decodeJSON(t, rec, &body)
-	if body["account_type"] != domain.AccountTypePersonal {
+	if body["account_type"] != model.AccountTypePersonal {
 		t.Fatalf("account_type = %v", body["account_type"])
 	}
 	if len(body["permissions"].([]any)) == 0 {
@@ -61,6 +66,8 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	}
 }
 
+// TestJWTCasbinAndOrganizationDataBoundary 验证 JWT 必填、Casbin 权限拒绝、
+// 以及组织数据边界不会被跨组织写入绕过。
 func TestJWTCasbinAndOrganizationDataBoundary(t *testing.T) {
 	erp := newTestApp(t)
 
@@ -81,7 +88,7 @@ func TestJWTCasbinAndOrganizationDataBoundary(t *testing.T) {
 		t.Fatalf("limited user customer access status = %d", rec.Code)
 	}
 
-	otherOrg := domain.Organization{Name: "外部组织", Code: "OTHER", Status: domain.StatusActive}
+	otherOrg := model.Organization{Name: "外部组织", Code: "OTHER", Status: model.StatusActive}
 	if err := erp.DB.Create(&otherOrg).Error; err != nil {
 		t.Fatalf("create other org: %v", err)
 	}
@@ -95,6 +102,8 @@ func TestJWTCasbinAndOrganizationDataBoundary(t *testing.T) {
 	}
 }
 
+// TestAuditPersonalAndDepartmentTerminalAccounts 验证两类账号的审计差异：
+// 个人账号记录具体人员，部门终端账号记录部门和终端且人员为“未知”。
 func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 	erp := newTestApp(t)
 
@@ -108,7 +117,7 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 		t.Fatalf("create department status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var personalAudit domain.AuditLog
+	var personalAudit model.AuditLog
 	if err := erp.DB.Where("actor_username = ?", "admin").Order("id desc").First(&personalAudit).Error; err != nil {
 		t.Fatalf("find personal audit: %v", err)
 	}
@@ -122,14 +131,14 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 		t.Fatalf("terminal task skeleton status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var terminalAudit domain.AuditLog
+	var terminalAudit model.AuditLog
 	if err := erp.DB.Where("actor_username = ?", "injection-terminal-01").Order("id desc").First(&terminalAudit).Error; err != nil {
 		t.Fatalf("find terminal audit: %v", err)
 	}
-	if terminalAudit.AccountType != domain.AccountTypeDepartmentTerminal {
+	if terminalAudit.AccountType != model.AccountTypeDepartmentTerminal {
 		t.Fatalf("terminal audit account_type = %q", terminalAudit.AccountType)
 	}
-	if terminalAudit.PersonName != domain.UnknownPerson {
+	if terminalAudit.PersonName != model.UnknownPerson {
 		t.Fatalf("terminal audit person = %q", terminalAudit.PersonName)
 	}
 	if terminalAudit.DepartmentID == nil || terminalAudit.TerminalID == nil {
@@ -141,9 +150,17 @@ type testApp struct {
 	*App
 }
 
+// newTestApp 创建隔离测试应用。
+//
+// 参数说明：
+// - t：当前测试对象，用于注册清理函数和失败输出。
+//
+// 返回说明：返回使用临时 SQLite 数据库和测试 JWT 密钥的应用实例。
 func newTestApp(t *testing.T) *testApp {
 	t.Helper()
 	t.Setenv("BB_ERP_DATABASE_PATH", filepath.Join(t.TempDir(), "erp.sqlite3"))
+	t.Setenv("BB_ERP_LOG_DIR", filepath.Join(t.TempDir(), "logs"))
+	t.Setenv("BB_ERP_LOG_CONSOLE", "false")
 	t.Setenv("BB_ERP_JWT_SECRET", "test-secret")
 	t.Setenv("BB_ERP_HTTP_ALLOWED_ORIGINS", "http://localhost")
 
@@ -157,6 +174,13 @@ func newTestApp(t *testing.T) *testApp {
 	return &testApp{App: erp}
 }
 
+// request 通过 httptest 向 Echo 发起请求。
+//
+// 参数说明：
+// - method：HTTP 方法。
+// - path：请求路径。
+// - token：Bearer token；为空表示匿名请求。
+// - body：JSON 请求体；为 nil 时发送空请求体。
 func (a *testApp) request(method, path, token string, body any) *httptest.ResponseRecorder {
 	var payload *bytes.Reader
 	if body == nil {
@@ -176,6 +200,12 @@ func (a *testApp) request(method, path, token string, body any) *httptest.Respon
 	return rec
 }
 
+// login 使用指定账号密码登录并返回 access token。
+//
+// 参数说明：
+// - t：当前测试对象。
+// - username：登录账号。
+// - password：登录密码。
 func (a *testApp) login(t *testing.T, username, password string) string {
 	t.Helper()
 	rec := a.request(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
@@ -194,18 +224,22 @@ func (a *testApp) login(t *testing.T, username, password string) string {
 	return token
 }
 
+// createLimitedUserAndLogin 创建没有角色权限的普通账号并登录。
+//
+// 参数说明：
+// - t：当前测试对象。
 func (a *testApp) createLimitedUserAndLogin(t *testing.T) string {
 	t.Helper()
-	hash, err := hashPassword("limited123")
+	hash, err := auth.HashPassword("limited123")
 	if err != nil {
 		t.Fatalf("hash limited password: %v", err)
 	}
-	user := domain.User{
+	user := model.User{
 		Username:       "limited",
-		AccountType:    domain.AccountTypePersonal,
+		AccountType:    model.AccountTypePersonal,
 		Name:           "普通用户",
 		OrganizationID: 1,
-		Status:         domain.StatusActive,
+		Status:         model.StatusActive,
 		PasswordHash:   hash,
 	}
 	if err := a.DB.Create(&user).Error; err != nil {
@@ -214,38 +248,50 @@ func (a *testApp) createLimitedUserAndLogin(t *testing.T) string {
 	return a.login(t, "limited", "limited123")
 }
 
+// createTerminalUserAndLogin 创建部门终端账号并登录。
+//
+// 参数说明：
+// - t：当前测试对象。
+//
+// 返回说明：返回部门终端账号的 access token。
 func (a *testApp) createTerminalUserAndLogin(t *testing.T) string {
 	t.Helper()
-	var terminal domain.Terminal
+	var terminal model.Terminal
 	if err := a.DB.Where("code = ?", "injection-terminal-01").First(&terminal).Error; err != nil {
 		t.Fatalf("find seeded terminal: %v", err)
 	}
-	hash, err := hashPassword("terminal123")
+	hash, err := auth.HashPassword("terminal123")
 	if err != nil {
 		t.Fatalf("hash terminal password: %v", err)
 	}
-	user := domain.User{
+	user := model.User{
 		Username:       "injection-terminal-01",
-		AccountType:    domain.AccountTypeDepartmentTerminal,
+		AccountType:    model.AccountTypeDepartmentTerminal,
 		Name:           "注塑车间电脑01",
 		OrganizationID: 1,
 		DepartmentID:   &terminal.DepartmentID,
 		TerminalID:     &terminal.ID,
-		Status:         domain.StatusActive,
+		Status:         model.StatusActive,
 		PasswordHash:   hash,
 	}
 	if err := a.DB.Create(&user).Error; err != nil {
 		t.Fatalf("create terminal user: %v", err)
 	}
-	if err := a.assignRoleCodes(user.ID, []string{roleTerminal}); err != nil {
+	if err := a.RoleService.AssignRoleCodes(user.ID, []string{role.TerminalOperatorCode}); err != nil {
 		t.Fatalf("assign terminal role: %v", err)
 	}
-	if err := a.reloadPolicies(); err != nil {
+	if err := a.RoleService.ReloadPolicies(); err != nil {
 		t.Fatalf("reload policies: %v", err)
 	}
 	return a.login(t, "injection-terminal-01", "terminal123")
 }
 
+// decodeJSON 解析测试响应 JSON。
+//
+// 参数说明：
+// - t：当前测试对象。
+// - rec：HTTP 响应记录器。
+// - dst：JSON 解析目标指针。
 func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()
 	if err := json.Unmarshal(rec.Body.Bytes(), dst); err != nil {
