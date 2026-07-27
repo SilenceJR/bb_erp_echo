@@ -1,0 +1,22 @@
+# Go 构建产物
+*.test
+*.out
+coverage.out
+
+# 本地数据库和日志
+data/*.db
+data/*.db-*
+logs/*.log
+
+# 前端依赖和构建产物
+node_modules/
+web/node_modules/
+web/dist/
+client/node_modules/
+client/dist/
+client/src-tauri/target/
+
+# 编辑器和系统文件
+.DS_Store
+.idea/workspace.xml
+
