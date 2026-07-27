@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "博邦 ERP 桌面端默认权限",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
