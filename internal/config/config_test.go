@@ -21,6 +21,12 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Log.RetentionDays != 30 {
 		t.Fatalf("log retention days = %d", cfg.Log.RetentionDays)
 	}
+	if !cfg.Web.Enabled {
+		t.Fatalf("web static should default to enabled")
+	}
+	if cfg.Web.DistDir != "web/dist" {
+		t.Fatalf("web dist dir = %q", cfg.Web.DistDir)
+	}
 }
 
 // TestLoadLogConfigFromEnv 验证日志配置可通过环境变量覆盖。
@@ -29,6 +35,8 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_LOG_DIR", "tmp-logs")
 	t.Setenv("BB_ERP_LOG_CONSOLE", "false")
 	t.Setenv("BB_ERP_LOG_RETENTION_DAYS", "7")
+	t.Setenv("BB_ERP_WEB_ENABLED", "false")
+	t.Setenv("BB_ERP_WEB_DIST_DIR", "tmp-web-dist")
 
 	cfg, err := Load()
 	if err != nil {
@@ -46,5 +54,11 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Log.RetentionDays != 7 {
 		t.Fatalf("log retention days = %d", cfg.Log.RetentionDays)
+	}
+	if cfg.Web.Enabled {
+		t.Fatalf("web static should be false")
+	}
+	if cfg.Web.DistDir != "tmp-web-dist" {
+		t.Fatalf("web dist dir = %q", cfg.Web.DistDir)
 	}
 }

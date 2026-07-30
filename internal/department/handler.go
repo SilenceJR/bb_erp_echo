@@ -29,37 +29,10 @@ func NewHandler(db *gorm.DB) *Handler {
 // - system：/api/v1/system 路由组。
 // - require：权限中间件工厂。
 func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string) echo.MiddlewareFunc) {
-	system.GET("/organizations", h.ListOrganizations, require("/api/v1/system/organizations", "read"))
-	system.POST("/organizations", h.CreateOrganization, require("/api/v1/system/organizations", "write"))
 	system.GET("/departments", h.ListDepartments, require("/api/v1/system/departments", "read"))
 	system.POST("/departments", h.CreateDepartment, require("/api/v1/system/departments", "write"))
 	system.GET("/terminals", h.ListTerminals, require("/api/v1/system/terminals", "read"))
 	system.POST("/terminals", h.CreateTerminal, require("/api/v1/system/terminals", "write"))
-}
-
-// ListOrganizations 查询组织列表。
-func (h *Handler) ListOrganizations(c *echo.Context) error {
-	var items []model.Organization
-	if err := h.DB.Order("id").Find(&items).Error; err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, items)
-}
-
-// CreateOrganization 创建组织。
-func (h *Handler) CreateOrganization(c *echo.Context) error {
-	var req struct {
-		Name string `json:"name" validate:"required"`
-		Code string `json:"code" validate:"required"`
-	}
-	if err := request.BindAndValidate(c, &req); err != nil {
-		return err
-	}
-	item := model.Organization{Name: req.Name, Code: req.Code, Status: model.StatusActive}
-	if err := h.DB.Create(&item).Error; err != nil {
-		return err
-	}
-	return c.JSON(http.StatusCreated, item)
 }
 
 // ListDepartments 查询当前用户组织内的部门列表。
@@ -78,17 +51,17 @@ func (h *Handler) ListDepartments(c *echo.Context) error {
 // CreateDepartment 创建部门，并校验当前用户是否能访问目标组织。
 func (h *Handler) CreateDepartment(c *echo.Context) error {
 	var req struct {
-		OrganizationID uint   `json:"organization_id" validate:"required"`
-		Name           string `json:"name" validate:"required"`
-		Code           string `json:"code" validate:"required"`
+		Name string `json:"name" validate:"required"`
+		Code string `json:"code" validate:"required"`
 	}
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	if !h.canAccessOrg(c, req.OrganizationID) {
-		return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
+	organizationID := uint(1)
+	if current := auth.GetCurrentUser(c); current != nil && current.OrganizationID != 0 {
+		organizationID = current.OrganizationID
 	}
-	item := model.Department{OrganizationID: req.OrganizationID, Name: req.Name, Code: req.Code, Status: model.StatusActive}
+	item := model.Department{OrganizationID: organizationID, Name: req.Name, Code: req.Code, Status: model.StatusActive}
 	if err := h.DB.Create(&item).Error; err != nil {
 		return err
 	}
@@ -127,11 +100,6 @@ func (h *Handler) CreateTerminal(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusCreated, item)
-}
-
-func (h *Handler) canAccessOrg(c *echo.Context, orgID uint) bool {
-	current := auth.GetCurrentUser(c)
-	return current == nil || current.OrganizationID == orgID
 }
 
 func (h *Handler) canAccessDepartment(c *echo.Context, departmentID uint) bool {

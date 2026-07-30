@@ -159,17 +159,17 @@ func GetCurrentUser(c *echo.Context) *CurrentUser {
 //
 // 参数说明：
 // - current：当前登录用户快照。
-func CurrentUserResponse(current *CurrentUser) map[string]any {
-	return map[string]any{
-		"id":              current.ID,
-		"username":        current.Username,
-		"account_type":    current.AccountType,
-		"name":            current.Name,
-		"organization_id": current.OrganizationID,
-		"department_id":   current.DepartmentID,
-		"terminal_id":     current.TerminalID,
-		"roles":           current.Roles,
-		"permissions":     current.Permissions,
+func CurrentUserResponse(current *CurrentUser) CurrentUserDTO {
+	return CurrentUserDTO{
+		ID:             current.ID,
+		Username:       current.Username,
+		AccountType:    current.AccountType,
+		Name:           current.Name,
+		OrganizationID: current.OrganizationID,
+		DepartmentID:   current.DepartmentID,
+		TerminalID:     current.TerminalID,
+		Roles:          current.Roles,
+		Permissions:    current.Permissions,
 	}
 }
 

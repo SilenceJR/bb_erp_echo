@@ -6,11 +6,72 @@ import (
 
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// ErrorResponse 是统一错误响应的 Swagger 文档别名。
+type ErrorResponse = response.ErrorBody
+
+// LoginRequest 是账号密码登录请求体。
+//
+// 参数说明：
+// - Username：登录账号，必填。
+// - Password：登录密码，必填。
+type LoginRequest struct {
+	// Username 是登录账号。
+	Username string `json:"username" validate:"required" example:"admin"`
+	// Password 是登录密码。
+	Password string `json:"password" validate:"required" example:"admin123456"`
+}
+
+// CurrentUserDTO 是当前登录身份响应结构。
+//
+// 参数说明：
+// - AccountType：账号类型，personal 表示个人账号，department_terminal 表示部门终端账号。
+// - OrganizationID：所属组织 ID。
+// - DepartmentID：所属部门 ID，个人账号可为空。
+// - TerminalID：所属终端 ID，部门终端账号必填。
+// - Roles：角色编码列表。
+// - Permissions：权限编码列表。
+type CurrentUserDTO struct {
+	// ID 是用户 ID。
+	ID uint `json:"id" example:"1"`
+	// Username 是登录账号。
+	Username string `json:"username" example:"admin"`
+	// AccountType 是账号类型。
+	AccountType string `json:"account_type" example:"personal"`
+	// Name 是账号显示名称。
+	Name string `json:"name" example:"系统管理员"`
+	// OrganizationID 是所属组织 ID。
+	OrganizationID uint `json:"organization_id" example:"1"`
+	// DepartmentID 是所属部门 ID。
+	DepartmentID *uint `json:"department_id"`
+	// TerminalID 是所属终端 ID。
+	TerminalID *uint `json:"terminal_id"`
+	// Roles 是当前账号拥有的角色编码列表。
+	Roles []string `json:"roles"`
+	// Permissions 是当前账号拥有的权限编码列表。
+	Permissions []string `json:"permissions"`
+}
+
+// LoginResponse 是登录成功响应结构。
+//
+// 参数说明：
+// - AccessToken：JWT 访问令牌。
+// - ExpiresAt：令牌过期时间。
+// - User：当前登录身份快照。
+type LoginResponse struct {
+	// AccessToken 是 JWT 访问令牌。
+	AccessToken string `json:"access_token"`
+	// ExpiresAt 是令牌过期时间。
+	ExpiresAt time.Time `json:"expires_at"`
+	// User 是当前登录身份快照。
+	User CurrentUserDTO `json:"user"`
+}
 
 // Handler 处理登录认证接口。
 type Handler struct {
@@ -45,13 +106,21 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, jwtMiddleware echo.MiddlewareFu
 // 请求参数：
 // - username：登录账号。
 // - password：登录密码。
+//
+// @Summary 账号登录
+// @Description 使用账号密码登录并签发 JWT；后续接口通过 Authorization: Bearer <token> 认证。
+// @Tags 登录认证
+// @Accept json
+// @Produce json
+// @Param body body LoginRequest true "登录参数"
+// @Success 200 {object} LoginResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/auth/login [post]
 func (h *Handler) Login(c *echo.Context) error {
-	var req struct {
-		// Username 是登录账号。
-		Username string `json:"username" validate:"required"`
-		// Password 是登录密码。
-		Password string `json:"password" validate:"required"`
-	}
+	var req LoginRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
@@ -80,14 +149,24 @@ func (h *Handler) Login(c *echo.Context) error {
 		return err
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{
-		"access_token": token,
-		"expires_at":   expiresAt,
-		"user":         CurrentUserResponse(current),
+	return c.JSON(http.StatusOK, LoginResponse{
+		AccessToken: token,
+		ExpiresAt:   expiresAt,
+		User:        CurrentUserResponse(current),
 	})
 }
 
 // Me 返回当前登录用户信息。
+//
+// @Summary 当前用户
+// @Description 返回当前登录账号的账号类型、组织、部门、终端、角色和权限列表。
+// @Tags 登录认证
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} CurrentUserDTO
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/auth/me [get]
 func (h *Handler) Me(c *echo.Context) error {
 	current := GetCurrentUser(c)
 	if current == nil {

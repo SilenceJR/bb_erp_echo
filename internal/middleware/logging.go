@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 
 	"bb_erp_echo/internal/auth"
@@ -12,6 +13,7 @@ import (
 
 // RequestLogger 记录每次 HTTP 请求的结构化访问日志。
 //
+// 记录范围：跳过 GET 和 OPTIONS，只记录会改变状态的请求。
 // 参数说明：
 // - logger：结构化日志器。
 func RequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
@@ -19,6 +21,10 @@ func RequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			startedAt := time.Now()
 			err := next(c)
+			method := c.Request().Method
+			if method == http.MethodGet || method == http.MethodOptions {
+				return err
+			}
 
 			current := auth.GetCurrentUser(c)
 			attrs := []any{

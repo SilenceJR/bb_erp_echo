@@ -1,0 +1,240 @@
+### 登录并保存 token
+POST http://127.0.0.1:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123456"
+}
+
+> {% client.global.set("token", response.body.access_token); %}
+
+### 创建客户
+POST http://127.0.0.1:8080/api/v1/customers
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "测试客户",
+  "code": "CUST-001",
+  "phone": "0755-88888888"
+}
+
+> {% client.global.set("customer_id", response.body.id); %}
+
+### 更新客户
+PATCH http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "测试客户-更新",
+  "code": "CUST-001",
+  "phone": "0755-66666666",
+  "address": "深圳市宝安区"
+}
+
+### 查看单仓库
+GET http://127.0.0.1:8080/api/v1/warehouses
+Authorization: Bearer {{token}}
+
+> {% client.global.set("warehouse_id", response.body[0].id); %}
+
+### 更新单仓库名称
+POST http://127.0.0.1:8080/api/v1/warehouses
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "主仓",
+  "code": "WH-001"
+}
+
+> {% client.global.set("warehouse_id", response.body.id); %}
+
+### 查看仓库标签
+GET http://127.0.0.1:8080/api/v1/warehouse/tabs
+Authorization: Bearer {{token}}
+
+### 在生产物资标签创建物品
+POST http://127.0.0.1:8080/api/v1/warehouse/items
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tab": "production_material",
+  "name": "ABS 原料",
+  "code": "ABS-001",
+  "unit": "kg",
+  "spec": "通用",
+  "safety_stock": 100000,
+  "default_cost": 250
+}
+
+> {% client.global.set("material_id", response.body.id); %}
+
+### 创建库存入库草稿
+POST http://127.0.0.1:8080/api/v1/inventory-documents
+Content-Type: application/json
+Authorization: Bearer {{token}}
+Idempotency-Key: demo-in-001
+
+{
+  "code": "IN-001",
+  "type": "inbound",
+  "warehouse_id": {{warehouse_id}},
+  "reason": "期初入库",
+  "lines": [
+    {
+      "item_type": "material",
+      "item_id": {{material_id}},
+      "quantity": 1000000,
+      "unit_cost": 250
+    }
+  ]
+}
+
+> {% client.global.set("inventory_document_id", response.body.id); %}
+
+### 审核过账库存单据
+POST http://127.0.0.1:8080/api/v1/inventory-documents/{{inventory_document_id}}/post
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{}
+
+### 查询库存余额
+GET http://127.0.0.1:8080/api/v1/inventory-balances
+Authorization: Bearer {{token}}
+
+### 查询库存流水
+GET http://127.0.0.1:8080/api/v1/inventory-ledgers
+Authorization: Bearer {{token}}
+
+### 创建模具
+POST http://127.0.0.1:8080/api/v1/molds
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "MOLD-001",
+  "name": "白壳前模",
+  "customer_id": {{customer_id}},
+  "product_id": 1,
+  "cavity_count": 8,
+  "mold_material": "ABS",
+  "steel": "P20",
+  "size": "450x350x280",
+  "weight_gram": 180000,
+  "manufacturer": "深圳模具厂",
+  "owner": "客户A",
+  "storage_location": "工模架 A1",
+  "maintenance_cycle_days": 30,
+  "remark": "白壳产品常用模具"
+}
+
+> {% client.global.set("mold_id", response.body.id); %}
+
+### 查询模具属性和履历
+GET http://127.0.0.1:8080/api/v1/molds/{{mold_id}}
+Authorization: Bearer {{token}}
+
+### 借出模具
+POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/loan
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "location": "注塑车间 1 号机",
+  "counterparty": "注塑部",
+  "handler_name": "王工",
+  "reason": "生产试模"
+}
+
+### 归还模具
+POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/return
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "location": "工模架 A1",
+  "handler_name": "李工",
+  "reason": "试模完成"
+}
+
+### 登记模具维修
+POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/repair
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "reason": "顶针磨损",
+  "description": "更换顶针并清理水路",
+  "handler_name": "陈师傅",
+  "completed": true
+}
+
+### 登记模具保养
+POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/maintenance
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "description": "清洁、防锈、检查水路",
+  "handler_name": "保养员",
+  "maintenance_cycle_days": 30,
+  "completed": true
+}
+
+### 添加客户联系人
+POST http://127.0.0.1:8080/api/v1/contacts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "customer_id": {{customer_id}},
+  "name": "张三",
+  "phones": [
+    {
+      "phone": "13800000000",
+      "label": "手机",
+      "primary": true
+    },
+    {
+      "phone": "0755-88888888",
+      "label": "座机",
+      "primary": false
+    }
+  ]
+}
+
+> {% client.global.set("contact_id", response.body.id); %}
+
+### 查询联系人详情
+GET http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
+Authorization: Bearer {{token}}
+
+### 更新客户联系人
+PATCH http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "customer_id": {{customer_id}},
+  "name": "张三-更新",
+  "phones": [
+    {
+      "phone": "13600000000",
+      "label": "新手机",
+      "primary": true
+    }
+  ]
+}
+
+### 删除联系人
+DELETE http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
+Authorization: Bearer {{token}}
+
+### 删除客户
+DELETE http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
+Authorization: Bearer {{token}}

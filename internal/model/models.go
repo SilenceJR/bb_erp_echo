@@ -39,7 +39,7 @@ type Organization struct {
 // Department 是组织下的部门，用于用户归属、终端归属和数据权限判断。
 type Department struct {
 	BaseModel
-	OrganizationID uint   `json:"organization_id" gorm:"not null;index"`
+	OrganizationID uint   `json:"organization_id" gorm:"not null;default:1;index"`
 	Name           string `json:"name" gorm:"size:120;not null"`
 	Code           string `json:"code" gorm:"size:60;not null;index"`
 	Status         string `json:"status" gorm:"size:30;not null;default:active"`
@@ -84,7 +84,6 @@ type Permission struct {
 // UserRole 是用户与角色的多对多关系。
 type UserRole struct {
 	BaseModel
-	ID     uint `json:"id" gorm:"primaryKey"`
 	UserID uint `json:"user_id" gorm:"not null;index:idx_user_role,unique"`
 	RoleID uint `json:"role_id" gorm:"not null;index:idx_user_role,unique"`
 }
@@ -123,44 +122,139 @@ type AuditLog struct {
 // Customer 是客户模块骨架模型，后续承载客户档案。
 type Customer struct {
 	BaseModel
-	Name string `json:"name" gorm:"size:160;not null"`
+	Name     string    `json:"name" gorm:"size:160;not null"`
+	Code     string    `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Phone    string    `json:"phone" gorm:"size:60;"`
+	Contacts []Contact `json:"contacts" gorm:"foreignKey:CustomerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Address  string    `json:"address" gorm:"size:255;"`
 }
 
 // Contact 是联系人模块骨架模型，后续可关联客户。
 type Contact struct {
 	BaseModel
-	CustomerID *uint  `json:"customer_id" gorm:"index"`
-	Name       string `json:"name" gorm:"size:120;not null"`
-	Phone      string `json:"phone" gorm:"size:60"`
+	CustomerID uint           `json:"customer_id" gorm:"not null;index"`
+	Name       string         `json:"name" gorm:"size:120;not null"`
+	Phones     []ContactPhone `json:"phones" gorm:"foreignKey:ContactID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+}
+
+// ContactPhone 是联系人电话明细表。
+//
+// 业务说明：
+// 一个联系人可能有手机、座机、微信同号等多个联系方式。
+// 电话拆成明细表后，后续可以单独维护主号码、号码类型和唯一性规则。
+type ContactPhone struct {
+	BaseModel
+	ContactID uint   `json:"contact_id" gorm:"not null;index"`
+	Phone     string `json:"phone" gorm:"size:60;not null"`
+	Label     string `json:"label" gorm:"size:40"`
+	Primary   bool   `json:"primary" gorm:"not null;default:false"`
 }
 
 // Warehouse 是仓库模块骨架模型。
 type Warehouse struct {
 	BaseModel
-	Name string `json:"name" gorm:"size:120;not null"`
-	Code string `json:"code" gorm:"size:60;not null;uniqueIndex"`
+	Name   string `json:"name" gorm:"size:120;not null"`
+	Code   string `json:"code" gorm:"size:60;not null;uniqueIndex"`
+	Status string `json:"status" gorm:"size:30;not null;default:active"`
 }
 
-// InventoryItem 是库存模块骨架模型，用于表达仓库内 SKU 数量。
-type InventoryItem struct {
+// Location 是仓库内的库位。
+type Location struct {
 	BaseModel
-	WarehouseID uint    `json:"warehouse_id" gorm:"index"`
-	SKU         string  `json:"sku" gorm:"size:80;index"`
-	Quantity    float64 `json:"quantity"`
+	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index"`
+	Code        string `json:"code" gorm:"size:80;not null;index:idx_location_code,unique"`
+	Name        string `json:"name" gorm:"size:120;not null"`
+	Status      string `json:"status" gorm:"size:30;not null;default:active"`
+}
+
+// InventoryBalance 是仓库库位下某个物料或产品的当前结存。
+//
+// 数量使用 4 位定点整数，金额使用分，避免浮点误差影响库存和成本。
+type InventoryBalance struct {
+	BaseModel
+	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index:idx_inventory_balance,unique"`
+	LocationID  *uint  `json:"location_id" gorm:"index"`
+	ItemType    string `json:"item_type" gorm:"size:30;not null;index:idx_inventory_balance,unique"`
+	ItemID      uint   `json:"item_id" gorm:"not null;index:idx_inventory_balance,unique"`
+	Quantity    int64  `json:"quantity" gorm:"not null;default:0"`
+	AvgCost     int64  `json:"avg_cost" gorm:"not null;default:0"`
+	Amount      int64  `json:"amount" gorm:"not null;default:0"`
 }
 
 // Material 是物料模块骨架模型。
 type Material struct {
 	BaseModel
-	Name string `json:"name" gorm:"size:160;not null"`
-	Code string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Name         string `json:"name" gorm:"size:160;not null"`
+	Code         string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Category     string `json:"category" gorm:"size:60"`
+	Unit         string `json:"unit" gorm:"size:30;not null;default:个"`
+	Spec         string `json:"spec" gorm:"size:160"`
+	SafetyStock  int64  `json:"safety_stock" gorm:"not null;default:0"`
+	CostViewable bool   `json:"-" gorm:"-"`
+	DefaultCost  int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
+	Status       string `json:"status" gorm:"size:30;not null;default:active"`
 }
 
 // Product 是产品模块骨架模型。
 type Product struct {
 	BaseModel
-	Name string `json:"name" gorm:"size:160;not null"`
-	Code string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Name        string `json:"name" gorm:"size:160;not null"`
+	Code        string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Unit        string `json:"unit" gorm:"size:30;not null;default:个"`
+	Spec        string `json:"spec" gorm:"size:160"`
+	SafetyStock int64  `json:"safety_stock" gorm:"not null;default:0"`
+	DefaultCost int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
+	Status      string `json:"status" gorm:"size:30;not null;default:active"`
+}
+
+// InventoryDocument 是库存业务单据表。
+//
+// 业务规则：草稿可以修改；审核过账后只能冲销，不能直接编辑。
+type InventoryDocument struct {
+	BaseModel
+	Code           string                  `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Type           string                  `json:"type" gorm:"size:30;not null;index"`
+	Status         string                  `json:"status" gorm:"size:30;not null;default:draft;index"`
+	WarehouseID    uint                    `json:"warehouse_id" gorm:"not null;index"`
+	ToWarehouseID  *uint                   `json:"to_warehouse_id" gorm:"index"`
+	Reason         string                  `json:"reason" gorm:"size:255"`
+	IdempotencyKey string                  `json:"idempotency_key" gorm:"size:120;index"`
+	CreatedBy      uint                    `json:"created_by" gorm:"index"`
+	PostedBy       *uint                   `json:"posted_by" gorm:"index"`
+	PostedAt       *time.Time              `json:"posted_at"`
+	ReversedBy     *uint                   `json:"reversed_by" gorm:"index"`
+	ReversedAt     *time.Time              `json:"reversed_at"`
+	Lines          []InventoryDocumentLine `json:"lines" gorm:"foreignKey:DocumentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+}
+
+// InventoryDocumentLine 是库存单据明细行。
+type InventoryDocumentLine struct {
+	BaseModel
+	DocumentID uint   `json:"document_id" gorm:"not null;index"`
+	ItemType   string `json:"item_type" gorm:"size:30;not null"`
+	ItemID     uint   `json:"item_id" gorm:"not null;index"`
+	LocationID *uint  `json:"location_id" gorm:"index"`
+	Quantity   int64  `json:"quantity" gorm:"not null"`
+	UnitCost   int64  `json:"unit_cost,omitempty" gorm:"not null;default:0"`
+	Amount     int64  `json:"amount,omitempty" gorm:"not null;default:0"`
+	Remark     string `json:"remark" gorm:"size:255"`
+}
+
+// InventoryLedger 是库存过账流水。
+type InventoryLedger struct {
+	BaseModel
+	DocumentID  uint   `json:"document_id" gorm:"not null;index"`
+	LineID      uint   `json:"line_id" gorm:"not null;index"`
+	Type        string `json:"type" gorm:"size:30;not null;index"`
+	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index"`
+	LocationID  *uint  `json:"location_id" gorm:"index"`
+	ItemType    string `json:"item_type" gorm:"size:30;not null;index"`
+	ItemID      uint   `json:"item_id" gorm:"not null;index"`
+	Quantity    int64  `json:"quantity" gorm:"not null"`
+	UnitCost    int64  `json:"unit_cost,omitempty" gorm:"not null;default:0"`
+	Amount      int64  `json:"amount,omitempty" gorm:"not null;default:0"`
+	BalanceQty  int64  `json:"balance_qty" gorm:"not null"`
+	BalanceAmt  int64  `json:"balance_amount,omitempty" gorm:"not null"`
 }
 
 // WorkOrder 是任务单模块骨架模型。
@@ -195,11 +289,17 @@ func AllModels() []any {
 		&AuditLog{},
 		&Customer{},
 		&Contact{},
+		&ContactPhone{},
 		&Warehouse{},
-		&InventoryItem{},
+		&Location{},
+		&InventoryBalance{},
 		&Material{},
 		&Product{},
+		&InventoryDocument{},
+		&InventoryDocumentLine{},
+		&InventoryLedger{},
 		&Mold{},
+		&MoldEvent{},
 		&WorkOrder{},
 		&DepartmentTask{},
 	}

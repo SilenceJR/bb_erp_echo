@@ -1,7 +1,14 @@
 import type { ApiErrorBody } from '../types'
 
-// API_BASE_URL 是后端服务地址，可通过 VITE_API_BASE_URL 覆盖。
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
+// API_BASE_URL 是后端服务地址。
+//
+// 参数说明：
+// - VITE_API_BASE_URL：可选覆盖值，适合桌面端或跨域调试。
+//
+// 默认值使用空字符串，表示请求当前页面同源服务。
+// 这样 Web 管理端被 Echo 静态托管时，登录请求会直接发送到同一个后端进程，
+// 避免打到写死端口后出现浏览器 Load failed 且后端无请求日志的问题。
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 // ApiRequestOptions 扩展 fetch 配置，允许调用方直接传普通对象作为 JSON body。
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -66,9 +67,9 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	}
 }
 
-// TestJWTCasbinAndOrganizationDataBoundary 验证 JWT 必填、Casbin 权限拒绝、
-// 以及组织数据边界不会被跨组织写入绕过。
-func TestJWTCasbinAndOrganizationDataBoundary(t *testing.T) {
+// TestJWTCasbinAndSingleOrganizationDepartmentCreate 验证 JWT 必填、Casbin 权限拒绝，
+// 以及单组织模式下部门创建会自动落到当前默认组织。
+func TestJWTCasbinAndSingleOrganizationDepartmentCreate(t *testing.T) {
 	erp := newTestApp(t)
 
 	rec := erp.request(http.MethodGet, "/api/v1/system/users", "", nil)
@@ -88,17 +89,17 @@ func TestJWTCasbinAndOrganizationDataBoundary(t *testing.T) {
 		t.Fatalf("limited user customer access status = %d", rec.Code)
 	}
 
-	otherOrg := model.Organization{Name: "外部组织", Code: "OTHER", Status: model.StatusActive}
-	if err := erp.DB.Create(&otherOrg).Error; err != nil {
-		t.Fatalf("create other org: %v", err)
-	}
 	rec = erp.request(http.MethodPost, "/api/v1/system/departments", token, map[string]any{
-		"organization_id": otherOrg.ID,
-		"name":            "跨组织部门",
-		"code":            "CROSS",
+		"name": "包装部",
+		"code": "PACK",
 	})
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("cross-org create department status = %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("single-org create department status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var department model.Department
+	decodeJSON(t, rec, &department)
+	if department.OrganizationID != 1 {
+		t.Fatalf("department organization_id = %d", department.OrganizationID)
 	}
 }
 
@@ -146,6 +147,40 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 	}
 }
 
+// TestWebStaticServedByEcho 验证 Echo 可以随着后端服务一起托管 Web 管理端静态文件。
+func TestWebStaticServedByEcho(t *testing.T) {
+	erp := newTestApp(t)
+
+	rec := erp.request(http.MethodGet, "/", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("博邦 ERP Web")) {
+		t.Fatalf("index content mismatch: %s", rec.Body.String())
+	}
+
+	rec = erp.request(http.MethodGet, "/assets/app.js", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /assets/app.js status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("console.log")) {
+		t.Fatalf("asset content mismatch: %s", rec.Body.String())
+	}
+
+	rec = erp.request(http.MethodGet, "/dashboard", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /dashboard status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("博邦 ERP Web")) {
+		t.Fatalf("spa fallback content mismatch: %s", rec.Body.String())
+	}
+
+	rec = erp.request(http.MethodGet, "/api/not-found", "", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("GET /api/not-found status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 type testApp struct {
 	*App
 }
@@ -158,9 +193,21 @@ type testApp struct {
 // 返回说明：返回使用临时 SQLite 数据库和测试 JWT 密钥的应用实例。
 func newTestApp(t *testing.T) *testApp {
 	t.Helper()
+	webDir := filepath.Join(t.TempDir(), "web-dist")
+	if err := os.MkdirAll(filepath.Join(webDir, "assets"), 0o755); err != nil {
+		t.Fatalf("create web assets dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html><body>博邦 ERP Web</body></html>"), 0o644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "assets", "app.js"), []byte("console.log('bb erp')"), 0o644); err != nil {
+		t.Fatalf("write app.js: %v", err)
+	}
+
 	t.Setenv("BB_ERP_DATABASE_PATH", filepath.Join(t.TempDir(), "erp.sqlite3"))
 	t.Setenv("BB_ERP_LOG_DIR", filepath.Join(t.TempDir(), "logs"))
 	t.Setenv("BB_ERP_LOG_CONSOLE", "false")
+	t.Setenv("BB_ERP_WEB_DIST_DIR", webDir)
 	t.Setenv("BB_ERP_JWT_SECRET", "test-secret")
 	t.Setenv("BB_ERP_HTTP_ALLOWED_ORIGINS", "http://localhost")
 

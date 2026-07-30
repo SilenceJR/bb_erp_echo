@@ -1,6 +1,6 @@
 # 博邦 ERP 开发交接与进度文档
 
-更新时间：2026-07-27
+更新时间：2026-07-30
 
 ## 1. 项目目标
 
@@ -38,17 +38,18 @@ bb_erp_echo/
 ├── internal/auth/           # 登录、JWT、当前用户上下文
 ├── internal/user/           # 用户账号管理
 ├── internal/role/           # 角色、权限、Casbin 策略
-├── internal/department/     # 组织、部门、终端管理
+├── internal/department/     # 单组织下的部门、终端管理
 ├── internal/audit/          # 操作审计查询
 ├── internal/customer/       # 客户与联系人模块骨架
-├── internal/warehouse/      # 仓库模块骨架
-├── internal/inventory/      # 库存模块骨架
-├── internal/material/       # 物料模块骨架
-├── internal/product/        # 产品模块骨架
-├── internal/mold/           # 模具模块骨架
+├── internal/warehouse/      # 单仓库工作台与分类标签物品管理
+├── internal/inventory/      # 库存单据、余额和流水
+├── internal/material/       # 物料基础资料
+├── internal/product/        # 产品基础资料
+├── internal/mold/           # 模具台账、借出归还、维修保养履历
 ├── internal/workorder/      # 任务单与部门子任务模块骨架
 ├── internal/statistics/     # 统计报表模块骨架
 ├── internal/model/          # 当前 GORM 模型集中定义
+├── docs/                    # 开发交接文档和 swaggo 生成的 OpenAPI 文件
 ├── migrations/              # 预留迁移目录
 ├── data/                    # SQLite 本地数据目录
 ├── logs/                    # 本地日志目录
@@ -82,7 +83,7 @@ bb_erp_echo/
 
 系统管理：
 
-- 组织列表和创建。
+- 首版按单厂单组织使用；系统内部保留默认组织 ID，不开放组织管理菜单。
 - 部门列表和创建。
 - 终端列表和创建。
 - 用户列表、创建、启停、重置密码、绑定角色。
@@ -98,8 +99,11 @@ bb_erp_echo/
 
 业务模块：
 
-- 客户与联系人、仓库、库存、物料、产品、模具、任务单、统计报表目前已经注册骨架路由。
-- 骨架路由支持读占位和写占位，用于前端菜单、权限和审计联调。
+- 客户与联系人 CRUD 已可用。
+- 仓库按单仓库使用；仓库内按产品、生产物资、常规产品、生活物资四个标签管理物品。
+- 库存单据已支持草稿创建、入库/出库/调拨过账、冲销、库存余额和库存流水；默认禁止负库存。
+- 模具台账、借出归还、维修保养履历已可用。
+- 任务单、统计报表目前仍是骨架路由。
 
 ## 5. 日志系统
 
@@ -159,6 +163,20 @@ BB_ERP_ADMIN_NAME=系统管理员
 
 ## 7. 当前 API 概览
 
+接口文档输出：
+
+```text
+GET /swagger/index.html
+GET /swagger/doc.json
+```
+
+维护要求：
+
+- 后续新增、修改、删除接口时，必须同步更新 handler 上的 swaggo 注释，并重新运行 `swag init`。
+- 同步提交 `docs/docs.go`、`docs/swagger.json`、`docs/swagger.yaml`。
+- 同步更新 Markdown 文档 `docs/API.md`。
+- 如调试流程变化，同步更新 `test.http`。
+
 公开接口：
 
 ```text
@@ -176,8 +194,6 @@ GET /api/v1/auth/me
 系统接口：
 
 ```text
-GET  /api/v1/system/organizations
-POST /api/v1/system/organizations
 GET  /api/v1/system/departments
 POST /api/v1/system/departments
 GET  /api/v1/system/terminals
@@ -199,16 +215,39 @@ GET  /api/v1/system/audits
 ```text
 GET  /api/v1/customers
 POST /api/v1/customers
-GET  /api/v1/warehouse
-POST /api/v1/warehouse
-GET  /api/v1/inventory
-POST /api/v1/inventory
-GET  /api/v1/material
-POST /api/v1/material
-GET  /api/v1/product
-POST /api/v1/product
-GET  /api/v1/mold
-POST /api/v1/mold
+PATCH /api/v1/customers/:id
+DELETE /api/v1/customers/:id
+GET  /api/v1/contacts
+GET  /api/v1/contacts/:id
+POST /api/v1/contacts
+PATCH /api/v1/contacts/:id
+DELETE /api/v1/contacts/:id
+GET  /api/v1/warehouses
+POST /api/v1/warehouses
+GET  /api/v1/warehouse/tabs
+GET  /api/v1/warehouse/items
+POST /api/v1/warehouse/items
+GET  /api/v1/locations
+POST /api/v1/locations
+GET  /api/v1/materials
+POST /api/v1/materials
+GET  /api/v1/products
+POST /api/v1/products
+GET  /api/v1/inventory-documents
+POST /api/v1/inventory-documents
+POST /api/v1/inventory-documents/:id/post
+POST /api/v1/inventory-documents/:id/reverse
+GET  /api/v1/inventory-balances
+GET  /api/v1/inventory-ledgers
+GET  /api/v1/molds
+GET  /api/v1/molds/:id
+POST /api/v1/molds
+PATCH /api/v1/molds/:id
+DELETE /api/v1/molds/:id
+POST /api/v1/molds/:id/loan
+POST /api/v1/molds/:id/return
+POST /api/v1/molds/:id/repair
+POST /api/v1/molds/:id/maintenance
 GET  /api/v1/workorder
 POST /api/v1/workorder
 GET  /api/v1/statistics
@@ -228,7 +267,9 @@ POST /api/v1/tasks
 
 - 应用初始化、健康检查、就绪检查、SQLite WAL。
 - 登录成功、密码错误、当前用户信息。
-- JWT 缺失、Casbin 无权限拒绝、组织数据边界。
+- JWT 缺失、Casbin 无权限拒绝、单组织部门自动归属。
+- 库存入库移动平均成本、成本字段裁剪和负库存拒绝。
+- 模具创建、借出、归还、维修和保养下次日期计算。
 - 个人账号与部门终端账号的审计差异。
 - 默认日志配置、环境变量覆盖。
 - 日志目录创建、三类日志写入、控制台和文件双输出。
@@ -249,8 +290,8 @@ go test ./...
 1. 维护 `.gitignore`，确认不提交 `data/*.db`、`logs/*.log`、`node_modules/`、`dist/`、`target/`。
 2. 给每个业务模块补 `model.go`、`repository.go`、`service.go`、`handler.go`，逐步从 `internal/model` 拆出业务模型。
 3. 先实现客户与联系人模块 CRUD，因为它通常是销售、任务单和报表的前置数据。
-4. 再实现物料、产品、仓库、库存的基础数据与库存流水。
-5. 然后实现模具档案、任务单、部门子任务。
+4. 补库存盘点、调整、导出、附件和备份恢复。
+5. 然后实现任务单、部门子任务和 WebSocket 通知补偿。
 6. 最后做统计报表和前端页面联调。
 
 ## 10. 给下一位 Codex 的注意事项

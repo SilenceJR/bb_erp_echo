@@ -11,12 +11,15 @@ import (
 	"syscall"
 	"time"
 
+	_ "bb_erp_echo/docs"
 	"bb_erp_echo/internal/audit"
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/config"
+	"bb_erp_echo/internal/contact"
 	"bb_erp_echo/internal/customer"
 	"bb_erp_echo/internal/database"
 	"bb_erp_echo/internal/department"
+	"bb_erp_echo/internal/frontend"
 	"bb_erp_echo/internal/inventory"
 	erplogger "bb_erp_echo/internal/logger"
 	"bb_erp_echo/internal/material"
@@ -35,6 +38,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
 	echomiddleware "github.com/labstack/echo/v5/middleware"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +71,30 @@ type App struct {
 // Validator 是 Echo 请求校验适配器。
 type Validator struct {
 	validate *validator.Validate
+}
+
+// HealthResponse 是健康检查响应。
+//
+// 参数说明：
+// - Status：服务存活状态。
+// - Time：服务端当前时间。
+type HealthResponse struct {
+	// Status 是服务存活状态。
+	Status string `json:"status" example:"ok"`
+	// Time 是服务端当前时间。
+	Time time.Time `json:"time"`
+}
+
+// ReadyResponse 是就绪检查响应。
+//
+// 参数说明：
+// - Status：ready 表示服务依赖可用，not_ready 表示依赖不可用。
+// - Message：不可用时的说明。
+type ReadyResponse struct {
+	// Status 是服务就绪状态。
+	Status string `json:"status" example:"ready"`
+	// Message 是不可用时的说明。
+	Message string `json:"message,omitempty" example:"database ping failed"`
 }
 
 // Validate 执行结构体 tag 校验。
@@ -197,20 +225,30 @@ func (a *App) registerRoutes() {
 	auth.NewHandler(a.DB, a.AuthService).RegisterRoutes(v1, jwtMiddleware)
 
 	protected := v1.Group("", jwtMiddleware)
+
 	system := protected.Group("/system", auditMiddleware)
 	department.NewHandler(a.DB).RegisterRoutes(system, require)
 	user.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	role.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	audit.NewHandler(a.DB).RegisterRoutes(system, require)
 
-	customer.RegisterRoutes(protected, require, auditMiddleware)
-	warehouse.RegisterRoutes(protected, require, auditMiddleware)
-	inventory.RegisterRoutes(protected, require, auditMiddleware)
-	material.RegisterRoutes(protected, require, auditMiddleware)
-	product.RegisterRoutes(protected, require, auditMiddleware)
-	mold.RegisterRoutes(protected, require, auditMiddleware)
+	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	contact.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	warehouse.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	inventory.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	material.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	product.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	mold.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	workorder.RegisterRoutes(protected, require, auditMiddleware)
 	statistics.RegisterRoutes(protected, require, auditMiddleware)
+
+	// Swagger API 文档路由必须放在 Web 静态文件兜底之前，避免被前端路由覆盖。
+	a.Echo.GET("/swagger/*", echo.WrapHandler(httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	)))
+
+	// Web 静态文件必须最后注册，避免覆盖 API、健康检查等后端路由。
+	frontend.RegisterStatic(a.Echo, a.Config.Web)
 }
 
 // Start 启动 HTTP 服务。
@@ -291,23 +329,38 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 // health 返回进程存活状态，不依赖数据库。
+//
+// @Summary 健康检查
+// @Description 返回进程存活状态，不依赖数据库。
+// @Tags 公共接口
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Router /health [get]
 func (a *App) health(c *echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]any{"status": "ok", "time": time.Now()})
+	return c.JSON(http.StatusOK, HealthResponse{Status: "ok", Time: time.Now()})
 }
 
 // ready 返回服务就绪状态，会检查数据库连接是否可用。
+//
+// @Summary 就绪检查
+// @Description 检查数据库连接是否可用，用于服务启动和部署探活。
+// @Tags 公共接口
+// @Produce json
+// @Success 200 {object} ReadyResponse
+// @Failure 503 {object} ReadyResponse
+// @Router /ready [get]
 func (a *App) ready(c *echo.Context) error {
 	sqlDB, err := a.DB.DB()
 	if err != nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "message": "database unavailable"})
+		return c.JSON(http.StatusServiceUnavailable, ReadyResponse{Status: "not_ready", Message: "database unavailable"})
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 	defer cancel()
 
 	if err := sqlDB.PingContext(ctx); err != nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "message": "database ping failed"})
+		return c.JSON(http.StatusServiceUnavailable, ReadyResponse{Status: "not_ready", Message: "database ping failed"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"status": "ready"})
+	return c.JSON(http.StatusOK, ReadyResponse{Status: "ready"})
 }

@@ -7,14 +7,6 @@ import (
 	"bb_erp_echo/internal/app"
 )
 
-// @title 博邦 ERP 管理系统 API
-// @version 0.1.0
-// @description 博邦 ERP Echo + GORM 模块化单体后台接口文档。后续新增、修改、删除接口时，必须同步更新 Swagger 注释、docs/API.md 和 test.http。
-// @BasePath /
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
-// @description JWT 登录凭证，格式为：Bearer <token>。
 func main() {
 	// app.New 会完成配置加载、数据库连接、自动迁移、权限策略加载和路由注册。
 	erp, err := app.New()

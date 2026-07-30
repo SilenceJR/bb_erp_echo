@@ -1,0 +1,1200 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "博邦 ERP Echo + GORM 模块化单体后台接口文档。后续新增、修改、删除接口时，必须同步更新 Swagger 注释、docs/API.md 和 test.http。",
+        "title": "博邦 ERP 管理系统 API",
+        "contact": {},
+        "version": "0.1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "使用账号密码登录并签发 JWT；后续接口通过 Authorization: Bearer \u003ctoken\u003e 认证。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "登录认证"
+                ],
+                "summary": "账号登录",
+                "parameters": [
+                    {
+                        "description": "登录参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前登录账号的账号类型、组织、部门、终端、角色和权限列表。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "登录认证"
+                ],
+                "summary": "当前用户",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.CurrentUserDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/contacts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回联系人列表，并预加载联系人电话明细。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "联系人"
+                ],
+                "summary": "查询联系人列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/contact.ContactResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建联系人时必须携带 customer_id，由联系人接口建立客户与联系人的关联关系。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "联系人"
+                ],
+                "summary": "创建联系人",
+                "parameters": [
+                    {
+                        "description": "创建联系人参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/contact.CreateContactRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ContactResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/contacts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "通过联系人 ID 查询联系人详情，并预加载电话明细。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "联系人"
+                ],
+                "summary": "查询联系人详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "联系人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ContactResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "软删除联系人，并同步软删除其电话明细。",
+                "tags": [
+                    "联系人"
+                ],
+                "summary": "删除联系人",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "联系人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新联系人基础信息，并按请求内容整体替换联系人电话明细。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "联系人"
+                ],
+                "summary": "更新联系人",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "联系人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新联系人参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/contact.UpdateContactRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ContactResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/contact.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回客户档案列表，并预加载联系人和联系人电话明细。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "查询客户列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/customer.CustomerResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建客户名称、编码和客户座机；客户联系人关系在创建联系人时通过 customer_id 建立。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "创建客户",
+                "parameters": [
+                    {
+                        "description": "创建客户参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/customer.CreateCustomerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/customer.CustomerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "软删除客户本体，不删除联系人；联系人和联系人电话明细保留用于转移或历史追溯。",
+                "tags": [
+                    "客户"
+                ],
+                "summary": "删除客户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "通过客户 ID 更新客户档案；联系人和电话明细请使用联系人接口维护。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "更新客户",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新客户参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/customer.UpdateCustomerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/customer.CustomerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "返回进程存活状态，不依赖数据库。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "公共接口"
+                ],
+                "summary": "健康检查",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/app.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ready": {
+            "get": {
+                "description": "检查数据库连接是否可用，用于服务启动和部署探活。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "公共接口"
+                ],
+                "summary": "就绪检查",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/app.ReadyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/app.ReadyResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "app.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "description": "Status 是服务存活状态。",
+                    "type": "string",
+                    "example": "ok"
+                },
+                "time": {
+                    "description": "Time 是服务端当前时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "app.ReadyResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message 是不可用时的说明。",
+                    "type": "string",
+                    "example": "database ping failed"
+                },
+                "status": {
+                    "description": "Status 是服务就绪状态。",
+                    "type": "string",
+                    "example": "ready"
+                }
+            }
+        },
+        "auth.CurrentUserDTO": {
+            "type": "object",
+            "properties": {
+                "account_type": {
+                    "description": "AccountType 是账号类型。",
+                    "type": "string",
+                    "example": "personal"
+                },
+                "department_id": {
+                    "description": "DepartmentID 是所属部门 ID。",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "ID 是用户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是账号显示名称。",
+                    "type": "string",
+                    "example": "系统管理员"
+                },
+                "organization_id": {
+                    "description": "OrganizationID 是所属组织 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "permissions": {
+                    "description": "Permissions 是当前账号拥有的权限编码列表。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "roles": {
+                    "description": "Roles 是当前账号拥有的角色编码列表。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "terminal_id": {
+                    "description": "TerminalID 是所属终端 ID。",
+                    "type": "integer"
+                },
+                "username": {
+                    "description": "Username 是登录账号。",
+                    "type": "string",
+                    "example": "admin"
+                }
+            }
+        },
+        "auth.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "auth.LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "description": "Password 是登录密码。",
+                    "type": "string",
+                    "example": "admin123456"
+                },
+                "username": {
+                    "description": "Username 是登录账号。",
+                    "type": "string",
+                    "example": "admin"
+                }
+            }
+        },
+        "auth.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "description": "AccessToken 是 JWT 访问令牌。",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "description": "ExpiresAt 是令牌过期时间。",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "User 是当前登录身份快照。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/auth.CurrentUserDTO"
+                        }
+                    ]
+                }
+            }
+        },
+        "contact.ContactPhoneRequest": {
+            "type": "object",
+            "required": [
+                "phone"
+            ],
+            "properties": {
+                "label": {
+                    "description": "Label 是号码标签，例如手机、座机、微信同号。",
+                    "type": "string",
+                    "example": "手机"
+                },
+                "phone": {
+                    "description": "Phone 是电话号码。",
+                    "type": "string",
+                    "example": "13800000000"
+                },
+                "primary": {
+                    "description": "Primary 表示是否为主联系电话。",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "contact.ContactPhoneResponse": {
+            "type": "object",
+            "properties": {
+                "contact_id": {
+                    "description": "ContactID 是所属联系人 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "created_at": {
+                    "description": "CreatedAt 是创建时间。",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID 是电话明细 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "label": {
+                    "description": "Label 是号码标签。",
+                    "type": "string",
+                    "example": "手机"
+                },
+                "phone": {
+                    "description": "Phone 是电话号码。",
+                    "type": "string",
+                    "example": "13800000000"
+                },
+                "primary": {
+                    "description": "Primary 表示是否主联系电话。",
+                    "type": "boolean",
+                    "example": true
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是更新时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "contact.ContactResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "CreatedAt 是创建时间。",
+                    "type": "string"
+                },
+                "customer_id": {
+                    "description": "CustomerID 是所属客户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "description": "ID 是联系人 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是联系人姓名。",
+                    "type": "string",
+                    "example": "张三"
+                },
+                "phones": {
+                    "description": "Phones 是联系人电话明细。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/contact.ContactPhoneResponse"
+                    }
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是更新时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "contact.CreateContactRequest": {
+            "type": "object",
+            "required": [
+                "customer_id",
+                "name"
+            ],
+            "properties": {
+                "customer_id": {
+                    "description": "CustomerID 是联系人所属客户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是联系人姓名。",
+                    "type": "string",
+                    "example": "张三"
+                },
+                "phones": {
+                    "description": "Phones 是联系人电话明细。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/contact.ContactPhoneRequest"
+                    }
+                }
+            }
+        },
+        "contact.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "contact.UpdateContactRequest": {
+            "type": "object",
+            "required": [
+                "customer_id",
+                "name"
+            ],
+            "properties": {
+                "customer_id": {
+                    "description": "CustomerID 是联系人所属客户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是联系人姓名。",
+                    "type": "string",
+                    "example": "张三-更新"
+                },
+                "phones": {
+                    "description": "Phones 是联系人电话明细；更新时整体替换旧电话。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/contact.ContactPhoneRequest"
+                    }
+                }
+            }
+        },
+        "customer.CreateCustomerRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "description": "Code 是客户编码，用于内部检索和去重。",
+                    "type": "string",
+                    "example": "CUST-001"
+                },
+                "name": {
+                    "description": "Name 是客户名称。",
+                    "type": "string",
+                    "example": "测试客户"
+                },
+                "phone": {
+                    "description": "Phone 是客户座机或主要联系电话。",
+                    "type": "string",
+                    "example": "0755-88888888"
+                }
+            }
+        },
+        "customer.CustomerContactResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "CreatedAt 是创建时间。",
+                    "type": "string"
+                },
+                "customer_id": {
+                    "description": "CustomerID 是所属客户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "id": {
+                    "description": "ID 是联系人 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是联系人姓名。",
+                    "type": "string",
+                    "example": "张三"
+                },
+                "phones": {
+                    "description": "Phones 是联系人电话明细。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/customer.CustomerPhoneResponse"
+                    }
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是更新时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "customer.CustomerPhoneResponse": {
+            "type": "object",
+            "properties": {
+                "contact_id": {
+                    "description": "ContactID 是所属联系人 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "created_at": {
+                    "description": "CreatedAt 是创建时间。",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID 是电话明细 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "label": {
+                    "description": "Label 是号码标签。",
+                    "type": "string",
+                    "example": "手机"
+                },
+                "phone": {
+                    "description": "Phone 是电话号码。",
+                    "type": "string",
+                    "example": "13800000000"
+                },
+                "primary": {
+                    "description": "Primary 表示是否主联系电话。",
+                    "type": "boolean",
+                    "example": true
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是更新时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "customer.CustomerResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "description": "Address 是客户地址。",
+                    "type": "string",
+                    "example": "深圳市宝安区"
+                },
+                "code": {
+                    "description": "Code 是客户编码。",
+                    "type": "string",
+                    "example": "CUST-001"
+                },
+                "contacts": {
+                    "description": "Contacts 是客户联系人列表。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/customer.CustomerContactResponse"
+                    }
+                },
+                "created_at": {
+                    "description": "CreatedAt 是创建时间。",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID 是客户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是客户名称。",
+                    "type": "string",
+                    "example": "测试客户"
+                },
+                "phone": {
+                    "description": "Phone 是旧版客户电话字段；新接口不再写入，电话请维护到联系人电话明细。",
+                    "type": "string",
+                    "example": ""
+                },
+                "updated_at": {
+                    "description": "UpdatedAt 是更新时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "customer.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "customer.UpdateCustomerRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "address": {
+                    "description": "Address 是客户地址。",
+                    "type": "string",
+                    "example": "深圳市宝安区"
+                },
+                "code": {
+                    "description": "Code 是客户编码，用于内部检索和去重。",
+                    "type": "string",
+                    "example": "CUST-001"
+                },
+                "name": {
+                    "description": "Name 是客户名称。",
+                    "type": "string",
+                    "example": "测试客户-更新"
+                },
+                "phone": {
+                    "description": "Phone 是客户座机或主要联系电话。",
+                    "type": "string",
+                    "example": "0755-66666666"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "JWT 登录凭证，格式为：Bearer \u003ctoken\u003e。",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

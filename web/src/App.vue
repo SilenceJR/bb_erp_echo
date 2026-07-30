@@ -2,15 +2,15 @@
   <main class="app-shell" :class="{ 'is-login': !token }">
     <section v-if="!token" class="login-screen" aria-label="博邦光电登录">
       <div class="login-panel">
-        <img class="login-logo" src="/bobang-logo-hd.png" alt="博邦光电" />
+        <img class="login-logo" src="/bobang-logo-hd.png" alt="博邦光电"/>
         <form class="login-form" @submit.prevent="login">
           <label>
             <span>账号</span>
-            <input v-model.trim="loginForm.username" autocomplete="username" />
+            <input v-model.trim="loginForm.username" autocomplete="username"/>
           </label>
           <label>
             <span>密码</span>
-            <input v-model="loginForm.password" type="password" autocomplete="current-password" />
+            <input v-model="loginForm.password" type="password" autocomplete="current-password"/>
           </label>
           <button class="primary-button" type="submit" :disabled="loading">
             {{ loading ? '登录中' : '登录' }}
@@ -23,7 +23,7 @@
     <section v-else class="workspace">
       <header class="topbar">
         <div class="brand">
-          <img src="/bobang-logo-hd.png" alt="博邦光电" />
+          <img src="/bobang-logo-hd.png" alt="博邦光电"/>
           <div>
             <strong>博邦光电</strong>
             <span>ERP 管理系统</span>
@@ -38,11 +38,11 @@
 
       <div class="mobile-tabs" aria-label="模块导航">
         <button
-          v-for="item in navItems"
-          :key="item.key"
-          type="button"
-          :class="{ active: activeKey === item.key }"
-          @click="switchModule(item.key)"
+            v-for="item in navItems"
+            :key="item.key"
+            type="button"
+            :class="{ active: activeKey === item.key }"
+            @click="switchModule(item.key)"
         >
           {{ item.title }}
         </button>
@@ -51,11 +51,11 @@
       <aside class="sidebar" aria-label="系统导航">
         <nav>
           <button
-            v-for="item in navItems"
-            :key="item.key"
-            type="button"
-            :class="{ active: activeKey === item.key }"
-            @click="switchModule(item.key)"
+              v-for="item in navItems"
+              :key="item.key"
+              type="button"
+              :class="{ active: activeKey === item.key }"
+              @click="switchModule(item.key)"
           >
             <span>{{ item.title }}</span>
             <small>{{ item.status === 'available' ? '可用' : '骨架' }}</small>
@@ -106,6 +106,18 @@
             <p>{{ activeModule?.description }}</p>
           </div>
 
+          <div v-if="activeModule?.key === 'warehouses'" class="mobile-tabs" aria-label="仓库分类">
+            <button
+                v-for="tab in warehouseTabs"
+                :key="tab.key"
+                type="button"
+                :class="{ active: activeWarehouseTab === tab.key }"
+                @click="switchWarehouseTab(tab.key)"
+            >
+              {{ tab.title }}
+            </button>
+          </div>
+
           <form v-if="formSchema.length" class="inline-form" @submit.prevent="createItem">
             <label v-for="field in formSchema" :key="field.key">
               <span>{{ field.label }}</span>
@@ -115,7 +127,7 @@
                   {{ option.label }}
                 </option>
               </select>
-              <input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'" />
+              <input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'"/>
             </label>
             <button class="primary-button" type="submit" :disabled="loading">新增</button>
           </form>
@@ -133,19 +145,19 @@
           <div v-else class="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th v-for="column in columns" :key="column">{{ column }}</th>
-                </tr>
+              <tr>
+                <th v-for="column in columns" :key="column">{{ column }}</th>
+              </tr>
               </thead>
               <tbody>
-                <tr v-for="row in rows" :key="String(row.id || JSON.stringify(row))">
-                  <td v-for="column in columns" :key="column">
-                    {{ formatCell(row[column]) }}
-                  </td>
-                </tr>
-                <tr v-if="!rows.length">
-                  <td :colspan="columns.length || 1">暂无数据</td>
-                </tr>
+              <tr v-for="row in rows" :key="String(row.id || JSON.stringify(row))">
+                <td v-for="column in columns" :key="column">
+                  {{ formatCell(row[column]) }}
+                </td>
+              </tr>
+              <tr v-if="!rows.length">
+                <td :colspan="columns.length || 1">暂无数据</td>
+              </tr>
               </tbody>
             </table>
           </div>
@@ -156,10 +168,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { apiBaseUrl, request } from './api/http'
-import { modules, type ModuleItem } from './data/modules'
-import type { BasicItem, CurrentUser, SkeletonResponse } from './types'
+import {computed, onMounted, reactive, ref} from 'vue'
+import {apiBaseUrl, request} from './api/http'
+import {type ModuleItem, modules} from './data/modules'
+import type {BasicItem, CurrentUser, SkeletonResponse} from './types'
 
 type FormField = {
   key: string
@@ -189,6 +201,13 @@ const loginForm = reactive({
 })
 
 const formState = reactive<Record<string, string | number>>({})
+const activeWarehouseTab = ref('product')
+const warehouseTabs = [
+  {key: 'product', title: '产品'},
+  {key: 'production_material', title: '生产物资'},
+  {key: 'regular_product', title: '常规产品'},
+  {key: 'daily_supply', title: '生活物资'},
+]
 
 const navItems = computed(() => modules)
 const activeModule = computed(() => modules.find((item) => item.key === activeKey.value))
@@ -202,52 +221,114 @@ const accountTypeText = computed(() => {
 
 // formSchema 根据当前模块返回轻量新增表单，和后端已实现能力保持一致。
 const formSchema = computed<FormField[]>(() => {
-  const organizationOptions = rowsFor('organizations').map((item) => ({ label: item.name || item.code || `#${item.id}`, value: item.id }))
-  const departmentOptions = rowsFor('departments').map((item) => ({ label: item.name || item.code || `#${item.id}`, value: item.id }))
-  const terminalOptions = rowsFor('terminals').map((item) => ({ label: item.name || item.code || `#${item.id}`, value: item.id }))
+  const departmentOptions = rowsFor('departments').map((item) => ({
+    label: item.name || item.code || `#${item.id}`,
+    value: item.id
+  }))
+  const terminalOptions = rowsFor('terminals').map((item) => ({
+    label: item.name || item.code || `#${item.id}`,
+    value: item.id
+  }))
+  const warehouseOptions = rowsFor('warehouse_records').map((item) => ({
+    label: item.name || item.code || `#${item.id}`,
+    value: item.id
+  }))
 
   switch (activeKey.value) {
-    case 'organizations':
-      return [
-        { key: 'name', label: '组织名称' },
-        { key: 'code', label: '组织编码' },
-      ]
     case 'departments':
       return [
-        { key: 'organization_id', label: '所属组织', kind: 'select', options: organizationOptions },
-        { key: 'name', label: '部门名称' },
-        { key: 'code', label: '部门编码' },
+        {key: 'name', label: '部门名称'},
+        {key: 'code', label: '部门编码'},
       ]
     case 'terminals':
       return [
-        { key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions },
-        { key: 'code', label: '终端编码' },
-        { key: 'name', label: '终端名称' },
-        { key: 'location', label: '位置说明' },
+        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions},
+        {key: 'code', label: '终端编码'},
+        {key: 'name', label: '终端名称'},
+        {key: 'location', label: '位置说明'},
       ]
     case 'users':
       return [
-        { key: 'username', label: '账号' },
-        { key: 'password', label: '密码', kind: 'password' },
+        {key: 'username', label: '账号'},
+        {key: 'password', label: '密码', kind: 'password'},
         {
           key: 'account_type',
           label: '账号类型',
           kind: 'select',
           options: [
-            { label: '个人账号', value: 'personal' },
-            { label: '部门终端账号', value: 'department_terminal' },
+            {label: '个人账号', value: 'personal'},
+            {label: '部门终端账号', value: 'department_terminal'},
           ],
         },
-        { key: 'name', label: '姓名/终端名' },
-        { key: 'organization_id', label: '所属组织', kind: 'select', options: organizationOptions },
-        { key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions },
-        { key: 'terminal_id', label: '所属终端', kind: 'select', options: terminalOptions },
+        {key: 'name', label: '姓名/终端名'},
+        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions},
+        {key: 'terminal_id', label: '所属终端', kind: 'select', options: terminalOptions},
       ]
     case 'roles':
       return [
-        { key: 'name', label: '角色名称' },
-        { key: 'code', label: '角色编码' },
-        { key: 'description', label: '说明' },
+        {key: 'name', label: '角色名称'},
+        {key: 'code', label: '角色编码'},
+        {key: 'description', label: '说明'},
+      ]
+    case 'customers':
+      return [
+        {key: 'name', label: '客户名称'},
+        {key: 'code', label: '客户编码'},
+        {key: 'phone', label: '座机'},
+        {key: 'address', label: '地址'},
+      ]
+    case 'warehouses':
+      return [
+        {key: 'name', label: `${activeWarehouseTabTitle.value}名称`},
+        {key: 'code', label: `${activeWarehouseTabTitle.value}编码`},
+        {key: 'unit', label: '单位'},
+        {key: 'spec', label: '规格'},
+        {key: 'safety_stock', label: '安全库存'},
+        {key: 'default_cost', label: '默认成本'},
+      ]
+    case 'inventory_documents':
+      return [
+        {key: 'code', label: '单据编号'},
+        {
+          key: 'type',
+          label: '类型',
+          kind: 'select',
+          options: [
+            {label: '入库', value: 'inbound'},
+            {label: '出库', value: 'outbound'},
+            {label: '调拨', value: 'transfer'},
+          ],
+        },
+        {key: 'warehouse_id', label: '仓库', kind: 'select', options: warehouseOptions},
+        {key: 'to_warehouse_id', label: '目标仓库', kind: 'select', options: warehouseOptions},
+        {
+          key: 'item_type',
+          label: '对象类型',
+          kind: 'select',
+          options: [
+            {label: '物料', value: 'material'},
+            {label: '产品', value: 'product'},
+          ],
+        },
+        {key: 'item_id', label: '物料/产品ID'},
+        {key: 'quantity', label: '数量'},
+        {key: 'unit_cost', label: '单价'},
+        {key: 'reason', label: '原因'},
+      ]
+    case 'molds':
+      return [
+        {key: 'code', label: '模具编号'},
+        {key: 'name', label: '模具名称'},
+        {key: 'customer_id', label: '客户ID'},
+        {key: 'product_id', label: '产品ID'},
+        {key: 'cavity_count', label: '穴数'},
+        {key: 'mold_material', label: '成型材料'},
+        {key: 'steel', label: '钢材'},
+        {key: 'size', label: '尺寸'},
+        {key: 'weight_gram', label: '重量g'},
+        {key: 'manufacturer', label: '制造商'},
+        {key: 'storage_location', label: '存放位置'},
+        {key: 'maintenance_cycle_days', label: '保养周期天'},
       ]
     default:
       return []
@@ -256,6 +337,7 @@ const formSchema = computed<FormField[]>(() => {
 
 // cache 保存基础资料列表，为用户、部门、终端表单提供选项。
 const cache = reactive<Record<string, BasicItem[]>>({})
+const activeWarehouseTabTitle = computed(() => warehouseTabs.find((tab) => tab.key === activeWarehouseTab.value)?.title || '物品')
 
 function rowsFor(key: string): BasicItem[] {
   return cache[key] || []
@@ -263,6 +345,12 @@ function rowsFor(key: string): BasicItem[] {
 
 function switchModule(key: string) {
   activeKey.value = key
+  clearForm()
+  void loadActiveModule()
+}
+
+function switchWarehouseTab(key: string) {
+  activeWarehouseTab.value = key
   clearForm()
   void loadActiveModule()
 }
@@ -312,7 +400,7 @@ async function loadMe() {
 }
 
 async function preloadBaseData() {
-  const keys = ['organizations', 'departments', 'terminals']
+  const keys = ['departments', 'terminals', 'warehouse_records', 'materials', 'products']
   await Promise.allSettled(keys.map((key) => loadList(key, false)))
 }
 
@@ -334,8 +422,15 @@ async function loadActiveModule() {
 
 async function loadList(key: string, applyToPanel: boolean) {
   const item = modules.find((moduleItem) => moduleItem.key === key)
-  if (!item?.path) return
-  const data = await request<BasicItem[] | SkeletonResponse>(item.path, {}, token.value)
+  let path = item?.path
+  if (key === 'warehouse_records') {
+    path = '/api/v1/warehouses'
+  }
+  if (!path) return
+  if (key === 'warehouses') {
+    path = `${path}?tab=${activeWarehouseTab.value}`
+  }
+  const data = await request<BasicItem[] | SkeletonResponse>(path, {}, token.value)
   if (!Array.isArray(data)) {
     if (applyToPanel) {
       skeletonResult.value = data
@@ -347,7 +442,9 @@ async function loadList(key: string, applyToPanel: boolean) {
   cache[key] = data
   if (applyToPanel) {
     rows.value = data
-    columns.value = inferColumns(data, item)
+    if (item) {
+      columns.value = inferColumns(data, item)
+    }
   }
 }
 
@@ -374,13 +471,36 @@ async function createItem() {
 
 function normalizedForm(): Record<string, unknown> {
   const body: Record<string, unknown> = {}
+  if (activeKey.value === 'users') {
+    body.organization_id = 1
+  }
+  if (activeKey.value === 'warehouses') {
+    body.tab = activeWarehouseTab.value
+  }
+  if (activeKey.value === 'inventory_documents') {
+    const line: Record<string, unknown> = {}
+    for (const key of ['item_type', 'item_id', 'quantity', 'unit_cost']) {
+      const value = formState[key]
+      if (value === '' || value === undefined) continue
+      line[key] = numericKeys.has(key) ? Number(value) : value
+    }
+    for (const key of ['code', 'type', 'warehouse_id', 'to_warehouse_id', 'reason']) {
+      const value = formState[key]
+      if (value === '' || value === undefined) continue
+      body[key] = numericKeys.has(key) || key.endsWith('_id') ? Number(value) : value
+    }
+    body.lines = [line]
+    return body
+  }
   for (const field of formSchema.value) {
     const value = formState[field.key]
     if (value === '' || value === undefined) continue
-    body[field.key] = field.key.endsWith('_id') ? Number(value) : value
+    body[field.key] = numericKeys.has(field.key) || field.key.endsWith('_id') ? Number(value) : value
   }
   return body
 }
+
+const numericKeys = new Set(['quantity', 'unit_cost', 'default_cost', 'safety_stock', 'customer_id', 'product_id', 'cavity_count', 'weight_gram', 'maintenance_cycle_days'])
 
 function clearForm() {
   for (const key of Object.keys(formState)) {
@@ -391,10 +511,17 @@ function clearForm() {
 function inferColumns(data: BasicItem[], item: ModuleItem): string[] {
   const preferred: Record<string, string[]> = {
     users: ['id', 'username', 'account_type', 'name', 'organization_id', 'department_id', 'terminal_id', 'status'],
-    organizations: ['id', 'name', 'code', 'status'],
     departments: ['id', 'organization_id', 'name', 'code', 'status'],
     terminals: ['id', 'department_id', 'code', 'name', 'location', 'status'],
     roles: ['id', 'name', 'code', 'description'],
+    customers: ['id', 'name', 'code', 'phone', 'address'],
+    warehouses: ['id', 'item_type', 'category', 'name', 'code', 'unit', 'spec', 'safety_stock', 'status'],
+    materials: ['id', 'name', 'code', 'category', 'unit', 'spec', 'safety_stock', 'status'],
+    products: ['id', 'name', 'code', 'unit', 'spec', 'safety_stock', 'status'],
+    inventory_documents: ['id', 'code', 'type', 'status', 'warehouse_id', 'to_warehouse_id', 'reason'],
+    inventory_balances: ['id', 'warehouse_id', 'location_id', 'item_type', 'item_id', 'quantity', 'avg_cost', 'amount'],
+    inventory_ledgers: ['id', 'document_id', 'type', 'warehouse_id', 'item_type', 'item_id', 'quantity', 'balance_qty', 'amount'],
+    molds: ['id', 'code', 'name', 'status', 'current_location', 'storage_location', 'cavity_count', 'mold_material', 'steel', 'maintenance_cycle_days', 'next_maintenance_at'],
     permissions: ['id', 'name', 'code', 'object', 'action'],
     audits: ['id', 'actor_username', 'actor_account_type', 'person_name', 'department_id', 'terminal_id', 'action', 'object', 'result'],
   }

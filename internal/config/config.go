@@ -18,6 +18,7 @@ import (
 // - Database：SQLite 数据库文件路径。
 // - JWT：登录令牌签名、签发方和过期时间。
 // - Log：结构化日志级别。
+// - Web：Web 管理端静态文件配置。
 // - Admin：首次启动时自动创建的管理员账号。
 type Config struct {
 	App      AppConfig      `koanf:"app"`
@@ -25,6 +26,7 @@ type Config struct {
 	Database DatabaseConfig `koanf:"database"`
 	JWT      JWTConfig      `koanf:"jwt"`
 	Log      LogConfig      `koanf:"log"`
+	Web      WebConfig      `koanf:"web"`
 	Admin    AdminConfig    `koanf:"admin"`
 }
 
@@ -74,6 +76,14 @@ type LogConfig struct {
 	RetentionDays int `koanf:"retention_days"`
 }
 
+// WebConfig 描述 Web 管理端静态文件配置。
+type WebConfig struct {
+	// Enabled 表示是否由 Echo 直接托管 Web 静态文件。
+	Enabled bool `koanf:"enabled"`
+	// DistDir 是前端构建产物目录，默认 web/dist。
+	DistDir string `koanf:"dist_dir"`
+}
+
 // AdminConfig 描述系统初始化管理员账号。
 type AdminConfig struct {
 	// Username 是默认管理员登录账号。
@@ -109,6 +119,8 @@ func Load() (*Config, error) {
 		"log.dir":              "logs",
 		"log.console":          true,
 		"log.retention_days":   30,
+		"web.enabled":          true,
+		"web.dist_dir":         "web/dist",
 		"admin.username":       "admin",
 		"admin.password":       "admin123456",
 		"admin.name":           "系统管理员",
@@ -139,6 +151,13 @@ func Load() (*Config, error) {
 	}
 	if cfg.Log.RetentionDays == 0 {
 		cfg.Log.RetentionDays = 30
+	}
+	cfg.Web.Enabled = k.Bool("web.enabled")
+	if distDir := k.String("web.dist.dir"); distDir != "" {
+		cfg.Web.DistDir = distDir
+	}
+	if cfg.Web.DistDir == "" {
+		cfg.Web.DistDir = "web/dist"
 	}
 
 	return &cfg, nil

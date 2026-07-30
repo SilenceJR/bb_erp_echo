@@ -19,7 +19,8 @@ func registerSkeleton(v1 *echo.Group, path string, name string, require func(str
 	group.GET("", func(c *echo.Context) error {
 		return response.Skeleton(c, http.StatusOK, path, name, "模块骨架已注册，业务接口待后续迭代。")
 	}, require("/api/v1/"+path, "read"))
-	group.POST("", func(c *echo.Context) error {
+	group.POST("/create", func(c *echo.Context) error {
+
 		return response.Skeleton(c, http.StatusAccepted, path, name, "模块写入入口已预留，业务流程待后续迭代。")
 	}, require("/api/v1/"+path, "write"))
 }

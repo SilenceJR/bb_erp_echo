@@ -16,8 +16,12 @@ import (
 const (
 	// SuperAdminCode 是系统内置超级管理员角色编码。
 	SuperAdminCode = "super_admin"
+	// BossCode 是老板角色编码，默认拥有成本查看权限。
+	BossCode = "boss"
 	// TerminalOperatorCode 是部门公共终端账号默认角色编码。
 	TerminalOperatorCode = "department_terminal_operator"
+	// CostViewCode 是成本字段查看权限编码。
+	CostViewCode = "cost:view"
 )
 
 // Service 封装角色、权限和策略操作。
@@ -77,12 +81,12 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 
-	dept := model.Department{OrganizationID: org.ID, Name: "总部", Code: "HQ", Status: model.StatusActive}
-	if err := s.DB.Where("organization_id = ? AND code = ?", org.ID, dept.Code).FirstOrCreate(&dept).Error; err != nil {
+	dept := model.Department{OrganizationID: org.ID, Name: "办公室", Code: "HQ", Status: model.StatusActive}
+	if err := s.DB.Where(" code = ?", dept.Code).FirstOrCreate(&dept).Error; err != nil {
 		return err
 	}
 
-	terminal := model.Terminal{DepartmentID: dept.ID, Code: "injection-terminal-01", Name: "注塑车间电脑01", Location: "注塑车间", Status: model.StatusActive}
+	terminal := model.Terminal{DepartmentID: dept.ID, Code: "injection-terminal-01", Name: "注塑车间电脑01", Status: model.StatusActive}
 	if err := s.DB.FirstOrCreate(&terminal, model.Terminal{Code: terminal.Code}).Error; err != nil {
 		return err
 	}
@@ -97,12 +101,19 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 	if err := s.DB.FirstOrCreate(&super, model.Role{Code: super.Code}).Error; err != nil {
 		return err
 	}
+	boss := model.Role{Name: "老板", Code: BossCode, Description: "默认拥有成本查看权限", System: true}
+	if err := s.DB.FirstOrCreate(&boss, model.Role{Code: boss.Code}).Error; err != nil {
+		return err
+	}
 	terminalRole := model.Role{Name: "部门终端操作员", Code: TerminalOperatorCode, Description: "公共部门终端账号使用", System: true}
 	if err := s.DB.FirstOrCreate(&terminalRole, model.Role{Code: terminalRole.Code}).Error; err != nil {
 		return err
 	}
 
-	if err := s.AttachPermissions(super.ID, nil); err != nil {
+	if err := s.AttachAllExcept(super.ID, []string{CostViewCode}); err != nil {
+		return err
+	}
+	if err := s.AttachPermissionCodes(boss.ID, []string{CostViewCode}); err != nil {
 		return err
 	}
 	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"tasks:read", "tasks:write", "inventory:read"}); err != nil {
@@ -126,6 +137,31 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 	return s.AssignRoleCodes(admin.ID, []string{SuperAdminCode})
+}
+
+// AttachAllExcept 为角色追加除指定权限码以外的全部权限。
+//
+// 参数说明：
+// - roleID：角色 ID。
+// - excludedCodes：需要排除的权限编码。
+func (s *Service) AttachAllExcept(roleID uint, excludedCodes []string) error {
+	var permissions []model.Permission
+	query := s.DB
+	if len(excludedCodes) > 0 {
+		query = query.Where("code NOT IN ?", excludedCodes)
+		if err := s.DB.Where("role_id = ? AND permission_id IN (SELECT id FROM permissions WHERE code IN ?)", roleID, excludedCodes).
+			Delete(&model.RolePermission{}).Error; err != nil {
+			return err
+		}
+	}
+	if err := query.Find(&permissions).Error; err != nil {
+		return err
+	}
+	ids := make([]uint, 0, len(permissions))
+	for _, permission := range permissions {
+		ids = append(ids, permission.ID)
+	}
+	return s.AttachPermissions(roleID, ids)
 }
 
 // AttachPermissions 为角色追加权限。
@@ -270,6 +306,8 @@ func DefaultPermissions() []model.Permission {
 		{"审计查看", "system:audits:read", "/api/v1/system/audits", "read"},
 		{"客户查看", "customers:read", "/api/v1/customers", "read"},
 		{"客户维护", "customers:write", "/api/v1/customers", "write"},
+		{"联系人查看", "contacts:read", "/api/v1/contacts", "read"},
+		{"联系人维护", "contacts:write", "/api/v1/contacts", "write"},
 		{"仓库查看", "warehouse:read", "/api/v1/warehouse", "read"},
 		{"仓库维护", "warehouse:write", "/api/v1/warehouse", "write"},
 		{"库存查看", "inventory:read", "/api/v1/inventory", "read"},
@@ -280,10 +318,17 @@ func DefaultPermissions() []model.Permission {
 		{"产品维护", "product:write", "/api/v1/product", "write"},
 		{"模具查看", "mold:read", "/api/v1/mold", "read"},
 		{"模具维护", "mold:write", "/api/v1/mold", "write"},
+		{"模具台账查看", "molds:read", "/api/v1/molds", "read"},
+		{"模具台账维护", "molds:write", "/api/v1/molds", "write"},
 		{"任务查看", "workorder:read", "/api/v1/workorder", "read"},
 		{"任务维护", "workorder:write", "/api/v1/workorder", "write"},
 		{"报表查看", "statistics:read", "/api/v1/statistics", "read"},
 		{"报表维护", "statistics:write", "/api/v1/statistics", "write"},
+		{"成本查看", CostViewCode, "/api/v1/cost", "read"},
+		{"库存单据查看", "inventory:documents:read", "/api/v1/inventory-documents", "read"},
+		{"库存单据维护", "inventory:documents:write", "/api/v1/inventory-documents", "write"},
+		{"库存余额查看", "inventory:balances:read", "/api/v1/inventory-balances", "read"},
+		{"库存流水查看", "inventory:ledgers:read", "/api/v1/inventory-ledgers", "read"},
 		// 兼容第一版 API 命名，避免前端或测试仍使用旧路径时直接失效。
 		{"旧任务查看", "tasks:read", "/api/v1/tasks", "read"},
 		{"旧任务维护", "tasks:write", "/api/v1/tasks", "write"},
