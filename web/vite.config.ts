@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 // Vite 配置：开发端口固定为 5173，和后端 CORS 默认白名单保持一致。
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    AutoImport({resolvers: [ElementPlusResolver()]}),
+    Components({resolvers: [ElementPlusResolver()]}),
+  ],
   server: {
     port: 5173,
     // 开发模式下把 API 和健康检查转发给 Echo 后端。

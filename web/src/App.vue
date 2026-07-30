@@ -1,22 +1,19 @@
 <template>
+  <el-config-provider :locale="zhCn">
   <main class="app-shell" :class="{ 'is-login': !token }">
     <section v-if="!token" class="login-screen" aria-label="博邦光电登录">
       <div class="login-panel">
         <img class="login-logo" src="/bobang-logo-hd.png" alt="博邦光电"/>
-        <form class="login-form" @submit.prevent="login">
-          <label>
-            <span>账号</span>
-            <input v-model.trim="loginForm.username" autocomplete="username"/>
-          </label>
-          <label>
-            <span>密码</span>
-            <input v-model="loginForm.password" type="password" autocomplete="current-password"/>
-          </label>
-          <button class="primary-button" type="submit" :disabled="loading">
-            {{ loading ? '登录中' : '登录' }}
-          </button>
-          <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-        </form>
+        <el-form class="login-form" label-position="top" @submit.prevent="login">
+          <el-form-item label="账号">
+            <el-input v-model.trim="loginForm.username" autocomplete="username" clearable/>
+          </el-form-item>
+          <el-form-item label="密码">
+            <el-input v-model="loginForm.password" type="password" autocomplete="current-password" show-password @keyup.enter="login"/>
+          </el-form-item>
+          <el-button class="login-submit" type="primary" :loading="loading" native-type="submit">登录</el-button>
+          <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon/>
+        </el-form>
       </div>
     </section>
 
@@ -35,55 +32,32 @@
             <span>{{ currentUser?.name || currentUser?.username }}</span>
             <small>{{ accountTypeText }}</small>
           </div>
-          <button class="ghost-button" type="button" @click="logout">退出登录</button>
+          <el-button text type="primary" @click="logout">退出登录</el-button>
         </div>
       </header>
 
       <div class="mobile-tabs" aria-label="模块导航">
-        <button
+        <el-button
             v-for="item in navItems"
             :key="item.key"
-            type="button"
             :class="{ active: activeKey === item.key }"
             @click="switchModule(item.key)"
         >
           {{ item.title }}
-        </button>
+        </el-button>
       </div>
 
       <aside class="sidebar" aria-label="系统导航">
-        <nav class="main-nav">
-          <button
-              type="button"
-              :class="{ active: activeKey === 'dashboard' }"
-              @click="switchModule('dashboard')"
-          >
-            <span class="nav-icon">⌂</span>
-            <span>首页</span>
-          </button>
-          <p v-if="businessItems.length" class="nav-heading">日常业务</p>
-          <button
-              v-for="item in businessItems"
-              :key="item.key"
-              type="button"
-              :class="{ active: activeKey === item.key }"
-              @click="switchModule(item.key)"
-          >
-            <span>{{ item.title }}</span>
-          </button>
-          <details v-if="systemItems.length" class="system-nav" :open="activeModule?.group === 'system'">
-            <summary>系统设置</summary>
-            <button
-                v-for="item in systemItems"
-                :key="item.key"
-                type="button"
-                :class="{ active: activeKey === item.key }"
-                @click="switchModule(item.key)"
-            >
-              <span>{{ item.title }}</span>
-            </button>
-          </details>
-        </nav>
+        <el-menu class="main-nav" :default-active="activeKey" @select="switchModule">
+          <el-menu-item index="dashboard">首页</el-menu-item>
+          <el-menu-item-group v-if="businessItems.length" title="日常业务">
+            <el-menu-item v-for="item in businessItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
+          </el-menu-item-group>
+          <el-sub-menu v-if="systemItems.length" index="system">
+            <template #title>系统设置</template>
+            <el-menu-item v-for="item in systemItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
+          </el-sub-menu>
+        </el-menu>
         <div class="sidebar-help">
           <span>遇到问题？</span>
           <small>请联系系统管理员</small>
@@ -111,12 +85,15 @@
               </div>
             </div>
             <div class="quick-grid">
-              <button
+              <el-card
                   v-for="item in quickActions"
                   :key="item.key"
                   class="quick-card"
-                  type="button"
+                  shadow="hover"
+                  role="button"
+                  tabindex="0"
                   @click="switchModule(item.key)"
+                  @keyup.enter="switchModule(item.key)"
               >
                 <span class="quick-icon">{{ item.icon }}</span>
                 <span class="quick-copy">
@@ -124,7 +101,7 @@
                   <small>{{ item.description }}</small>
                 </span>
                 <span class="quick-arrow">→</span>
-              </button>
+              </el-card>
             </div>
           </section>
 
@@ -136,7 +113,7 @@
               </div>
             </div>
             <div class="business-grid">
-              <article v-for="group in businessGroups" :key="group.title" class="business-card">
+              <el-card v-for="group in businessGroups" :key="group.title" class="business-card" shadow="never">
                 <div class="business-card-heading">
                   <span>{{ group.icon }}</span>
                   <div>
@@ -144,15 +121,15 @@
                     <small>{{ group.caption }}</small>
                   </div>
                 </div>
-                <button
+                <el-button
                     v-for="item in group.items"
                     :key="item.key"
-                    type="button"
+                    link
                     @click="switchModule(item.key)"
                 >
                   {{ item.title }} <span>→</span>
-                </button>
-              </article>
+                </el-button>
+              </el-card>
             </div>
           </section>
           <div v-if="!businessItems.length" class="permission-empty">
@@ -165,100 +142,82 @@
         <div v-else class="data-page">
           <div class="page-heading">
             <div class="section-title">
-              <button class="back-home" type="button" @click="switchModule('dashboard')">首页</button>
+              <el-button class="back-home" link @click="switchModule('dashboard')">首页</el-button>
               <span>/</span>
               <h1>{{ activeModule?.title }}</h1>
               <p>{{ activeModule?.description }}</p>
             </div>
-            <button
+            <el-button
                 v-if="formSchema.length && canWriteActive"
-                class="primary-button add-button"
-                type="button"
+                class="add-button"
+                type="primary"
                 @click="toggleCreateForm"
             >
               {{ showCreateForm ? '收起' : `＋ 新增${activeModule?.title || ''}` }}
-            </button>
-            <span v-else-if="activeModule?.writePermission" class="readonly-badge">仅查看</span>
+            </el-button>
+            <el-tag v-else-if="activeModule?.writePermission" type="info" round>仅查看</el-tag>
           </div>
 
           <div v-if="activeModule?.key === 'warehouses'" class="warehouse-tabs" aria-label="仓库分类">
-            <button
-                v-for="tab in warehouseTabs"
-                :key="tab.key"
-                type="button"
-                :class="{ active: activeWarehouseTab === tab.key }"
-                @click="switchWarehouseTab(tab.key)"
-            >
-              {{ tab.title }}
-            </button>
+            <el-segmented v-model="activeWarehouseTab" :options="warehouseTabOptions" @change="switchWarehouseTab"/>
           </div>
 
-          <form v-if="formSchema.length && canWriteActive && showCreateForm" class="inline-form" @submit.prevent="createItem">
+          <el-form v-if="formSchema.length && canWriteActive && showCreateForm" class="inline-form" label-position="top" @submit.prevent="createItem">
             <div class="form-heading">
               <strong>{{ editingSupplier ? '编辑供应商' : `新增${activeModule?.title}` }}</strong>
               <span>请填写以下信息，带 * 为常用必填项</span>
             </div>
-            <label v-for="field in formSchema" :key="field.key">
-              <span>{{ field.label }}</span>
-              <select v-if="field.kind === 'select'" v-model="formState[field.key]">
-                <option value="">请选择</option>
-                <option v-for="option in field.options" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-              <input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'"/>
-            </label>
+            <el-form-item v-for="field in formSchema" :key="field.key" :label="field.label">
+              <el-select v-if="field.kind === 'select'" v-model="formState[field.key]" placeholder="请选择" clearable>
+                <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
+              </el-select>
+              <el-input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'" :show-password="field.kind === 'password'"/>
+            </el-form-item>
             <div class="form-actions">
-              <button class="ghost-button" type="button" @click="showCreateForm = false">取消</button>
-              <button class="primary-button" type="submit" :disabled="loading">
-                {{ loading ? '保存中…' : '保存' }}
-              </button>
+              <el-button @click="showCreateForm = false">取消</el-button>
+              <el-button type="primary" native-type="submit" :loading="loading">保存</el-button>
             </div>
-          </form>
+          </el-form>
 
-          <section v-if="assignmentTarget" class="assignment-panel">
+          <el-dialog :model-value="!!assignmentTarget" :title="assignmentConfig?.title" width="min(620px, 92vw)" @close="closeAssignment">
+            <div v-if="assignmentTarget" class="assignment-panel">
             <div class="assignment-heading">
               <div>
-                <strong>
-                  {{ assignmentConfig?.title }}
-                </strong>
                 <span>{{ assignmentTarget.name || assignmentTarget.username || assignmentTarget.code }}</span>
               </div>
-              <button class="ghost-button" type="button" @click="closeAssignment">关闭</button>
             </div>
             <p class="assignment-tip">
               {{ assignmentConfig?.tip }}
             </p>
             <div class="assignment-options">
-              <label v-for="option in assignmentOptions" :key="option.id" class="check-option">
-                <input
-                    v-model="selectedAssignmentIDs"
-                    type="checkbox"
+              <el-checkbox-group v-model="selectedAssignmentIDs">
+                <el-checkbox
+                    v-for="option in assignmentOptions"
+                    :key="option.id"
                     :value="option.id"
                     :disabled="isAssignmentOptionDisabled(option)"
-                />
+                    class="check-option"
+                >
                 <span>
                   <strong>{{ option.name || option.code }}</strong>
                   <small>{{ option.description || option.code }}</small>
                 </span>
-              </label>
+                </el-checkbox>
+              </el-checkbox-group>
               <span v-if="!assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
             </div>
             <div class="assignment-actions">
-              <button class="ghost-button" type="button" @click="closeAssignment">取消</button>
-              <button class="primary-button" type="button" :disabled="loading" @click="saveAssignment">
-                {{ loading ? '保存中…' : '保存配置' }}
-              </button>
+              <el-button @click="closeAssignment">取消</el-button>
+              <el-button type="primary" :loading="loading" @click="saveAssignment">保存配置</el-button>
             </div>
-          </section>
+            </div>
+          </el-dialog>
 
           <div class="toolbar">
             <span class="result-count">共 {{ rows.length }} 条记录</span>
             <div>
               <span v-if="panelMessage" class="panel-message">{{ panelMessage }}</span>
-              <button class="secondary-button" type="button" :disabled="loading" @click="loadActiveModule">
-                {{ loading ? '同步中…' : '刷新数据' }}
-              </button>
+              <el-button :loading="loading" @click="loadActiveModule">刷新数据</el-button>
             </div>
           </div>
 
@@ -267,85 +226,59 @@
             <span>{{ skeletonResult.message }}</span>
           </div>
 
-          <div v-else-if="activeKey === 'warehouses'" class="table-wrap warehouse-table">
-            <table>
-              <thead>
-              <tr>
-                <th>物品</th>
-                <th>规格</th>
-                <th>单位</th>
-                <th>当前库存</th>
-                <th>安全库存</th>
-                <th></th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr v-for="row in rows" :key="`${row.item_type}-${row.id}`">
-                <td>
-                  <span class="item-name">{{ row.name }}</span>
-                  <small class="item-code">{{ row.code }}</small>
-                </td>
-                <td>{{ formatCell(row.spec) }}</td>
-                <td>{{ formatCell(row.unit) }}</td>
-                <td>
-                  <strong :class="{ 'stock-low': Number(row.quantity || 0) <= Number(row.safety_stock || 0) }">
-                    {{ formatQuantity(row.quantity) }}
-                  </strong>
-                </td>
-                <td>{{ formatQuantity(row.safety_stock) }}</td>
-                <td><button class="table-action" type="button" @click="openWarehouseItem(row)">查看与办理</button></td>
-              </tr>
-              <tr v-if="!rows.length">
-                <td class="empty-cell" colspan="6"><strong>该分类还没有物品</strong><span>新增物品后即可办理出入库</span></td>
-              </tr>
-              </tbody>
-            </table>
-          </div>
+          <el-table v-else-if="activeKey === 'warehouses'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+            <el-table-column label="物品" min-width="190">
+              <template #default="{row}">
+                <span class="item-name">{{ row.name }}</span>
+                <small class="item-code">{{ row.code }}</small>
+              </template>
+            </el-table-column>
+            <el-table-column prop="spec" label="规格" min-width="130">
+              <template #default="{row}">{{ formatCell(row.spec) }}</template>
+            </el-table-column>
+            <el-table-column prop="unit" label="单位" width="90"/>
+            <el-table-column label="当前库存" width="140">
+              <template #default="{row}">
+                <el-tag :type="Number(row.quantity || 0) <= Number(row.safety_stock || 0) ? 'danger' : 'success'" effect="light">
+                  {{ formatQuantity(row.quantity) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="安全库存" width="120">
+              <template #default="{row}">{{ formatQuantity(row.safety_stock) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="130" fixed="right">
+              <template #default="{row}"><el-button link type="primary" @click="openWarehouseItem(row)">查看与办理</el-button></template>
+            </el-table-column>
+            <template #empty><el-empty description="该分类还没有物品"/></template>
+          </el-table>
 
-          <div v-else class="table-wrap">
-            <table>
-              <thead>
-              <tr>
-                <th v-for="column in columns" :key="column">{{ columnLabel(column) }}</th>
-                <th v-if="hasAssignmentAction">权限操作</th>
-                <th v-if="activeKey === 'suppliers' && canWriteActive">操作</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr v-for="row in rows" :key="String(row.id || JSON.stringify(row))">
-                <td v-for="column in columns" :key="column">
-                  {{ formatCell(row[column]) }}
-                </td>
-                <td v-if="hasAssignmentAction">
-                  <button class="table-action" type="button" @click="openAssignment(row)">
-                    {{ assignmentConfigs[activeKey]?.buttonLabel }}
-                  </button>
-                </td>
-                <td v-if="activeKey === 'suppliers' && canWriteActive">
-                  <button class="table-action" type="button" @click="editSupplier(row)">编辑</button>
-                </td>
-              </tr>
-              <tr v-if="!rows.length">
-                <td class="empty-cell" :colspan="columns.length + (hasAssignmentAction ? 1 : 0) + (activeKey === 'suppliers' && canWriteActive ? 1 : 0) || 1">
-                  <strong>这里还没有记录</strong>
-                  <span>新增第一条数据后会显示在这里</span>
-                </td>
-              </tr>
-              </tbody>
-            </table>
-          </div>
+          <el-table v-else v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+            <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
+              <template #default="{row}">{{ formatCell(row[column]) }}</template>
+            </el-table-column>
+            <el-table-column v-if="hasAssignmentAction" label="权限操作" width="130" fixed="right">
+              <template #default="{row}">
+                <el-button link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+              </template>
+            </el-table-column>
+            <el-table-column v-if="activeKey === 'suppliers' && canWriteActive" label="操作" width="90" fixed="right">
+              <template #default="{row}"><el-button link type="primary" @click="editSupplier(row)">编辑</el-button></template>
+            </el-table-column>
+            <template #empty><el-empty description="这里还没有记录"/></template>
+          </el-table>
         </div>
       </section>
 
-      <div v-if="selectedWarehouseItem" class="drawer-backdrop" @click.self="closeWarehouseItem">
-        <aside class="item-drawer" aria-label="物品详情">
+      <el-drawer v-model="warehouseDrawerVisible" size="min(620px, 100%)" :with-header="false" destroy-on-close @closed="resetWarehouseItem">
+        <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
           <div class="drawer-heading">
             <div>
               <small>{{ selectedWarehouseItem.category }}</small>
               <h2>{{ selectedWarehouseItem.name }}</h2>
               <span>{{ selectedWarehouseItem.code }} · {{ selectedWarehouseItem.spec || '无规格' }}</span>
             </div>
-            <button class="drawer-close" type="button" @click="closeWarehouseItem">×</button>
+            <el-button circle @click="closeWarehouseItem">×</el-button>
           </div>
 
           <div class="stock-summary">
@@ -358,83 +291,71 @@
           <section v-if="hasPermission('inventory:documents:write')" class="movement-section">
             <h3>办理出入库</h3>
             <div class="movement-actions">
-              <button v-for="definition in availableMovementDefinitions" :key="definition.key" type="button" @click="startMovement(definition.key)">
+              <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" @click="startMovement(definition.key)">
                 {{ definition.title }}
-              </button>
+              </el-button>
             </div>
             <p v-if="movementDependencyMessage" class="permission-hint">{{ movementDependencyMessage }}</p>
           </section>
 
-          <form v-if="movementMode" class="movement-form" @submit.prevent="submitMovement">
+          <el-form v-if="movementMode" class="movement-form" label-position="top" @submit.prevent="submitMovement">
             <div class="form-heading">
               <strong>{{ movementTitle }}</strong>
               <span>库存将在提交后立即生效</span>
             </div>
-            <label v-if="movementMode === 'purchase_inbound'">
-              <span>供应商</span>
-              <select v-model="movementForm.supplier_id" required>
-                <option value="">请选择供应商</option>
-                <option v-for="item in rowsFor('suppliers')" :key="item.id" :value="item.id">{{ item.name }}（{{ item.code }}）</option>
-              </select>
-            </label>
-            <button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" class="inline-link" type="button" @click="showQuickSupplier = !showQuickSupplier">
+            <el-form-item v-if="movementMode === 'purchase_inbound'" label="供应商" required>
+              <el-select v-model="movementForm.supplier_id" filterable placeholder="请选择供应商">
+                <el-option v-for="item in rowsFor('suppliers')" :key="item.id" :label="`${item.name}（${item.code}）`" :value="item.id"/>
+              </el-select>
+            </el-form-item>
+            <el-button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" link type="primary" class="inline-link" @click="showQuickSupplier = !showQuickSupplier">
               {{ showQuickSupplier ? '取消新增供应商' : '＋ 快捷新增供应商' }}
-            </button>
+            </el-button>
             <div v-if="showQuickSupplier" class="quick-supplier">
-              <input v-model.trim="quickSupplier.name" placeholder="供应商名称"/>
-              <input v-model.trim="quickSupplier.code" placeholder="供应商编码"/>
-              <input v-model.trim="quickSupplier.contact" placeholder="联系人"/>
-              <input v-model.trim="quickSupplier.phone" placeholder="联系电话"/>
-              <button class="secondary-button" type="button" :disabled="loading" @click="createQuickSupplier">保存供应商</button>
+              <el-input v-model.trim="quickSupplier.name" placeholder="供应商名称"/>
+              <el-input v-model.trim="quickSupplier.code" placeholder="供应商编码"/>
+              <el-input v-model.trim="quickSupplier.contact" placeholder="联系人"/>
+              <el-input v-model.trim="quickSupplier.phone" placeholder="联系电话"/>
+              <el-button :loading="loading" @click="createQuickSupplier">保存供应商</el-button>
             </div>
-            <label v-if="movementMode === 'return_rework_inbound'">
-              <span>退回来源</span>
-              <select v-model="movementForm.source_type" @change="resetMovementSource">
-                <option v-if="hasPermission('customers:read')" value="customer">客户退回</option>
-                <option v-if="hasPermission('system:departments:read')" value="department">部门退回</option>
-              </select>
-            </label>
-            <label v-if="movementMode === 'customer_outbound' || (movementMode === 'return_rework_inbound' && movementForm.source_type === 'customer')">
-              <span>客户</span>
-              <select v-model="movementForm.customer_id" required>
-                <option value="">请选择客户</option>
-                <option v-for="item in rowsFor('customers')" :key="item.id" :value="item.id">{{ item.name }}</option>
-              </select>
-            </label>
-            <label v-if="movementMode === 'department_outbound' || (movementMode === 'return_rework_inbound' && movementForm.source_type === 'department')">
-              <span>{{ movementMode === 'department_outbound' ? '目标部门' : '退回部门' }}</span>
-              <select v-model="movementForm.department_id" required>
-                <option value="">请选择部门</option>
-                <option v-for="item in rowsFor('departments')" :key="item.id" :value="item.id">{{ item.name }}</option>
-              </select>
-            </label>
-            <label v-if="movementMode === 'return_rework_inbound'">
-              <span>原出库记录（可选）</span>
-              <select v-model="movementForm.original_document_id">
-                <option value="">不关联原记录</option>
-                <option v-for="item in eligibleOriginalDocuments" :key="item.id" :value="item.id">{{ item.code }} · {{ formatDate(item.posted_at) }}</option>
-              </select>
-            </label>
-            <label>
-              <span>数量（{{ selectedWarehouseItem.unit }}）</span>
-              <input v-model="movementForm.quantity" inputmode="decimal" required placeholder="请输入数量"/>
-            </label>
-            <label v-if="movementMode === 'purchase_inbound' && hasPermission('cost:view')">
-              <span>采购单价（元）</span>
-              <input v-model="movementForm.unit_cost" inputmode="decimal" placeholder="选填"/>
-            </label>
-            <label>
-              <span>{{ movementMode === 'return_rework_inbound' ? '返工原因' : '备注' }}</span>
-              <input v-model.trim="movementForm.reason" :required="movementMode === 'return_rework_inbound'" placeholder="补充业务说明"/>
-            </label>
+            <el-form-item v-if="movementMode === 'return_rework_inbound'" label="退回来源">
+              <el-radio-group v-model="movementForm.source_type" @change="resetMovementSource">
+                <el-radio-button v-if="hasPermission('customers:read')" value="customer">客户退回</el-radio-button>
+                <el-radio-button v-if="hasPermission('system:departments:read')" value="department">部门退回</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="movementMode === 'customer_outbound' || (movementMode === 'return_rework_inbound' && movementForm.source_type === 'customer')" label="客户" required>
+              <el-select v-model="movementForm.customer_id" filterable placeholder="请选择客户">
+                <el-option v-for="item in rowsFor('customers')" :key="item.id" :label="String(item.name)" :value="item.id"/>
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="movementMode === 'department_outbound' || (movementMode === 'return_rework_inbound' && movementForm.source_type === 'department')" :label="movementMode === 'department_outbound' ? '目标部门' : '退回部门'" required>
+              <el-select v-model="movementForm.department_id" filterable placeholder="请选择部门">
+                <el-option v-for="item in rowsFor('departments')" :key="item.id" :label="String(item.name)" :value="item.id"/>
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="movementMode === 'return_rework_inbound'" label="原出库记录（可选）">
+              <el-select v-model="movementForm.original_document_id" clearable placeholder="不关联原记录">
+                <el-option v-for="item in eligibleOriginalDocuments" :key="item.id" :label="`${item.code} · ${formatDate(item.posted_at)}`" :value="item.id"/>
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="`数量（${selectedWarehouseItem.unit}）`" required>
+              <el-input-number v-model="movementForm.quantity" :min="0" :precision="4" :controls="false" placeholder="请输入数量"/>
+            </el-form-item>
+            <el-form-item v-if="movementMode === 'purchase_inbound' && hasPermission('cost:view')" label="采购单价（元）">
+              <el-input-number v-model="movementForm.unit_cost" :min="0" :precision="2" :controls="false" placeholder="选填"/>
+            </el-form-item>
+            <el-form-item :label="movementMode === 'return_rework_inbound' ? '返工原因' : '备注'" :required="movementMode === 'return_rework_inbound'">
+              <el-input v-model.trim="movementForm.reason" type="textarea" :rows="2" placeholder="补充业务说明"/>
+            </el-form-item>
             <div class="form-actions">
-              <button class="ghost-button" type="button" @click="cancelMovement">取消</button>
-              <button class="primary-button" type="submit" :disabled="loading">{{ loading ? '提交中…' : '确认并更新库存' }}</button>
+              <el-button @click="cancelMovement">取消</el-button>
+              <el-button type="primary" native-type="submit" :loading="loading">确认并更新库存</el-button>
             </div>
-          </form>
+          </el-form>
 
           <section v-if="hasPermission('inventory:documents:read')" class="movement-history">
-            <div class="drawer-section-title"><h3>最近出入库记录</h3><button type="button" @click="loadAllItemMovements">查看全部</button></div>
+            <div class="drawer-section-title"><h3>最近出入库记录</h3><el-button link type="primary" @click="loadAllItemMovements">查看全部</el-button></div>
             <div v-if="itemMovements.length" class="movement-list">
               <article v-for="item in displayedItemMovements" :key="item.id">
                 <span class="movement-kind">{{ businessTypeLabel(item.business_type) }}</span>
@@ -443,14 +364,16 @@
             </div>
             <p v-else class="drawer-empty">暂无出入库记录</p>
           </section>
-        </aside>
-      </div>
+        </div>
+      </el-drawer>
     </section>
   </main>
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {request} from './api/http'
 import {type ModuleItem, modules} from './data/modules'
 import type {BasicItem, CurrentUser, SkeletonResponse} from './types'
@@ -524,6 +447,7 @@ const assignmentTarget = ref<BasicItem | null>(null)
 const assignmentModuleKey = ref('')
 const selectedAssignmentIDs = ref<number[]>([])
 const selectedWarehouseItem = ref<BasicItem | null>(null)
+const warehouseDrawerVisible = ref(false)
 const warehouseDetail = ref<Record<string, unknown> | null>(null)
 const itemMovements = ref<BasicItem[]>([])
 const showAllItemMovements = ref(false)
@@ -536,7 +460,7 @@ const loginForm = reactive({
 })
 
 const formState = reactive<Record<string, string | number>>({})
-const movementForm = reactive<Record<string, string | number>>({})
+const movementForm = reactive<Record<string, any>>({})
 const quickSupplier = reactive({name: '', code: '', contact: '', phone: ''})
 const activeWarehouseTab = ref('product')
 const warehouseTabs = [
@@ -545,6 +469,7 @@ const warehouseTabs = [
   {key: 'regular_product', title: '常规产品'},
   {key: 'daily_supply', title: '生活物资'},
 ]
+const warehouseTabOptions = warehouseTabs.map((item) => ({label: item.title, value: item.key}))
 const movementDefinitions: MovementDefinition[] = [
   {key: 'purchase_inbound', title: '采购入库', requiredAll: ['suppliers:read']},
   {key: 'return_rework_inbound', title: '退货返工', requiredAny: ['customers:read', 'system:departments:read']},
@@ -754,7 +679,7 @@ function switchModule(key: string) {
   void loadActiveModule()
 }
 
-async function openAssignment(row: BasicItem) {
+async function openAssignment(row: any) {
   const config = assignmentConfigs[activeKey.value]
   if (!config) return
   assignmentTarget.value = row
@@ -801,6 +726,7 @@ async function saveAssignment() {
     closeAssignment()
     await loadActiveModule()
     panelMessage.value = '权限配置已保存'
+    ElMessage.success('权限配置已保存')
   } catch (error) {
     panelMessage.value = error instanceof Error ? error.message : '权限配置保存失败'
   } finally {
@@ -941,6 +867,7 @@ async function createItem() {
     await loadActiveModule()
     panelMessage.value = '已新增'
     if (isSupplierEdit) panelMessage.value = '已保存'
+    ElMessage.success(isSupplierEdit ? '保存成功' : '新增成功')
     editingSupplier.value = null
     showCreateForm.value = false
   } catch (error) {
@@ -988,7 +915,7 @@ function toggleCreateForm() {
   showCreateForm.value = !showCreateForm.value
 }
 
-function editSupplier(item: BasicItem) {
+function editSupplier(item: any) {
   editingSupplier.value = item
   clearForm()
   for (const key of ['name', 'code', 'contact', 'phone', 'address', 'status']) {
@@ -1044,8 +971,9 @@ function columnLabel(column: string): string {
   return columnLabels[column] || column
 }
 
-async function openWarehouseItem(item: BasicItem) {
+async function openWarehouseItem(item: any) {
   selectedWarehouseItem.value = item
+  warehouseDrawerVisible.value = true
   movementMode.value = ''
   showAllItemMovements.value = false
   panelMessage.value = ''
@@ -1053,6 +981,10 @@ async function openWarehouseItem(item: BasicItem) {
 }
 
 function closeWarehouseItem() {
+  warehouseDrawerVisible.value = false
+}
+
+function resetWarehouseItem() {
   selectedWarehouseItem.value = null
   warehouseDetail.value = null
   itemMovements.value = []
@@ -1147,8 +1079,10 @@ async function submitMovement() {
     const refreshed = rows.value.find((row) => row.id === item.id && row.item_type === item.item_type)
     if (refreshed) selectedWarehouseItem.value = refreshed
     panelMessage.value = '库存已更新'
+    ElMessage.success('库存已更新')
   } catch (error) {
     panelMessage.value = error instanceof Error ? error.message : '办理失败'
+    ElMessage.error(panelMessage.value)
   } finally {
     loading.value = false
   }
@@ -1167,8 +1101,10 @@ async function createQuickSupplier() {
     Object.assign(quickSupplier, {name: '', code: '', contact: '', phone: ''})
     showQuickSupplier.value = false
     panelMessage.value = '供应商已新增'
+    ElMessage.success('供应商已新增')
   } catch (error) {
     panelMessage.value = error instanceof Error ? error.message : '供应商新增失败'
+    ElMessage.error(panelMessage.value)
   } finally {
     loading.value = false
   }
