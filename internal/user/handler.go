@@ -2,6 +2,7 @@
 package user
 
 import (
+	"errors"
 	"net/http"
 
 	"bb_erp_echo/internal/auth"
@@ -18,11 +19,11 @@ type Handler struct {
 	// DB 是用户读写数据库连接。
 	DB *gorm.DB
 	// RoleService 用于用户角色绑定和策略刷新。
-	RoleService *role.Service
+	RoleService role.UserRoleService
 }
 
 // NewHandler 创建用户接口处理器。
-func NewHandler(db *gorm.DB, roleService *role.Service) *Handler {
+func NewHandler(db *gorm.DB, roleService role.UserRoleService) *Handler {
 	return &Handler{DB: db, RoleService: roleService}
 }
 
@@ -49,7 +50,23 @@ func (h *Handler) ListUsers(c *echo.Context) error {
 	if err := query.Find(&items).Error; err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	userIDs := make([]uint, 0, len(items))
+	for _, item := range items {
+		userIDs = append(userIDs, item.ID)
+	}
+	roleIDs, err := h.RoleService.UserRoleIDs(userIDs)
+	if err != nil {
+		return err
+	}
+	type userItem struct {
+		model.User
+		RoleIDs []uint `json:"role_ids"`
+	}
+	result := make([]userItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, userItem{User: item, RoleIDs: roleIDs[item.ID]})
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateUser 创建登录账号。
@@ -144,7 +161,7 @@ func (h *Handler) AssignUserRoles(c *echo.Context) error {
 		return err
 	}
 	var req struct {
-		RoleIDs []uint `json:"role_ids" validate:"required"`
+		RoleIDs *[]uint `json:"role_ids" validate:"required"`
 	}
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -153,23 +170,11 @@ func (h *Handler) AssignUserRoles(c *echo.Context) error {
 	if err := h.DB.First(&item, id).Error; err != nil {
 		return err
 	}
-	if item.AccountType == model.AccountTypeDepartmentTerminal && h.RoleService.IncludesSystemRole(req.RoleIDs) {
-		return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号不能授予系统管理权限")
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", id).Delete(&model.UserRole{}).Error; err != nil {
-			return err
+	allowSuperAdmin := item.AccountType != model.AccountTypeDepartmentTerminal
+	if err := h.RoleService.ReplaceUserRoles(id, *req.RoleIDs, allowSuperAdmin); err != nil {
+		if errors.Is(err, role.ErrSuperAdminNotAllowed) {
+			return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号不能授予系统管理权限")
 		}
-		for _, roleID := range req.RoleIDs {
-			if err := tx.Create(&model.UserRole{UserID: id, RoleID: roleID}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	if err := h.RoleService.ReloadPolicies(); err != nil {
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)

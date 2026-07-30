@@ -128,6 +128,16 @@ func TestMaintainMoldCalculatesNextDate(t *testing.T) {
 	}
 }
 
+func TestDeleteMoldRejectsMissingID(t *testing.T) {
+	db := openMoldTestDB(t)
+	handler := NewHandler(db)
+
+	rec := performMoldJSON(t, handler.DeleteMold, http.MethodDelete, "/api/v1/molds/:id", nil, map[string]string{"id": "999"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("delete missing mold status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func openMoldTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

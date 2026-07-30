@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
@@ -126,8 +125,7 @@ type UpdateCustomerRequest struct {
 
 // Handler 处理客户与联系人模块接口。
 type Handler struct {
-	// DB 是客户资料读写数据库连接。
-	DB *gorm.DB
+	Service Service
 }
 
 // NewHandler 创建客户模块接口处理器。
@@ -135,7 +133,12 @@ type Handler struct {
 // 参数说明：
 // - db：GORM 数据库连接。
 func NewHandler(db *gorm.DB) *Handler {
-	return &Handler{DB: db}
+	return NewHandlerWithService(NewService(db))
+}
+
+// NewHandlerWithService 支持注入替代实现或测试替身。
+func NewHandlerWithService(service Service) *Handler {
+	return &Handler{Service: service}
 }
 
 // RegisterRoutes 注册客户业务模块路由。
@@ -171,8 +174,8 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers [get]
 func (h *Handler) ListCustomers(c *echo.Context) error {
-	var items []model.Customer
-	if err := h.DB.Order("id desc").Preload("Contacts.Phones").Find(&items).Error; err != nil {
+	items, err := h.Service.List()
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, items)
@@ -207,12 +210,8 @@ func (h *Handler) CreateCustomer(c *echo.Context) error {
 		return err
 	}
 
-	customer := model.Customer{
-		Name:  req.Name,
-		Code:  req.Code,
-		Phone: req.Phone,
-	}
-	if err := h.DB.Create(&customer).Error; err != nil {
+	customer, err := h.Service.Create(req)
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusCreated, customer)
@@ -259,21 +258,14 @@ func (h *Handler) UpdateCustomer(c *echo.Context) error {
 		return err
 	}
 
-	var customer model.Customer
-	if err := h.DB.First(&customer, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	customer, err := h.Service.Update(id, req)
+	if err != nil {
+		if errors.Is(err, ErrCustomerNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
 		}
 		return err
 	}
 
-	customer.Name = req.Name
-	customer.Code = req.Code
-	customer.Phone = req.Phone
-	customer.Address = req.Address
-	if err := h.DB.Save(&customer).Error; err != nil {
-		return err
-	}
 	return c.JSON(http.StatusOK, customer)
 }
 
@@ -308,17 +300,10 @@ func (h *Handler) DeleteCustomer(c *echo.Context) error {
 		return err
 	}
 
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		var customer model.Customer
-		if err := tx.First(&customer, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
-			}
-			return err
+	if err := h.Service.Delete(id); err != nil {
+		if errors.Is(err, ErrCustomerNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
 		}
-
-		return tx.Delete(&customer).Error
-	}); err != nil {
 		return err
 	}
 

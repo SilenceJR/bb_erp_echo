@@ -15,11 +15,11 @@ type Handler struct {
 	// DB 是角色、权限读写数据库连接。
 	DB *gorm.DB
 	// Service 是角色权限策略服务。
-	Service *Service
+	Service AssignmentService
 }
 
 // NewHandler 创建角色接口处理器。
-func NewHandler(db *gorm.DB, service *Service) *Handler {
+func NewHandler(db *gorm.DB, service AssignmentService) *Handler {
 	return &Handler{DB: db, Service: service}
 }
 
@@ -41,7 +41,23 @@ func (h *Handler) ListRoles(c *echo.Context) error {
 	if err := h.DB.Order("id").Find(&items).Error; err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	roleIDs := make([]uint, 0, len(items))
+	for _, item := range items {
+		roleIDs = append(roleIDs, item.ID)
+	}
+	permissionIDs, err := h.Service.RolePermissionIDs(roleIDs)
+	if err != nil {
+		return err
+	}
+	type roleItem struct {
+		model.Role
+		PermissionIDs []uint `json:"permission_ids"`
+	}
+	result := make([]roleItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, roleItem{Role: item, PermissionIDs: permissionIDs[item.ID]})
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateRole 创建角色。
@@ -68,25 +84,12 @@ func (h *Handler) AssignRolePermissions(c *echo.Context) error {
 		return err
 	}
 	var req struct {
-		PermissionIDs []uint `json:"permission_ids" validate:"required"`
+		PermissionIDs *[]uint `json:"permission_ids" validate:"required"`
 	}
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", id).Delete(&model.RolePermission{}).Error; err != nil {
-			return err
-		}
-		for _, permissionID := range req.PermissionIDs {
-			if err := tx.Create(&model.RolePermission{RoleID: id, PermissionID: permissionID}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	if err := h.Service.ReloadPolicies(); err != nil {
+	if err := h.Service.ReplaceRolePermissions(id, *req.PermissionIDs); err != nil {
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)

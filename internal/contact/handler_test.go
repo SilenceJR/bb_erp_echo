@@ -80,6 +80,28 @@ func TestCreateContactRejectsMissingCustomer(t *testing.T) {
 	}
 }
 
+func TestCreateContactRejectsMultiplePrimaryPhones(t *testing.T) {
+	db := openTestDB(t)
+	handler := NewHandler(db)
+	customer := model.Customer{Name: "主电话规则客户", Code: "CUST-PRIMARY"}
+	if err := db.Create(&customer).Error; err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+
+	body := map[string]any{
+		"customer_id": customer.ID,
+		"name":        "重复主电话联系人",
+		"phones": []map[string]any{
+			{"phone": "13800000000", "primary": true},
+			{"phone": "13900000000", "primary": true},
+		},
+	}
+	rec := performJSON(t, handler.CreateContact, http.MethodPost, "/api/v1/contacts", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("multiple primary phones status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestListContactsPreloadsPhones 验证联系人列表会返回电话明细。
 func TestListContactsPreloadsPhones(t *testing.T) {
 	db := openTestDB(t)

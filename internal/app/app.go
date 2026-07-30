@@ -30,6 +30,7 @@ import (
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 	"bb_erp_echo/internal/statistics"
+	"bb_erp_echo/internal/supplier"
 	"bb_erp_echo/internal/user"
 	"bb_erp_echo/internal/warehouse"
 	"bb_erp_echo/internal/workorder"
@@ -233,6 +234,7 @@ func (a *App) registerRoutes() {
 	audit.NewHandler(a.DB).RegisterRoutes(system, require)
 
 	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	supplier.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	contact.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	warehouse.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	inventory.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)

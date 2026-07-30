@@ -4,7 +4,9 @@ package warehouse
 import (
 	"net/http"
 
+	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -85,6 +87,32 @@ func (h *Handler) ListItems(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
+	warehouse, err := h.ensureDefaultWarehouse()
+	if err != nil {
+		return err
+	}
+	showCost := warehouseCostView(c)
+	for index := range items {
+		var aggregate struct {
+			Quantity int64
+			Amount   int64
+		}
+		if err := h.DB.Model(&model.InventoryBalance{}).
+			Select("COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount").
+			Where("warehouse_id = ? AND item_type = ? AND item_id = ?", warehouse.ID, items[index].ItemType, items[index].ID).
+			Scan(&aggregate).Error; err != nil {
+			return err
+		}
+		items[index].Quantity = aggregate.Quantity
+		if showCost {
+			items[index].Amount = aggregate.Amount
+			if aggregate.Quantity > 0 {
+				items[index].AvgCost = aggregate.Amount * 10000 / aggregate.Quantity
+			}
+		} else {
+			items[index].DefaultCost = 0
+		}
+	}
 	return c.JSON(http.StatusOK, items)
 }
 
@@ -142,4 +170,17 @@ func (h *Handler) ensureDefaultWarehouse() (model.Warehouse, error) {
 	item := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
 	err := h.DB.FirstOrCreate(&item, model.Warehouse{Code: item.Code}).Error
 	return item, err
+}
+
+func warehouseCostView(c *echo.Context) bool {
+	current := auth.GetCurrentUser(c)
+	if current == nil {
+		return false
+	}
+	for _, permission := range current.Permissions {
+		if permission == role.CostViewCode {
+			return true
+		}
+	}
+	return false
 }

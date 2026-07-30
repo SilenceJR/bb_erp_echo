@@ -31,12 +31,13 @@ const (
 // Handler 处理库存业务接口。
 type Handler struct {
 	// DB 是库存单据、余额和流水读写数据库连接。
-	DB *gorm.DB
+	DB                 *gorm.DB
+	movementStrategies map[string]MovementStrategy
 }
 
 // NewHandler 创建库存模块接口处理器。
 func NewHandler(db *gorm.DB) *Handler {
-	return &Handler{DB: db}
+	return &Handler{DB: db, movementStrategies: DefaultMovementStrategies()}
 }
 
 // RegisterRoutes 注册库存模块路由。
@@ -49,6 +50,11 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 
 	v1.GET("/inventory-balances", h.ListBalances, require("/api/v1/inventory-balances", "read"))
 	v1.GET("/inventory-ledgers", h.ListLedgers, require("/api/v1/inventory-ledgers", "read"))
+
+	items := v1.Group("/warehouse/items")
+	items.GET("/:itemType/:itemID", h.GetItemDetail, require("/api/v1/warehouse", "read"))
+	items.GET("/:itemType/:itemID/movements", h.ListItemMovements, require("/api/v1/inventory-documents", "read"))
+	items.POST("/:itemType/:itemID/movements", h.CreateItemMovement, audit, require("/api/v1/inventory-documents", "write"))
 
 	legacy := v1.Group("/inventory", audit)
 	legacy.GET("", h.ListBalances, require("/api/v1/inventory", "read"))
@@ -438,18 +444,23 @@ func trimDocument(item model.InventoryDocument, showCost bool) map[string]any {
 		lines = append(lines, row)
 	}
 	return map[string]any{
-		"id":              item.ID,
-		"created_at":      item.CreatedAt,
-		"updated_at":      item.UpdatedAt,
-		"code":            item.Code,
-		"type":            item.Type,
-		"status":          item.Status,
-		"warehouse_id":    item.WarehouseID,
-		"to_warehouse_id": item.ToWarehouseID,
-		"reason":          item.Reason,
-		"posted_at":       item.PostedAt,
-		"reversed_at":     item.ReversedAt,
-		"lines":           lines,
+		"id":                   item.ID,
+		"created_at":           item.CreatedAt,
+		"updated_at":           item.UpdatedAt,
+		"code":                 item.Code,
+		"type":                 item.Type,
+		"status":               item.Status,
+		"warehouse_id":         item.WarehouseID,
+		"to_warehouse_id":      item.ToWarehouseID,
+		"reason":               item.Reason,
+		"business_type":        item.BusinessType,
+		"supplier_id":          item.SupplierID,
+		"customer_id":          item.CustomerID,
+		"department_id":        item.DepartmentID,
+		"original_document_id": item.OriginalDocumentID,
+		"posted_at":            item.PostedAt,
+		"reversed_at":          item.ReversedAt,
+		"lines":                lines,
 	}
 }
 

@@ -4,38 +4,25 @@ package mold
 import (
 	"errors"
 	"net/http"
-	"time"
 
-	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
-const (
-	statusInStock     = "in_stock"
-	statusLoaned      = "loaned"
-	statusRepairing   = "repairing"
-	statusMaintenance = "maintenance"
-	statusScrapped    = "scrapped"
-
-	eventCreate      = "create"
-	eventLoan        = "loan"
-	eventReturn      = "return"
-	eventRepair      = "repair"
-	eventMaintenance = "maintenance"
-)
-
 // Handler 处理模具业务接口。
 type Handler struct {
-	// DB 是模具台账和履历读写数据库连接。
-	DB *gorm.DB
+	Service Service
 }
 
 // NewHandler 创建模具模块接口处理器。
 func NewHandler(db *gorm.DB) *Handler {
-	return &Handler{DB: db}
+	return NewHandlerWithService(NewService(db))
+}
+
+func NewHandlerWithService(service Service) *Handler {
+	return &Handler{Service: service}
 }
 
 // RegisterRoutes 注册模具模块路由。
@@ -77,12 +64,8 @@ type moldRequest struct {
 
 // ListMolds 查询模具台账列表。
 func (h *Handler) ListMolds(c *echo.Context) error {
-	var items []model.Mold
-	query := h.DB.Order("id desc")
-	if status := c.QueryParam("status"); status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if err := query.Find(&items).Error; err != nil {
+	items, err := h.Service.List(c.QueryParam("status"))
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, items)
@@ -94,11 +77,9 @@ func (h *Handler) GetMold(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	var item model.Mold
-	if err := h.DB.Preload("Events", func(db *gorm.DB) *gorm.DB {
-		return db.Order("id desc")
-	}).First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	item, err := h.Service.Get(id)
+	if err != nil {
+		if errors.Is(err, ErrMoldNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
 		}
 		return err
@@ -112,13 +93,8 @@ func (h *Handler) CreateMold(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	item := moldFromRequest(req)
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&item).Error; err != nil {
-			return err
-		}
-		return createEvent(tx, item, eventCreate, "", item.Status, item.CurrentLocation, "", "", "新建模具档案", "")
-	}); err != nil {
+	item, err := h.Service.Create(req)
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusCreated, item)
@@ -134,24 +110,11 @@ func (h *Handler) UpdateMold(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	var item model.Mold
-	if err := h.DB.First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	item, err := h.Service.Update(id, req)
+	if err != nil {
+		if errors.Is(err, ErrMoldNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
 		}
-		return err
-	}
-	beforeStatus := item.Status
-	applyMoldRequest(&item, req)
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
-			return err
-		}
-		if beforeStatus != item.Status {
-			return createEvent(tx, item, "status_change", beforeStatus, item.Status, item.CurrentLocation, "", "", "更新模具状态", "")
-		}
-		return nil
-	}); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, item)
@@ -163,7 +126,10 @@ func (h *Handler) DeleteMold(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := h.DB.Delete(&model.Mold{}, id).Error; err != nil {
+	if err := h.Service.Delete(id); err != nil {
+		if errors.Is(err, ErrMoldNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
+		}
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -227,44 +193,16 @@ func (h *Handler) MaintainMold(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	status := statusMaintenance
-	if req.Completed {
-		status = statusInStock
-	}
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
-	var item model.Mold
-	if err := h.DB.First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
-		}
-		return err
-	}
-	beforeStatus := item.Status
-	now := time.Now()
-	item.Status = status
-	if req.Location != "" {
-		item.CurrentLocation = req.Location
-	}
-	if req.MaintenanceCycleDays > 0 {
-		item.MaintenanceCycleDays = req.MaintenanceCycleDays
-	}
-	if req.Completed {
-		item.LastMaintenanceAt = &now
-		if item.MaintenanceCycleDays > 0 {
-			next := now.AddDate(0, 0, item.MaintenanceCycleDays)
-			item.NextMaintenanceAt = &next
-		}
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
-			return err
-		}
-		return createEvent(tx, item, eventMaintenance, beforeStatus, item.Status, item.CurrentLocation, "", req.HandlerName, "模具保养", req.Description)
-	}); err != nil {
-		return err
+	item, err := h.Service.Maintain(id, MaintenanceCommand{
+		Location: req.Location, HandlerName: req.HandlerName, Description: req.Description,
+		MaintenanceCycleDays: req.MaintenanceCycleDays, Completed: req.Completed,
+	})
+	if err != nil {
+		return moldHTTPError(err)
 	}
 	return c.JSON(http.StatusOK, item)
 }
@@ -274,94 +212,19 @@ func (h *Handler) changeStatus(c *echo.Context, nextStatus string, eventType str
 	if err != nil {
 		return err
 	}
-	var item model.Mold
-	if err := h.DB.First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
-		}
-		return err
-	}
-	beforeStatus := item.Status
-	item.Status = nextStatus
-	if location != "" {
-		item.CurrentLocation = location
-	}
-	now := time.Now()
-	if eventType == eventRepair && nextStatus == statusInStock {
-		item.LastRepairAt = &now
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
-			return err
-		}
-		return createEvent(tx, item, eventType, beforeStatus, item.Status, item.CurrentLocation, counterparty, handlerName, reason, description)
-	}); err != nil {
-		return err
+	item, err := h.Service.Transition(id, Transition{
+		Status: nextStatus, EventType: eventType, Location: location, Counterparty: counterparty,
+		HandlerName: handlerName, Reason: reason, Description: description,
+	})
+	if err != nil {
+		return moldHTTPError(err)
 	}
 	return c.JSON(http.StatusOK, item)
 }
 
-func moldFromRequest(req moldRequest) model.Mold {
-	item := model.Mold{}
-	applyMoldRequest(&item, req)
-	if item.Status == "" {
-		item.Status = statusInStock
+func moldHTTPError(err error) error {
+	if errors.Is(err, ErrMoldNotFound) {
+		return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
 	}
-	if item.CavityCount == 0 {
-		item.CavityCount = 1
-	}
-	if item.CurrentLocation == "" {
-		item.CurrentLocation = item.StorageLocation
-	}
-	return item
-}
-
-func applyMoldRequest(item *model.Mold, req moldRequest) {
-	item.Code = req.Code
-	item.Name = req.Name
-	item.CustomerID = req.CustomerID
-	item.ProductID = req.ProductID
-	item.CavityCount = req.CavityCount
-	item.MoldMaterial = req.MoldMaterial
-	item.Steel = req.Steel
-	item.Size = req.Size
-	item.WeightGram = req.WeightGram
-	item.Manufacturer = req.Manufacturer
-	item.Owner = req.Owner
-	item.StorageLocation = req.StorageLocation
-	item.CurrentLocation = req.CurrentLocation
-	item.MaintenanceCycleDays = req.MaintenanceCycleDays
-	item.Remark = req.Remark
-	if req.Status != "" {
-		item.Status = req.Status
-	}
-	if item.Status == "" {
-		item.Status = statusInStock
-	}
-	if item.CavityCount <= 0 {
-		item.CavityCount = 1
-	}
-	if item.CurrentLocation == "" {
-		item.CurrentLocation = item.StorageLocation
-	}
-}
-
-func createEvent(tx *gorm.DB, item model.Mold, eventType string, before string, after string, location string, counterparty string, handlerName string, reason string, description string) error {
-	now := time.Now()
-	event := model.MoldEvent{
-		MoldID:       item.ID,
-		Type:         eventType,
-		StatusBefore: before,
-		StatusAfter:  after,
-		Location:     location,
-		Counterparty: counterparty,
-		HandlerName:  handlerName,
-		Reason:       reason,
-		Description:  description,
-		StartedAt:    &now,
-	}
-	if eventType == eventReturn || eventType == eventMaintenance || (eventType == eventRepair && after == statusInStock) {
-		event.FinishedAt = &now
-	}
-	return tx.Create(&event).Error
+	return err
 }

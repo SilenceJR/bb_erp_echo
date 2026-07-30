@@ -194,6 +194,12 @@ POST /api/v1/warehouses
 GET  /api/v1/warehouse/tabs
 GET  /api/v1/warehouse/items?tab=product
 POST /api/v1/warehouse/items
+GET  /api/v1/warehouse/items/:itemType/:itemID
+GET  /api/v1/warehouse/items/:itemType/:itemID/movements
+POST /api/v1/warehouse/items/:itemType/:itemID/movements
+GET  /api/v1/suppliers
+POST /api/v1/suppliers
+PATCH /api/v1/suppliers/:id
 GET  /api/v1/locations
 POST /api/v1/locations
 GET  /api/v1/materials
@@ -246,23 +252,28 @@ daily_supply         生活物资，写入 materials 表且 category=生活物�
 
 库存数量使用 4 位定点整数，例如 `10000` 表示 1 个单位。金额和单价使用分。无 `cost:view` 权限时，库存余额、流水和单据明细不返回 `avg_cost`、`unit_cost`、`amount`、`balance_amount` 等成本字段。
 
-创建库存草稿单据示例：
+新界面从具体物品办理出入库。接口自动使用默认仓库、生成单据编号并立即过账，支持 `Idempotency-Key`：
 
 ```json
 {
-  "code": "IN-001",
-  "type": "inbound",
-  "warehouse_id": 1,
-  "lines": [
-    {
-      "item_type": "material",
-      "item_id": 1,
-      "quantity": 1000000,
-      "unit_cost": 250
-    }
-  ]
+  "business_type": "purchase_inbound",
+  "supplier_id": 1,
+  "quantity": 1000000,
+  "unit_cost": 250,
+  "reason": "采购到货"
 }
 ```
+
+`business_type` 支持：
+
+```text
+purchase_inbound       采购入库，supplier_id 必填
+return_rework_inbound  退货返工入库，customer_id 或 department_id 二选一
+customer_outbound      客户出库，customer_id 必填
+department_outbound    部门出库，department_id 必填
+```
+
+退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。旧库存单据接口继续保留，用于历史兼容和冲销。
 
 ## 业务骨架接口
 

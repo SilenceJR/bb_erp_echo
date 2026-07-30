@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
@@ -111,8 +110,7 @@ type UpdateContactRequest struct {
 
 // Handler 处理客户联系人接口。
 type Handler struct {
-	// DB 是联系人和联系人电话明细读写数据库连接。
-	DB *gorm.DB
+	Service Service
 }
 
 // NewHandler 创建联系人模块接口处理器。
@@ -120,7 +118,11 @@ type Handler struct {
 // 参数说明：
 // - db：GORM 数据库连接。
 func NewHandler(db *gorm.DB) *Handler {
-	return &Handler{DB: db}
+	return NewHandlerWithService(NewService(db))
+}
+
+func NewHandlerWithService(service Service) *Handler {
+	return &Handler{Service: service}
 }
 
 // RegisterRoutes 注册联系人业务模块路由。
@@ -157,8 +159,8 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts [get]
 func (h *Handler) ListContacts(c *echo.Context) error {
-	var items []model.Contact
-	if err := h.DB.Order("id desc").Preload("Phones").Find(&items).Error; err != nil {
+	items, err := h.Service.List()
+	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, items)
@@ -192,9 +194,9 @@ func (h *Handler) GetContact(c *echo.Context) error {
 		return err
 	}
 
-	var item model.Contact
-	if err := h.DB.Preload("Phones").First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	item, err := h.Service.Get(id)
+	if err != nil {
+		if errors.Is(err, ErrContactNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "联系人不存在")
 		}
 		return err
@@ -232,27 +234,9 @@ func (h *Handler) CreateContact(c *echo.Context) error {
 		return err
 	}
 
-	var customer model.Customer
-	if err := h.DB.First(&customer, req.CustomerID).Error; err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
-	}
-
-	contact := model.Contact{
-		CustomerID: req.CustomerID,
-		Name:       req.Name,
-	}
-	for _, phoneReq := range req.Phones {
-		contact.Phones = append(contact.Phones, model.ContactPhone{
-			Phone:   phoneReq.Phone,
-			Label:   phoneReq.Label,
-			Primary: phoneReq.Primary,
-		})
-	}
-
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		return tx.Create(&contact).Error
-	}); err != nil {
-		return err
+	contact, err := h.Service.Create(req)
+	if err != nil {
+		return contactHTTPError(err)
 	}
 	return c.JSON(http.StatusCreated, contact)
 }
@@ -297,50 +281,9 @@ func (h *Handler) UpdateContact(c *echo.Context) error {
 		return err
 	}
 
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		var customer model.Customer
-		if err := tx.First(&customer, req.CustomerID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
-			}
-			return err
-		}
-
-		var contact model.Contact
-		if err := tx.First(&contact, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return echo.NewHTTPError(http.StatusNotFound, "联系人不存在")
-			}
-			return err
-		}
-
-		contact.CustomerID = req.CustomerID
-		contact.Name = req.Name
-		if err := tx.Save(&contact).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("contact_id = ?", contact.ID).Delete(&model.ContactPhone{}).Error; err != nil {
-			return err
-		}
-		for _, phoneReq := range req.Phones {
-			phone := model.ContactPhone{
-				ContactID: contact.ID,
-				Phone:     phoneReq.Phone,
-				Label:     phoneReq.Label,
-				Primary:   phoneReq.Primary,
-			}
-			if err := tx.Create(&phone).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	var updated model.Contact
-	if err := h.DB.Preload("Phones").First(&updated, id).Error; err != nil {
-		return err
+	updated, err := h.Service.Update(id, req)
+	if err != nil {
+		return contactHTTPError(err)
 	}
 	return c.JSON(http.StatusOK, updated)
 }
@@ -376,20 +319,21 @@ func (h *Handler) DeleteContact(c *echo.Context) error {
 		return err
 	}
 
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		var contact model.Contact
-		if err := tx.First(&contact, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return echo.NewHTTPError(http.StatusNotFound, "联系人不存在")
-			}
-			return err
-		}
-		if err := tx.Where("contact_id = ?", contact.ID).Delete(&model.ContactPhone{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&contact).Error
-	}); err != nil {
-		return err
+	if err := h.Service.Delete(id); err != nil {
+		return contactHTTPError(err)
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+func contactHTTPError(err error) error {
+	switch {
+	case errors.Is(err, ErrCustomerNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
+	case errors.Is(err, ErrContactNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "联系人不存在")
+	case errors.Is(err, ErrMultiplePrimaryPhone):
+		return echo.NewHTTPError(http.StatusBadRequest, "一个联系人只能设置一个主联系电话")
+	default:
+		return err
+	}
 }

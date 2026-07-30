@@ -129,6 +129,17 @@ type Customer struct {
 	Address  string    `json:"address" gorm:"size:255;"`
 }
 
+// Supplier 是采购入库使用的供应商档案。
+type Supplier struct {
+	BaseModel
+	Name    string `json:"name" gorm:"size:160;not null"`
+	Code    string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Contact string `json:"contact" gorm:"size:120"`
+	Phone   string `json:"phone" gorm:"size:60"`
+	Address string `json:"address" gorm:"size:255"`
+	Status  string `json:"status" gorm:"size:30;not null;default:active"`
+}
+
 // Contact 是联系人模块骨架模型，后续可关联客户。
 type Contact struct {
 	BaseModel
@@ -212,19 +223,24 @@ type Product struct {
 // 业务规则：草稿可以修改；审核过账后只能冲销，不能直接编辑。
 type InventoryDocument struct {
 	BaseModel
-	Code           string                  `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Type           string                  `json:"type" gorm:"size:30;not null;index"`
-	Status         string                  `json:"status" gorm:"size:30;not null;default:draft;index"`
-	WarehouseID    uint                    `json:"warehouse_id" gorm:"not null;index"`
-	ToWarehouseID  *uint                   `json:"to_warehouse_id" gorm:"index"`
-	Reason         string                  `json:"reason" gorm:"size:255"`
-	IdempotencyKey string                  `json:"idempotency_key" gorm:"size:120;index"`
-	CreatedBy      uint                    `json:"created_by" gorm:"index"`
-	PostedBy       *uint                   `json:"posted_by" gorm:"index"`
-	PostedAt       *time.Time              `json:"posted_at"`
-	ReversedBy     *uint                   `json:"reversed_by" gorm:"index"`
-	ReversedAt     *time.Time              `json:"reversed_at"`
-	Lines          []InventoryDocumentLine `json:"lines" gorm:"foreignKey:DocumentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Code               string                  `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Type               string                  `json:"type" gorm:"size:30;not null;index"`
+	Status             string                  `json:"status" gorm:"size:30;not null;default:draft;index"`
+	WarehouseID        uint                    `json:"warehouse_id" gorm:"not null;index"`
+	ToWarehouseID      *uint                   `json:"to_warehouse_id" gorm:"index"`
+	Reason             string                  `json:"reason" gorm:"size:255"`
+	BusinessType       string                  `json:"business_type" gorm:"size:40;index"`
+	SupplierID         *uint                   `json:"supplier_id" gorm:"index"`
+	CustomerID         *uint                   `json:"customer_id" gorm:"index"`
+	DepartmentID       *uint                   `json:"department_id" gorm:"index"`
+	OriginalDocumentID *uint                   `json:"original_document_id" gorm:"index"`
+	IdempotencyKey     string                  `json:"idempotency_key" gorm:"size:120;index"`
+	CreatedBy          uint                    `json:"created_by" gorm:"index"`
+	PostedBy           *uint                   `json:"posted_by" gorm:"index"`
+	PostedAt           *time.Time              `json:"posted_at"`
+	ReversedBy         *uint                   `json:"reversed_by" gorm:"index"`
+	ReversedAt         *time.Time              `json:"reversed_at"`
+	Lines              []InventoryDocumentLine `json:"lines" gorm:"foreignKey:DocumentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 // InventoryDocumentLine 是库存单据明细行。
@@ -288,6 +304,7 @@ func AllModels() []any {
 		&RolePermission{},
 		&AuditLog{},
 		&Customer{},
+		&Supplier{},
 		&Contact{},
 		&ContactPhone{},
 		&Warehouse{},

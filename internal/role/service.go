@@ -32,6 +32,20 @@ type Service struct {
 	Enforcer *casbin.Enforcer
 }
 
+// AssignmentService 描述角色与权限、用户与角色的分配能力。
+// Handler 依赖此接口而不是具体实现，便于替换持久层或策略引擎。
+type AssignmentService interface {
+	RolePermissionIDs(roleIDs []uint) (map[uint][]uint, error)
+	ReplaceRolePermissions(roleID uint, permissionIDs []uint) error
+}
+
+// UserRoleService 是用户模块所需的最小角色服务接口。
+type UserRoleService interface {
+	UserRoleIDs(userIDs []uint) (map[uint][]uint, error)
+	ReplaceUserRoles(userID uint, roleIDs []uint, allowSuperAdmin bool) error
+	AssignRoleCodes(userID uint, codes []string) error
+}
+
 // NewService 创建角色权限服务。
 //
 // 参数说明：
@@ -228,6 +242,94 @@ func (s *Service) AssignRoleCodes(userID uint, codes []string) error {
 	})
 }
 
+// RolePermissionIDs 批量查询角色当前绑定的权限，避免列表接口逐角色查询。
+func (s *Service) RolePermissionIDs(roleIDs []uint) (map[uint][]uint, error) {
+	result := make(map[uint][]uint, len(roleIDs))
+	for _, roleID := range roleIDs {
+		result[roleID] = []uint{}
+	}
+	if len(roleIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.RolePermission
+	if err := s.DB.Where("role_id IN ?", roleIDs).Order("role_id, permission_id").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.RoleID] = append(result[row.RoleID], row.PermissionID)
+	}
+	return result, nil
+}
+
+// UserRoleIDs 批量查询用户当前绑定的角色，避免列表接口逐用户查询。
+func (s *Service) UserRoleIDs(userIDs []uint) (map[uint][]uint, error) {
+	result := make(map[uint][]uint, len(userIDs))
+	for _, userID := range userIDs {
+		result[userID] = []uint{}
+	}
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.UserRole
+	if err := s.DB.Where("user_id IN ?", userIDs).Order("user_id, role_id").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], row.RoleID)
+	}
+	return result, nil
+}
+
+// ReplaceRolePermissions 原子替换角色权限并刷新运行时策略。
+func (s *Service) ReplaceRolePermissions(roleID uint, permissionIDs []uint) error {
+	if err := s.replaceAssociations(
+		&model.RolePermission{},
+		"role_id",
+		roleID,
+		len(permissionIDs),
+		func(index int) any {
+			return &model.RolePermission{RoleID: roleID, PermissionID: permissionIDs[index]}
+		},
+	); err != nil {
+		return err
+	}
+	return s.ReloadPolicies()
+}
+
+// ReplaceUserRoles 原子替换用户角色并刷新运行时策略。
+func (s *Service) ReplaceUserRoles(userID uint, roleIDs []uint, allowSuperAdmin bool) error {
+	if !allowSuperAdmin && s.IncludesSystemRole(roleIDs) {
+		return ErrSuperAdminNotAllowed
+	}
+	if err := s.replaceAssociations(
+		&model.UserRole{},
+		"user_id",
+		userID,
+		len(roleIDs),
+		func(index int) any {
+			return &model.UserRole{UserID: userID, RoleID: roleIDs[index]}
+		},
+	); err != nil {
+		return err
+	}
+	return s.ReloadPolicies()
+}
+
+func (s *Service) replaceAssociations(modelValue any, ownerColumn string, ownerID uint, count int, rowAt func(int) any) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		// 关联表有唯一索引；软删除会留下占位记录，导致重新绑定同一项时冲突。
+		if err := tx.Unscoped().Where(ownerColumn+" = ?", ownerID).Delete(modelValue).Error; err != nil {
+			return err
+		}
+		for index := 0; index < count; index++ {
+			if err := tx.Create(rowAt(index)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // ReloadPolicies 从数据库重新加载 Casbin 分组策略和权限策略。
 //
 // 调用时机：角色、权限或用户角色关系变更后必须调用，否则内存策略不会更新。
@@ -306,6 +408,8 @@ func DefaultPermissions() []model.Permission {
 		{"审计查看", "system:audits:read", "/api/v1/system/audits", "read"},
 		{"客户查看", "customers:read", "/api/v1/customers", "read"},
 		{"客户维护", "customers:write", "/api/v1/customers", "write"},
+		{"供应商查看", "suppliers:read", "/api/v1/suppliers", "read"},
+		{"供应商维护", "suppliers:write", "/api/v1/suppliers", "write"},
 		{"联系人查看", "contacts:read", "/api/v1/contacts", "read"},
 		{"联系人维护", "contacts:write", "/api/v1/contacts", "write"},
 		{"仓库查看", "warehouse:read", "/api/v1/warehouse", "read"},

@@ -3,6 +3,7 @@ package inventory
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -119,6 +120,86 @@ func TestInventoryOutboundRejectsNegativeStock(t *testing.T) {
 	}
 }
 
+func TestItemMovementsPostImmediatelyAndAreIdempotent(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	supplier := model.Supplier{Name: "测试供应商", Code: "SUP-001", Status: model.StatusActive}
+	material := model.Material{Name: "ABS", Code: "ABS-MOVE", Unit: "kg", Status: model.StatusActive}
+	if err := db.Create(&supplier).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&material).Error; err != nil {
+		t.Fatal(err)
+	}
+	body := map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      int64(50000),
+		"unit_cost":     int64(250),
+		"supplier_id":   supplier.ID,
+	}
+	permissions := []string{"suppliers:read", role.CostViewCode}
+	rec := performItemMovementJSON(t, handler, material, body, "movement-001", permissions)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create movement status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var created map[string]any
+	decodeInventoryJSON(t, rec, &created)
+	if created["status"] != documentPosted || created["business_type"] != businessPurchaseInbound {
+		t.Fatalf("movement was not posted: %v", created)
+	}
+
+	rec = performItemMovementJSON(t, handler, material, body, "movement-001", permissions)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("idempotent movement status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var documentCount int64
+	db.Model(&model.InventoryDocument{}).Count(&documentCount)
+	if documentCount != 1 {
+		t.Fatalf("document count = %d, want 1", documentCount)
+	}
+	var balance model.InventoryBalance
+	if err := db.Where("item_type = ? AND item_id = ?", itemMaterial, material.ID).First(&balance).Error; err != nil {
+		t.Fatal(err)
+	}
+	if balance.Quantity != 50000 {
+		t.Fatalf("balance quantity = %d, want 50000", balance.Quantity)
+	}
+}
+
+func TestItemMovementBusinessPartiesAndReturn(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	supplier := model.Supplier{Name: "供应商", Code: "SUP-002", Status: model.StatusActive}
+	customer := model.Customer{Name: "客户", Code: "CUST-MOVE"}
+	department := model.Department{Name: "生产部", Code: "PROD", OrganizationID: 1, Status: model.StatusActive}
+	product := model.Product{Name: "成品", Code: "PROD-MOVE", Unit: "个", Status: model.StatusActive}
+	for _, value := range []any{&supplier, &customer, &department, &product} {
+		if err := db.Create(value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	allPermissions := []string{"suppliers:read", "customers:read", "system:departments:read"}
+	cases := []map[string]any{
+		{"business_type": businessPurchaseInbound, "quantity": int64(50000), "supplier_id": supplier.ID},
+		{"business_type": businessCustomerOutbound, "quantity": int64(10000), "customer_id": customer.ID},
+		{"business_type": businessDepartmentOutbound, "quantity": int64(10000), "department_id": department.ID},
+		{"business_type": businessReturnReworkInbound, "quantity": int64(5000), "customer_id": customer.ID, "reason": "客户返工"},
+	}
+	for index, body := range cases {
+		rec := performItemMovementJSON(t, handler, product, body, fmt.Sprintf("party-%d", index), allPermissions)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("case %d status = %d body=%s", index, rec.Code, rec.Body.String())
+		}
+	}
+	var balance model.InventoryBalance
+	if err := db.Where("item_type = ? AND item_id = ?", itemProduct, product.ID).First(&balance).Error; err != nil {
+		t.Fatal(err)
+	}
+	if balance.Quantity != 35000 {
+		t.Fatalf("balance quantity = %d, want 35000", balance.Quantity)
+	}
+}
+
 func openInventoryTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -130,10 +211,41 @@ func openInventoryTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Warehouse{}, &model.Material{}, &model.Product{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
+	if err := db.AutoMigrate(&model.Warehouse{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
+}
+
+func performItemMovementJSON(t *testing.T, handler *Handler, item any, body any, idempotencyKey string, permissions []string) *httptest.ResponseRecorder {
+	t.Helper()
+	e := echo.New()
+	e.Validator = &testValidator{validate: validator.New()}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/warehouse/items/:itemType/:itemID/movements", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	var itemTypeValue string
+	var itemID uint
+	switch value := item.(type) {
+	case model.Material:
+		itemTypeValue, itemID = itemMaterial, value.ID
+	case model.Product:
+		itemTypeValue, itemID = itemProduct, value.ID
+	default:
+		t.Fatalf("unsupported item type %T", item)
+	}
+	c.SetPathValues(echo.PathValues{
+		{Name: "itemType", Value: itemTypeValue},
+		{Name: "itemID", Value: strconv.FormatUint(uint64(itemID), 10)},
+	})
+	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, Permissions: permissions})
+	if err := handler.CreateItemMovement(c); err != nil {
+		e.HTTPErrorHandler(c, err)
+	}
+	return rec
 }
 
 func performInventoryJSON(t *testing.T, handler echo.HandlerFunc, method string, path string, body any, params map[string]string, costView bool) *httptest.ResponseRecorder {

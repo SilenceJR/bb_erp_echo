@@ -40,6 +40,9 @@ type CatalogItem struct {
 	SafetyStock int64  `json:"safety_stock"`
 	DefaultCost int64  `json:"default_cost,omitempty"`
 	Status      string `json:"status"`
+	Quantity    int64  `json:"quantity"`
+	AvgCost     int64  `json:"avg_cost,omitempty"`
+	Amount      int64  `json:"amount,omitempty"`
 }
 
 // CatalogTabSpec 用策略方式描述每个仓库标签对应的数据表和固定分类。
