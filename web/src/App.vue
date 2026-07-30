@@ -106,7 +106,7 @@
             <p>{{ activeModule?.description }}</p>
           </div>
 
-          <div v-if="activeModule?.key === 'warehouses'" class="mobile-tabs" aria-label="仓库分类">
+          <div v-if="activeModule?.key === 'warehouses'" class="warehouse-tabs" aria-label="仓库分类">
             <button
                 v-for="tab in warehouseTabs"
                 :key="tab.key"

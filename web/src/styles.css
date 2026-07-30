@@ -231,6 +231,30 @@ button:disabled {
   display: none;
 }
 
+.warehouse-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.warehouse-tabs button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.warehouse-tabs button.active {
+  border-color: rgba(40, 169, 211, 0.28);
+  background: rgba(40, 169, 211, 0.11);
+  color: var(--brand-dark);
+}
+
 .content {
   min-width: 0;
   padding: 24px;
@@ -425,6 +449,15 @@ td {
     min-height: 36px;
     border-radius: 999px;
     padding: 0 12px;
+  }
+
+  .warehouse-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .warehouse-tabs button {
+    flex: 0 0 auto;
   }
 
   .content {
