@@ -88,6 +88,10 @@
             <div class="service-status" :class="{ warning: healthStatus !== '正常' }">
               <span></span> 服务{{ healthStatus === '正常' ? '正常' : '暂不可用' }}
             </div>
+            <div v-if="clientUpdate.cached" class="client-update">
+              <span>客户端 {{ clientUpdate.latest_version || '新版本' }}</span>
+              <el-button link type="primary" @click="downloadClientUpdate">下载更新</el-button>
+            </div>
           </div>
 
           <section v-if="quickActions.length" class="home-section">
@@ -653,7 +657,7 @@ import {ElMessage, ElMessageBox} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {apiBaseUrl, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import {type ModuleItem, modules} from './data/modules'
-import type {BasicItem, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
+import type {BasicItem, ClientUpdateStatus, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
 
 type FormField = {
   key: string
@@ -758,6 +762,11 @@ const serverTesting = ref(false)
 const serverUrlInput = ref(apiBaseUrl())
 const serverMessage = ref('')
 const serverMessageType = ref<'success' | 'warning' | 'info' | 'error'>('info')
+const clientUpdate = ref<ClientUpdateStatus>({
+  current_version: '0.1.0',
+  available: false,
+  cached: false,
+})
 const loginForm = reactive({
   username: 'admin',
   password: '',
@@ -1228,7 +1237,7 @@ function saveServerSetting() {
 }
 
 async function bootstrap() {
-  await Promise.allSettled([loadHealth(), loadMe(), preloadBaseData()])
+  await Promise.allSettled([loadHealth(), loadClientUpdate(), loadMe(), preloadBaseData()])
   await loadActiveModule()
 }
 
@@ -1244,6 +1253,24 @@ async function loadHealth() {
 async function loadMe() {
   if (!token.value) return
   currentUser.value = await request<CurrentUser>('/api/v1/auth/me', {}, token.value)
+}
+
+async function loadClientUpdate() {
+  try {
+    clientUpdate.value = await request<ClientUpdateStatus>('/api/v1/updates/client/status')
+  } catch {
+    clientUpdate.value = {
+      current_version: '0.1.0',
+      available: false,
+      cached: false,
+    }
+  }
+}
+
+function downloadClientUpdate() {
+  if (!clientUpdate.value.download_path) return
+  const base = apiBaseUrl().replace(/\/$/, '')
+  window.open(`${base}${clientUpdate.value.download_path}`, '_blank')
 }
 
 async function preloadBaseData() {
@@ -1874,6 +1901,7 @@ onMounted(() => {
     void bootstrap()
   } else {
     void loadHealth()
+    void loadClientUpdate()
   }
 })
 </script>

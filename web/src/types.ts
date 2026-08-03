@@ -18,6 +18,17 @@ export interface ApiErrorBody {
   request_id: string
 }
 
+// 客户端升级状态，由服务端从 GitHub、Gitee 或内网更新源缓存后提供。
+export interface ClientUpdateStatus {
+  current_version: string
+  latest_version?: string
+  available: boolean
+  cached: boolean
+  file_name?: string
+  download_path?: string
+  message?: string
+}
+
 // 系统管理列表中的通用基础字段。
 export interface BasicItem {
   id: number

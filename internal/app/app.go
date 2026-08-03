@@ -31,6 +31,7 @@ import (
 	"bb_erp_echo/internal/shared/response"
 	"bb_erp_echo/internal/statistics"
 	"bb_erp_echo/internal/supplier"
+	"bb_erp_echo/internal/update"
 	"bb_erp_echo/internal/user"
 	"bb_erp_echo/internal/warehouse"
 	"bb_erp_echo/internal/workorder"
@@ -224,6 +225,8 @@ func (a *App) registerRoutes() {
 	}
 
 	auth.NewHandler(a.DB, a.AuthService).RegisterRoutes(v1, jwtMiddleware)
+	updateHandler := update.NewHandler(a.Config)
+	updateHandler.RegisterPublicRoutes(v1)
 
 	protected := v1.Group("", jwtMiddleware)
 
@@ -232,6 +235,7 @@ func (a *App) registerRoutes() {
 	user.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	role.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	audit.NewHandler(a.DB).RegisterRoutes(system, require)
+	updateHandler.RegisterSystemRoutes(system, require)
 
 	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	supplier.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)

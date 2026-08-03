@@ -28,12 +28,15 @@ type Config struct {
 	Log      LogConfig      `koanf:"log"`
 	Web      WebConfig      `koanf:"web"`
 	Admin    AdminConfig    `koanf:"admin"`
+	Update   UpdateConfig   `koanf:"update"`
 }
 
 // AppConfig 描述应用自身信息。
 type AppConfig struct {
 	// Name 是应用显示名称，例如“博邦 ERP”。
 	Name string `koanf:"name"`
+	// Version 是当前服务端版本号，用于升级检查。
+	Version string `koanf:"version"`
 	// Environment 是运行环境，例如 development、staging、production。
 	Environment string `koanf:"environment"`
 }
@@ -94,6 +97,18 @@ type AdminConfig struct {
 	Name string `koanf:"name"`
 }
 
+// UpdateConfig 描述 GitHub、Gitee 或内网更新源配置。
+type UpdateConfig struct {
+	// Enabled 表示是否允许服务端主动检查远端更新清单。
+	Enabled bool `koanf:"enabled"`
+	// ManifestURL 是 update-manifest.json 的地址，可来自 GitHub、Gitee 或内网静态服务。
+	ManifestURL string `koanf:"manifest_url"`
+	// CacheDir 是服务端缓存客户端升级包的目录。
+	CacheDir string `koanf:"cache_dir"`
+	// ClientVersion 是当前随服务端发布的客户端版本，用于判断是否需要缓存新客户端包。
+	ClientVersion string `koanf:"client_version"`
+}
+
 // Load 加载系统配置。
 //
 // 加载顺序：
@@ -106,24 +121,29 @@ func Load() (*Config, error) {
 	k := koanf.New(".")
 
 	defaults := map[string]any{
-		"app.name":             "博邦 ERP",
-		"app.environment":      "development",
-		"http.host":            "0.0.0.0",
-		"http.port":            8080,
-		"http.allowed_origins": []string{"http://localhost:3000", "http://localhost:5173"},
-		"database.path":        "data/erp.db",
-		"jwt.secret":           "change-me-in-production",
-		"jwt.expires_in":       "24h",
-		"jwt.issuer":           "bb-erp-echo",
-		"log.level":            "info",
-		"log.dir":              "logs",
-		"log.console":          true,
-		"log.retention_days":   30,
-		"web.enabled":          true,
-		"web.dist_dir":         "web/dist",
-		"admin.username":       "admin",
-		"admin.password":       "admin123456",
-		"admin.name":           "系统管理员",
+		"app.name":              "博邦 ERP",
+		"app.version":           "0.1.0",
+		"app.environment":       "development",
+		"http.host":             "0.0.0.0",
+		"http.port":             8080,
+		"http.allowed_origins":  []string{"http://localhost:3000", "http://localhost:5173"},
+		"database.path":         "data/erp.db",
+		"jwt.secret":            "change-me-in-production",
+		"jwt.expires_in":        "24h",
+		"jwt.issuer":            "bb-erp-echo",
+		"log.level":             "info",
+		"log.dir":               "logs",
+		"log.console":           true,
+		"log.retention_days":    30,
+		"web.enabled":           true,
+		"web.dist_dir":          "web/dist",
+		"admin.username":        "admin",
+		"admin.password":        "admin123456",
+		"admin.name":            "系统管理员",
+		"update.enabled":        false,
+		"update.manifest_url":   "",
+		"update.cache_dir":      "updates",
+		"update.client_version": "0.1.0",
 	}
 
 	// 默认配置只负责让本地开发可运行，敏感配置需要在部署时由环境变量覆盖。
@@ -158,6 +178,22 @@ func Load() (*Config, error) {
 	}
 	if cfg.Web.DistDir == "" {
 		cfg.Web.DistDir = "web/dist"
+	}
+	cfg.Update.Enabled = k.Bool("update.enabled")
+	if manifestURL := k.String("update.manifest.url"); manifestURL != "" {
+		cfg.Update.ManifestURL = manifestURL
+	}
+	if cacheDir := k.String("update.cache.dir"); cacheDir != "" {
+		cfg.Update.CacheDir = cacheDir
+	}
+	if cfg.Update.CacheDir == "" {
+		cfg.Update.CacheDir = "updates"
+	}
+	if clientVersion := k.String("update.client.version"); clientVersion != "" {
+		cfg.Update.ClientVersion = clientVersion
+	}
+	if cfg.Update.ClientVersion == "" {
+		cfg.Update.ClientVersion = "0.1.0"
 	}
 
 	return &cfg, nil

@@ -160,6 +160,19 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 }
 .service-status span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .service-status.warning { color: var(--warning); }
+.client-update {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbe4ea;
+  border-radius: 999px;
+  background: #fff;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .home-section { margin-bottom: 38px; }
 .home-section-title { margin-bottom: 15px; }
 .home-section-title h2 { margin: 0 0 4px; font-size: 20px; }
@@ -437,7 +450,7 @@ td { font-size: 14px; overflow-wrap: anywhere; }
   .user-chip .ghost-button { padding: 0 6px; }
   .welcome-block, .page-heading { align-items: stretch; flex-direction: column; }
   .welcome-block { margin-bottom: 28px; }
-  .service-status { align-self: flex-start; }
+  .service-status, .client-update { align-self: flex-start; }
   .quick-grid, .inline-form { grid-template-columns: 1fr; }
   .assignment-options { grid-template-columns: 1fr; }
   .quick-card { min-height: 92px; }

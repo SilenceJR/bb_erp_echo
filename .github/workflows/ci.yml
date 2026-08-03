@@ -9,6 +9,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      update_base_url:
+        description: "可选：GitHub/Gitee Release 或内网文件目录 URL，用于生成 update-manifest.json"
+        required: false
+        default: ""
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -66,7 +71,7 @@ jobs:
         run: npm run build
 
   build-windows:
-    name: Build Windows portable package
+    name: Build Windows release packages
     runs-on: windows-latest
     needs: validate
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -132,26 +137,42 @@ jobs:
           New-Item -ItemType Directory -Force -Path release-build
           go build -trimpath -ldflags "-s -w" -o release-build/bb-erp-server.exe ./cmd/server
 
+      - name: Build Windows updater
+        shell: pwsh
+        env:
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o release-build/bb-erp-updater.exe ./cmd/updater
+
       - name: Build Windows Tauri client
         working-directory: client
         run: npm run desktop:build -- --bundles nsis
 
-      - name: Assemble portable Windows package
+      - name: Assemble Windows release packages
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $packageRoot = "release-build/bb-erp-windows"
-          $serverDir = Join-Path $packageRoot "server"
-          $clientDir = Join-Path $packageRoot "client"
-          $webDir = Join-Path $serverDir "web"
-          $dataDir = Join-Path $serverDir "data"
-          $logsDir = Join-Path $serverDir "logs"
+          $version = "${{ github.ref_name }}"
+          if (-not $version -or "${{ github.ref_type }}" -ne "tag") {
+            $version = "0.1.0-build.${{ github.run_number }}"
+          }
+          $baseUrl = "${{ inputs.update_base_url }}"
+          if (-not $baseUrl -and "${{ github.ref_type }}" -eq "tag") {
+            $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          }
+          $baseUrl = $baseUrl.TrimEnd("/")
 
-          New-Item -ItemType Directory -Force -Path $serverDir, $clientDir, $webDir, $dataDir, $logsDir | Out-Null
+          $serverPackageRoot = "release-build/packages/server"
+          $clientPackageRoot = "release-build/packages/client"
+          $allInOneRoot = "release-build/packages/all-in-one"
+          $updaterPackageRoot = "release-build/packages/updater"
 
-          Copy-Item "release-build/bb-erp-server.exe" (Join-Path $serverDir "bb-erp-server.exe") -Force
-          Copy-Item "web/dist" (Join-Path $webDir "dist") -Recurse -Force
+          New-Item -ItemType Directory -Force -Path $serverPackageRoot, $clientPackageRoot, $allInOneRoot, $updaterPackageRoot | Out-Null
+
+          New-Item -ItemType Directory -Force -Path (Join-Path $serverPackageRoot "web") | Out-Null
+          Copy-Item "release-build/bb-erp-server.exe" (Join-Path $serverPackageRoot "bb-erp-server.exe") -Force
+          Copy-Item "release-build/bb-erp-updater.exe" (Join-Path $serverPackageRoot "bb-erp-updater.exe") -Force
+          Copy-Item "web/dist" (Join-Path $serverPackageRoot "web/dist") -Recurse -Force
 
           $clientExe = Get-ChildItem "client/src-tauri/target/release" -Filter "*.exe" |
             Where-Object { $_.Name -notmatch "build-script" } |
@@ -160,14 +181,123 @@ jobs:
           if (-not $clientExe) {
             throw "Tauri client executable was not found under client/src-tauri/target/release."
           }
-          Copy-Item $clientExe.FullName (Join-Path $clientDir $clientExe.Name) -Force
-
-          $installerDir = Join-Path $packageRoot "installer"
-          New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $clientPackageRoot "client"), (Join-Path $clientPackageRoot "installer") | Out-Null
+          Copy-Item $clientExe.FullName (Join-Path $clientPackageRoot ("client/" + $clientExe.Name)) -Force
           $installers = Get-ChildItem "client/src-tauri/target/release/bundle" -Include "*.exe","*.msi" -Recurse -ErrorAction SilentlyContinue
           foreach ($installer in $installers) {
-            Copy-Item $installer.FullName (Join-Path $installerDir $installer.Name) -Force
+            Copy-Item $installer.FullName (Join-Path $clientPackageRoot ("installer/" + $installer.Name)) -Force
           }
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          set BB_ERP_HTTP_HOST=127.0.0.1
+          set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_DATABASE_PATH=data\erp.db
+          set BB_ERP_LOG_DIR=logs
+          set BB_ERP_WEB_ENABLED=true
+          set BB_ERP_WEB_DIST_DIR=web\dist
+          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_CACHE_DIR=updates
+          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
+          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
+          set BB_ERP_ADMIN_USERNAME=admin
+          set BB_ERP_ADMIN_PASSWORD=admin123456
+          bb-erp-server.exe
+          '@ | Set-Content -Path (Join-Path $serverPackageRoot "启动服务端.bat") -Encoding ASCII
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          if not exist bb-erp-updater.exe (
+            echo bb-erp-updater.exe was not found.
+            pause
+            exit /b 1
+          )
+          bb-erp-updater.exe -package "%~dp0bb-erp-server-windows.zip" -install-dir "%~dp0"
+          pause
+          '@ | Set-Content -Path (Join-Path $serverPackageRoot "一键升级服务端.bat") -Encoding ASCII
+
+          @'
+          博邦 ERP 服务端升级包
+          =====================
+
+          内容：
+          - bb-erp-server.exe：Go Windows 服务端。
+          - bb-erp-updater.exe：服务端升级器。
+          - web/dist：服务端托管的 Web 管理端静态文件。
+
+          首次部署：
+          1. 解压到服务端电脑目录。
+          2. 双击“启动服务端.bat”。
+
+          升级：
+          1. 不要覆盖 data、logs、updates、backups 目录。
+          2. 可用 bb-erp-updater.exe 执行升级，升级器会备份旧服务端和 web 目录。
+          '@ | Set-Content -Path (Join-Path $serverPackageRoot "README.txt") -Encoding UTF8
+
+          @"
+          {
+            "version": "$version",
+            "server_version": "$version",
+            "client_version": "$version"
+          }
+          "@ | Set-Content -Path (Join-Path $serverPackageRoot "version.json") -Encoding UTF8
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          for %%F in ("installer\*.exe") do (
+            start "BB ERP Client Installer" "%%~fF"
+            exit /b 0
+          )
+          for %%F in ("client\*.exe") do (
+            start "BB ERP Client" "%%~fF"
+            exit /b 0
+          )
+          echo Client installer or exe was not found.
+          pause
+          exit /b 1
+          '@ | Set-Content -Path (Join-Path $clientPackageRoot "一键升级客户端.bat") -Encoding ASCII
+
+          @'
+          博邦 ERP 客户端升级包
+          =====================
+
+          内容：
+          - client：Tauri Windows 客户端便携 exe。
+          - installer：Tauri Windows 安装器。
+
+          员工电脑只需要下载本包。服务端电脑会通过 /api/v1/updates/client/download 分发这个包。
+          '@ | Set-Content -Path (Join-Path $clientPackageRoot "README.txt") -Encoding UTF8
+
+          @"
+          {
+            "version": "$version",
+            "client_version": "$version"
+          }
+          "@ | Set-Content -Path (Join-Path $clientPackageRoot "version.json") -Encoding UTF8
+
+          Copy-Item "release-build/bb-erp-updater.exe" (Join-Path $updaterPackageRoot "bb-erp-updater.exe") -Force
+          @'
+          bb-erp-updater.exe 用法：
+
+          本地包升级：
+          bb-erp-updater.exe -package bb-erp-server-windows.zip -install-dir C:\bb-erp
+
+          远端 manifest 升级：
+          bb-erp-updater.exe -manifest-url https://example.com/update-manifest.json -install-dir C:\bb-erp -current-version 0.1.0
+
+          如果服务端注册为 Windows Service，可追加：
+          -service bb-erp
+          '@ | Set-Content -Path (Join-Path $updaterPackageRoot "README.txt") -Encoding UTF8
+
+          New-Item -ItemType Directory -Force -Path (Join-Path $allInOneRoot "server"), (Join-Path $allInOneRoot "client"), (Join-Path $allInOneRoot "server/data"), (Join-Path $allInOneRoot "server/logs"), (Join-Path $allInOneRoot "server/updates") | Out-Null
+          Copy-Item "$serverPackageRoot/*" (Join-Path $allInOneRoot "server") -Recurse -Force
+          Copy-Item "$clientPackageRoot/*" (Join-Path $allInOneRoot "client") -Recurse -Force
 
           @'
           @echo off
@@ -179,11 +309,14 @@ jobs:
           set BB_ERP_LOG_DIR=logs
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
+          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_CACHE_DIR=updates
+          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
           set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
           bb-erp-server.exe
-          '@ | Set-Content -Path (Join-Path $packageRoot "启动服务端.bat") -Encoding ASCII
+          '@ | Set-Content -Path (Join-Path $allInOneRoot "启动服务端.bat") -Encoding ASCII
 
           @'
           @echo off
@@ -198,18 +331,11 @@ jobs:
           echo Client exe was not found under the client directory.
           pause
           exit /b 1
-          '@ | Set-Content -Path (Join-Path $packageRoot "启动系统.bat") -Encoding ASCII
+          '@ | Set-Content -Path (Join-Path $allInOneRoot "启动系统.bat") -Encoding ASCII
 
           @'
-          @echo off
-          setlocal
-          cd /d "%~dp0server"
-          bb-erp-server.exe
-          '@ | Set-Content -Path (Join-Path $packageRoot "server\仅前台启动服务端.bat") -Encoding ASCII
-
-          @'
-          博邦 ERP Windows 便携包
-          ======================
+          博邦 ERP Windows 全量便携包
+          ===========================
 
           使用方式：
           1. 解压整个目录，不要只复制其中某一个 exe。
@@ -230,15 +356,92 @@ jobs:
           - 如果 Windows 防火墙提示，请允许本机访问 8080 端口。
           - 正式使用前请修改“启动服务端.bat”里的 BB_ERP_JWT_SECRET 和 BB_ERP_ADMIN_PASSWORD。
           - 后续备份数据时，优先备份 server/data 目录。
-          '@ | Set-Content -Path (Join-Path $packageRoot "README.txt") -Encoding UTF8
+          '@ | Set-Content -Path (Join-Path $allInOneRoot "README.txt") -Encoding UTF8
 
-          Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-build/bb-erp-windows-portable.zip" -Force
+          Compress-Archive -Path "$serverPackageRoot/*" -DestinationPath "release-build/bb-erp-server-windows.zip" -Force
+          Compress-Archive -Path "$clientPackageRoot/*" -DestinationPath "release-build/bb-erp-client-windows.zip" -Force
+          Compress-Archive -Path "$allInOneRoot/*" -DestinationPath "release-build/bb-erp-all-in-one-windows.zip" -Force
+          Compress-Archive -Path "$updaterPackageRoot/*" -DestinationPath "release-build/bb-erp-updater-windows.zip" -Force
 
-      - name: Upload Windows portable package
+          $serverHash = (Get-FileHash "release-build/bb-erp-server-windows.zip" -Algorithm SHA256).Hash.ToLower()
+          $clientHash = (Get-FileHash "release-build/bb-erp-client-windows.zip" -Algorithm SHA256).Hash.ToLower()
+          $allInOneHash = (Get-FileHash "release-build/bb-erp-all-in-one-windows.zip" -Algorithm SHA256).Hash.ToLower()
+
+          $serverUrl = ""
+          $clientUrl = ""
+          $allInOneUrl = ""
+          if ($baseUrl) {
+            $serverUrl = "$baseUrl/bb-erp-server-windows.zip"
+            $clientUrl = "$baseUrl/bb-erp-client-windows.zip"
+            $allInOneUrl = "$baseUrl/bb-erp-all-in-one-windows.zip"
+          }
+
+          $manifest = [ordered]@{
+            version = $version
+            published_at = (Get-Date).ToUniversalTime().ToString("o")
+            notes = "BB ERP Windows release packages"
+            server = [ordered]@{
+              version = $version
+              url = $serverUrl
+              sha256 = $serverHash
+              size = (Get-Item "release-build/bb-erp-server-windows.zip").Length
+            }
+            client = [ordered]@{
+              version = $version
+              url = $clientUrl
+              sha256 = $clientHash
+              size = (Get-Item "release-build/bb-erp-client-windows.zip").Length
+            }
+            all_in_one = [ordered]@{
+              version = $version
+              url = $allInOneUrl
+              sha256 = $allInOneHash
+              size = (Get-Item "release-build/bb-erp-all-in-one-windows.zip").Length
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path "release-build/update-manifest.json" -Encoding UTF8
+
+      - name: Upload Windows server package
         uses: actions/upload-artifact@v7
         with:
-          name: bb-erp-windows-portable-${{ github.run_number }}
+          name: bb-erp-server-windows-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
           archive: false
-          path: release-build/bb-erp-windows-portable.zip
+          path: release-build/bb-erp-server-windows.zip
+
+      - name: Upload Windows client package
+        uses: actions/upload-artifact@v7
+        with:
+          name: bb-erp-client-windows-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+          path: release-build/bb-erp-client-windows.zip
+
+      - name: Upload Windows all-in-one package
+        uses: actions/upload-artifact@v7
+        with:
+          name: bb-erp-all-in-one-windows-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+          path: release-build/bb-erp-all-in-one-windows.zip
+
+      - name: Upload Windows updater
+        uses: actions/upload-artifact@v7
+        with:
+          name: bb-erp-updater-windows-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+          path: release-build/bb-erp-updater-windows.zip
+
+      - name: Upload update manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: update-manifest-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+          path: release-build/update-manifest.json

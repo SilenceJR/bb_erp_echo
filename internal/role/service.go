@@ -406,6 +406,7 @@ func DefaultPermissions() []model.Permission {
 		{"角色维护", "system:roles:write", "/api/v1/system/roles", "write"},
 		{"权限查看", "system:permissions:read", "/api/v1/system/permissions", "read"},
 		{"审计查看", "system:audits:read", "/api/v1/system/audits", "read"},
+		{"更新维护", "system:updates:write", "/api/v1/system/updates", "write"},
 		{"客户查看", "customers:read", "/api/v1/customers", "read"},
 		{"客户维护", "customers:write", "/api/v1/customers", "write"},
 		{"供应商查看", "suppliers:read", "/api/v1/suppliers", "read"},
