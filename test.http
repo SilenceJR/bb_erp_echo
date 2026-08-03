@@ -22,6 +22,10 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("customer_id", response.body.id); %}
 
+### 分页模糊查询客户
+GET http://127.0.0.1:8080/api/v1/customers?page=1&page_size=10&q=测试
+Authorization: Bearer {{token}}
+
 ### 更新客户
 PATCH http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
 Content-Type: application/json
@@ -54,6 +58,10 @@ Authorization: Bearer {{token}}
 
 ### 查看仓库标签
 GET http://127.0.0.1:8080/api/v1/warehouse/tabs
+Authorization: Bearer {{token}}
+
+### 分页模糊查询生产物资
+GET http://127.0.0.1:8080/api/v1/warehouse/items?tab=production_material&page=1&page_size=10&q=ABS
 Authorization: Bearer {{token}}
 
 ### 在生产物资标签创建物品
@@ -135,6 +143,10 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("mold_id", response.body.id); %}
 
+### 分页模糊查询模具
+GET http://127.0.0.1:8080/api/v1/molds?page=1&page_size=10&q=MOLD
+Authorization: Bearer {{token}}
+
 ### 查询模具属性和履历
 GET http://127.0.0.1:8080/api/v1/molds/{{mold_id}}
 Authorization: Bearer {{token}}
@@ -185,6 +197,114 @@ Authorization: Bearer {{token}}
   "maintenance_cycle_days": 30,
   "completed": true
 }
+
+### 创建注塑部门
+POST http://127.0.0.1:8080/api/v1/system/departments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "注塑部",
+  "code": "INJECTION"
+}
+
+> {% client.global.set("injection_department_id", response.body.id); %}
+
+### 创建白壳包装部门
+POST http://127.0.0.1:8080/api/v1/system/departments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "白壳包装",
+  "code": "WHITE-PACK"
+}
+
+> {% client.global.set("white_pack_department_id", response.body.id); %}
+
+### 创建生产任务单
+POST http://127.0.0.1:8080/api/v1/workorder
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "WO-001",
+  "type": "production",
+  "product_name": "白色外壳",
+  "planned_quantity": 1000000,
+  "unit": "个",
+  "due_at": "2026-08-10",
+  "priority": "normal",
+  "target_department_ids": [{{injection_department_id}}, {{white_pack_department_id}}],
+  "description": "注塑后流转到白壳包装"
+}
+
+> {% client.global.set("workorder_id", response.body.id); client.global.set("department_task_id", response.body.department_tasks[0].id); %}
+
+### 分页模糊查询任务单
+GET http://127.0.0.1:8080/api/v1/workorder?page=1&page_size=10&q=白色&status=draft
+Authorization: Bearer {{token}}
+
+### 派发任务单
+POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/dispatch
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{}
+
+> {% client.global.set("department_task_id", response.body.department_tasks[0].id); client.global.set("department_task_id_2", response.body.department_tasks[1].id); %}
+
+### 部门开始处理
+POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id}}/start
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{}
+
+### 部门部分完成
+POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id}}/partial-complete
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "completed_quantity": 500000,
+  "remark": "注塑完成一半"
+}
+
+### 部门完成
+POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id}}/complete
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "remark": "注塑完成"
+}
+
+### 第二部门完成
+POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id_2}}/complete
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "remark": "白壳包装完成"
+}
+
+### 办公室确认正常完成
+POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/complete
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "mode": "normal"
+}
+
+### 查询任务流转日志
+GET http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/logs
+Authorization: Bearer {{token}}
+
+### 查询统计报表
+GET http://127.0.0.1:8080/api/v1/statistics
+Authorization: Bearer {{token}}
 
 ### 添加客户联系人
 POST http://127.0.0.1:8080/api/v1/contacts

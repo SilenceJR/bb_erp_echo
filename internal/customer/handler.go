@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
@@ -174,11 +175,11 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers [get]
 func (h *Handler) ListCustomers(c *echo.Context) error {
-	items, err := h.Service.List()
+	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateCustomer 创建客户档案。

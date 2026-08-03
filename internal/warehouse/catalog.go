@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -69,39 +70,43 @@ func catalogSpec(tab string) (CatalogTabSpec, bool) {
 	return CatalogTabSpec{}, false
 }
 
-func listCatalogItems(db *gorm.DB, tab string) ([]CatalogItem, error) {
+func listCatalogItems(db *gorm.DB, tab string, pageQuery pagination.Query) (pagination.Result[CatalogItem], error) {
 	spec, ok := catalogSpec(tab)
 	if !ok {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "无效仓库标签")
+		return pagination.Result[CatalogItem]{}, echo.NewHTTPError(http.StatusBadRequest, "无效仓库标签")
 	}
 	if spec.ItemType == "product" {
-		var products []model.Product
-		if err := db.Order("id desc").Find(&products).Error; err != nil {
-			return nil, err
+		query := db.Model(&model.Product{})
+		query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "unit", "spec", "status")
+		result, err := pagination.Page[model.Product](query, pageQuery, "id desc", nil)
+		if err != nil {
+			return pagination.Result[CatalogItem]{}, err
 		}
-		items := make([]CatalogItem, 0, len(products))
-		for _, product := range products {
+		items := make([]CatalogItem, 0, len(result.Items))
+		for _, product := range result.Items {
 			items = append(items, CatalogItem{
 				ID: product.ID, ItemType: spec.ItemType, Tab: spec.Key, Category: spec.Category,
 				Name: product.Name, Code: product.Code, Unit: product.Unit, Spec: product.Spec,
 				SafetyStock: product.SafetyStock, DefaultCost: product.DefaultCost, Status: product.Status,
 			})
 		}
-		return items, nil
+		return pagination.Result[CatalogItem]{Items: items, Total: result.Total, Page: result.Page, PageSize: result.PageSize, Keyword: result.Keyword}, nil
 	}
-	var materials []model.Material
-	if err := db.Where("category = ?", spec.Category).Order("id desc").Find(&materials).Error; err != nil {
-		return nil, err
+	query := db.Model(&model.Material{}).Where("category = ?", spec.Category)
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "category", "unit", "spec", "status")
+	result, err := pagination.Page[model.Material](query, pageQuery, "id desc", nil)
+	if err != nil {
+		return pagination.Result[CatalogItem]{}, err
 	}
-	items := make([]CatalogItem, 0, len(materials))
-	for _, material := range materials {
+	items := make([]CatalogItem, 0, len(result.Items))
+	for _, material := range result.Items {
 		items = append(items, CatalogItem{
 			ID: material.ID, ItemType: spec.ItemType, Tab: spec.Key, Category: spec.Category,
 			Name: material.Name, Code: material.Code, Unit: material.Unit, Spec: material.Spec,
 			SafetyStock: material.SafetyStock, DefaultCost: material.DefaultCost, Status: material.Status,
 		})
 	}
-	return items, nil
+	return pagination.Result[CatalogItem]{Items: items, Total: result.Total, Page: result.Page, PageSize: result.PageSize, Keyword: result.Keyword}, nil
 }
 
 func createCatalogItem(db *gorm.DB, input CatalogItemInput) (CatalogItem, error) {

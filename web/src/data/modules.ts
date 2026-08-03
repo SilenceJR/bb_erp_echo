@@ -24,6 +24,6 @@ export const modules: ModuleItem[] = [
   { key: 'suppliers', title: '供应商', group: 'business', path: '/api/v1/suppliers', readPermission: 'suppliers:read', writePermission: 'suppliers:write', status: 'available', description: '维护采购入库使用的供应商档案。' },
   { key: 'warehouses', title: '仓库', group: 'business', path: '/api/v1/warehouse/items', readPermission: 'warehouse:read', writePermission: 'warehouse:write', status: 'available', description: '查看单仓库库存，并在具体物品中办理出入库。' },
   { key: 'molds', title: '模具台账', group: 'business', path: '/api/v1/molds', readPermission: 'mold:read', writePermission: 'mold:write', status: 'available', description: '查询模具位置、借出、维修与保养状态。' },
-  { key: 'workorder', title: '任务单', group: 'business', path: '/api/v1/workorder', readPermission: 'workorder:read', writePermission: 'workorder:write', status: 'skeleton', description: '查看和处理工作任务。' },
-  { key: 'statistics', title: '统计报表', group: 'business', path: '/api/v1/statistics', readPermission: 'statistics:read', writePermission: 'statistics:write', status: 'skeleton', description: '查看业务统计与报表。' },
+  { key: 'workorder', title: '任务单', group: 'business', path: '/api/v1/workorder', readPermission: 'workorder:read', writePermission: 'workorder:write', status: 'available', description: '创建生产单，多部门流转并确认结单。' },
+  { key: 'statistics', title: '统计报表', group: 'business', path: '/api/v1/statistics', readPermission: 'statistics:read', status: 'available', description: '查看库存、任务、模具和业务数据统计。' },
 ]

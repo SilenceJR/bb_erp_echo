@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -38,7 +39,14 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 // ListRoles 查询角色列表。
 func (h *Handler) ListRoles(c *echo.Context) error {
 	var items []model.Role
-	if err := h.DB.Order("id").Find(&items).Error; err != nil {
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.Role{})
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "description")
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return err
+	}
+	if err := query.Order("id").Offset(pageQuery.Offset).Limit(pageQuery.PageSize).Find(&items).Error; err != nil {
 		return err
 	}
 	roleIDs := make([]uint, 0, len(items))
@@ -57,7 +65,9 @@ func (h *Handler) ListRoles(c *echo.Context) error {
 	for _, item := range items {
 		result = append(result, roleItem{Role: item, PermissionIDs: permissionIDs[item.ID]})
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, pagination.Result[roleItem]{
+		Items: result, Total: total, Page: pageQuery.Page, PageSize: pageQuery.PageSize, Keyword: pageQuery.Keyword,
+	})
 }
 
 // CreateRole 创建角色。
@@ -97,9 +107,12 @@ func (h *Handler) AssignRolePermissions(c *echo.Context) error {
 
 // ListPermissions 查询系统内置权限列表。
 func (h *Handler) ListPermissions(c *echo.Context) error {
-	var items []model.Permission
-	if err := h.DB.Order("object, action").Find(&items).Error; err != nil {
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.Permission{})
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "object", "action", "description")
+	result, err := pagination.Page[model.Permission](query, pageQuery, "object, action", nil)
+	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }

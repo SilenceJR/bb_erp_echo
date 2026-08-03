@@ -362,6 +362,399 @@ definitions:
     - code
     - name
     type: object
+  model.DepartmentTask:
+    properties:
+      accepted_at:
+        type: string
+      assignee_user_id:
+        type: integer
+      completed_at:
+        type: string
+      completed_quantity:
+        type: integer
+      created_at:
+        type: string
+      department_id:
+        type: integer
+      id:
+        type: integer
+      partial_completed_at:
+        type: string
+      planned_quantity:
+        type: integer
+      progress:
+        type: integer
+      remark:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      work_order_id:
+        type: integer
+    type: object
+  model.WorkOrder:
+    properties:
+      cancel_reason:
+        type: string
+      code:
+        type: string
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: integer
+      customer_id:
+        type: integer
+      department_tasks:
+        items:
+          $ref: '#/definitions/model.DepartmentTask'
+        type: array
+      description:
+        type: string
+      dispatched_at:
+        type: string
+      due_at:
+        type: string
+      id:
+        type: integer
+      planned_quantity:
+        type: integer
+      priority:
+        type: string
+      product_name:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.WorkOrderFlowLog:
+    properties:
+      action:
+        type: string
+      actor_user_id:
+        type: integer
+      actor_username:
+        type: string
+      created_at:
+        type: string
+      department_id:
+        type: integer
+      department_task_id:
+        type: integer
+      id:
+        type: integer
+      quantity_after:
+        type: integer
+      quantity_before:
+        type: integer
+      reason:
+        type: string
+      remark:
+        type: string
+      status_after:
+        type: string
+      status_before:
+        type: string
+      updated_at:
+        type: string
+      work_order_id:
+        type: integer
+    type: object
+  statistics.AuditStatistics:
+    properties:
+      by_result:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      trend:
+        items:
+          $ref: '#/definitions/statistics.TrendItem'
+        type: array
+    type: object
+  statistics.BusinessStatistics:
+    properties:
+      by_master_data:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+    type: object
+  statistics.DashboardResponse:
+    properties:
+      audit:
+        $ref: '#/definitions/statistics.AuditStatistics'
+      business:
+        $ref: '#/definitions/statistics.BusinessStatistics'
+      can_view_cost:
+        type: boolean
+      generated_at:
+        type: string
+      inventory:
+        $ref: '#/definitions/statistics.InventoryStatistics'
+      molds:
+        $ref: '#/definitions/statistics.MoldStatistics'
+      recent_workorders:
+        items:
+          $ref: '#/definitions/model.WorkOrder'
+        type: array
+      summary:
+        $ref: '#/definitions/statistics.Summary'
+      workorders:
+        $ref: '#/definitions/statistics.WorkOrderStatistics'
+    type: object
+  statistics.DepartmentStat:
+    properties:
+      completed:
+        type: integer
+      department_id:
+        type: integer
+      name:
+        type: string
+      partial:
+        type: integer
+      processing:
+        type: integer
+      received:
+        type: integer
+      total:
+        type: integer
+    type: object
+  statistics.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  statistics.InventoryStatistics:
+    properties:
+      by_item_type:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      by_material_type:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      low_stock:
+        items:
+          $ref: '#/definitions/statistics.StockItem'
+        type: array
+      trend:
+        items:
+          $ref: '#/definitions/statistics.TrendItem'
+        type: array
+    type: object
+  statistics.MoldItem:
+    properties:
+      code:
+        type: string
+      current_location:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      next_maintenance_at:
+        type: string
+      status:
+        type: string
+    type: object
+  statistics.MoldStatistics:
+    properties:
+      by_status:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      need_care:
+        items:
+          $ref: '#/definitions/statistics.MoldItem'
+        type: array
+    type: object
+  statistics.NameValue:
+    properties:
+      amount:
+        type: integer
+      name:
+        type: string
+      value:
+        type: integer
+    type: object
+  statistics.StockItem:
+    properties:
+      amount:
+        type: integer
+      category:
+        type: string
+      code:
+        type: string
+      item_id:
+        type: integer
+      item_type:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      safety_stock:
+        type: integer
+    type: object
+  statistics.Summary:
+    properties:
+      contacts:
+        type: integer
+      customers:
+        type: integer
+      inventory_amount:
+        type: integer
+      inventory_quantity:
+        type: integer
+      low_stock_items:
+        type: integer
+      molds:
+        type: integer
+      molds_need_care:
+        type: integer
+      open_workorders:
+        type: integer
+      pending_close_orders:
+        type: integer
+      suppliers:
+        type: integer
+      urgent_workorders:
+        type: integer
+      warehouse_items:
+        type: integer
+    type: object
+  statistics.TrendItem:
+    properties:
+      amount:
+        type: integer
+      date:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      value:
+        type: integer
+    type: object
+  statistics.WorkOrderStatistics:
+    properties:
+      by_department:
+        items:
+          $ref: '#/definitions/statistics.DepartmentStat'
+        type: array
+      by_status:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      by_type:
+        items:
+          $ref: '#/definitions/statistics.NameValue'
+        type: array
+      trend:
+        items:
+          $ref: '#/definitions/statistics.TrendItem'
+        type: array
+    type: object
+  workorder.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  workorder.ListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.WorkOrder'
+        type: array
+      keyword:
+        example: 白色
+        type: string
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 20
+        type: integer
+      total:
+        example: 1
+        type: integer
+    type: object
+  workorder.completeRequest:
+    properties:
+      mode:
+        type: string
+      reason:
+        type: string
+    type: object
+  workorder.createRequest:
+    properties:
+      code:
+        type: string
+      customer_id:
+        type: integer
+      description:
+        type: string
+      due_at:
+        type: string
+      planned_quantity:
+        type: integer
+      priority:
+        type: string
+      product_name:
+        type: string
+      target_department_ids:
+        items:
+          type: integer
+        type: array
+      title:
+        type: string
+      type:
+        type: string
+      unit:
+        type: string
+    type: object
+  workorder.partialCompleteRequest:
+    properties:
+      completed_quantity:
+        type: integer
+      remark:
+        type: string
+    type: object
+  workorder.reasonRequest:
+    properties:
+      reason:
+        type: string
+    type: object
+  workorder.urgentRequest:
+    properties:
+      urgent:
+        type: boolean
+    type: object
 info:
   contact: {}
   description: 博邦 ERP Echo + GORM 模块化单体后台接口文档。后续新增、修改、删除接口时，必须同步更新 Swagger 注释、docs/API.md
@@ -780,6 +1173,433 @@ paths:
       summary: 更新客户
       tags:
       - 客户
+  /api/v1/statistics:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/statistics.DashboardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/statistics.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/statistics.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/statistics.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询统计报表
+      tags:
+      - statistics
+  /api/v1/workorder:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 模糊关键字
+        in: query
+        name: q
+        type: string
+      - description: 主任务状态
+        in: query
+        name: status
+        type: string
+      - description: 任务类型
+        in: query
+        name: type
+        type: string
+      - description: 流转部门 ID
+        in: query
+        name: department_id
+        type: integer
+      - description: 优先级
+        in: query
+        name: priority
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/workorder.ListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 分页查询任务单
+      tags:
+      - workorder
+    post:
+      parameters:
+      - description: 任务单创建参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.createRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建草稿任务单
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/complete:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 完成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.completeRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 办公室确认完成任务单
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/dispatch:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 派发任务单
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/logs:
+    get:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.WorkOrderFlowLog'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询任务流转日志
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/pause:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 暂停原因
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.reasonRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 暂停任务单
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/resume:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 恢复任务单
+      tags:
+      - workorder
+  /api/v1/workorder/{id}/urgent:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 加急参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.urgentRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 设置或取消加急
+      tags:
+      - workorder
+  /api/v1/workorder/department-tasks/{id}/complete:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门完成子任务
+      tags:
+      - workorder
+  /api/v1/workorder/department-tasks/{id}/partial-complete:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 部分完成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.partialCompleteRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门提交部分完成数量
+      tags:
+      - workorder
+  /api/v1/workorder/department-tasks/{id}/start:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门开始处理子任务
+      tags:
+      - workorder
   /health:
     get:
       description: 返回进程存活状态，不依赖数据库。

@@ -241,8 +241,8 @@ func (a *App) registerRoutes() {
 	material.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	product.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	mold.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	workorder.RegisterRoutes(protected, require, auditMiddleware)
-	statistics.RegisterRoutes(protected, require, auditMiddleware)
+	workorder.RegisterRoutes(protected, a.DB, require, auditMiddleware)
+	statistics.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 
 	// Swagger API 文档路由必须放在 Web 静态文件兜底之前，避免被前端路由覆盖。
 	a.Echo.GET("/swagger/*", echo.WrapHandler(httpSwagger.Handler(

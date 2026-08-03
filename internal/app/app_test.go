@@ -127,9 +127,16 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 	}
 
 	terminalToken := erp.createTerminalUserAndLogin(t)
-	rec = erp.request(http.MethodPost, "/api/v1/tasks", terminalToken, map[string]any{"placeholder": true})
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("terminal task skeleton status = %d body=%s", rec.Code, rec.Body.String())
+	rec = erp.request(http.MethodPost, "/api/v1/tasks", terminalToken, map[string]any{
+		"code":                  "AUDIT-TASK-001",
+		"type":                  "production",
+		"product_name":          "审计测试产品",
+		"planned_quantity":      int64(10000),
+		"unit":                  "个",
+		"target_department_ids": []uint{1},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("terminal task create status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	var terminalAudit model.AuditLog

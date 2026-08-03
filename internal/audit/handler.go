@@ -6,6 +6,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -31,13 +32,15 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 //
 // 数据范围：当前实现按当前用户所属组织过滤。
 func (h *Handler) ListAudits(c *echo.Context) error {
-	var items []model.AuditLog
-	query := h.DB.Order("id desc").Limit(200)
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.AuditLog{})
 	if current := auth.GetCurrentUser(c); current != nil {
 		query = query.Where("organization_id = ?", current.OrganizationID)
 	}
-	if err := query.Find(&items).Error; err != nil {
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "actor_username", "account_type", "person_name", "object", "action", "method", "path", "result", "request_id")
+	result, err := pagination.Page[model.AuditLog](query, pageQuery, "id desc", nil)
+	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -40,11 +41,11 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 }
 
 func (h *Handler) List(c *echo.Context) error {
-	items, err := h.Service.List()
+	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) Create(c *echo.Context) error {

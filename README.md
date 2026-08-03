@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- 后端主线已经可运行，入口是 `cmd/server/main.go`。
+- 后端主线已经可运行，入口是 `cmd/server/main.go`/`tmp/main.go`。
 - 后端已完成登录认证、JWT、Casbin 权限、组织/部门/终端、用户/角色/权限、操作审计、文件日志、业务模块骨架。
-- Web 管理端位于 `web/`，桌面端位于 `client/`。
+- Web 管理端位于 `web/`，桌面端位于 `client/`,使用element-plus。
 - 当前业务模块大多还是骨架接口，后续应按模块逐步补 CRUD 和业务流程。
 
 详细交接文档见 [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md)。
@@ -14,6 +14,10 @@
 ## 快速启动
 
 ### 后端
+
+```bash
+air
+```
 
 ```bash
 go run ./cmd/server

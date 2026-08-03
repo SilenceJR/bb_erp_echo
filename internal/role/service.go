@@ -130,7 +130,7 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 	if err := s.AttachPermissionCodes(boss.ID, []string{CostViewCode}); err != nil {
 		return err
 	}
-	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"tasks:read", "tasks:write", "inventory:read"}); err != nil {
+	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "tasks:read", "tasks:write", "inventory:read"}); err != nil {
 		return err
 	}
 

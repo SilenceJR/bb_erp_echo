@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
 )
@@ -45,7 +46,7 @@ type MaintenanceCommand struct {
 
 // Service 是模具台账与状态流转的应用服务接口。
 type Service interface {
-	List(status string) ([]model.Mold, error)
+	List(query pagination.Query, status string) (pagination.Result[model.Mold], error)
 	Get(id uint) (model.Mold, error)
 	Create(req moldRequest) (model.Mold, error)
 	Update(id uint, req moldRequest) (model.Mold, error)
@@ -65,13 +66,13 @@ func NewService(db *gorm.DB) Service {
 	return &gormService{db: db, now: time.Now}
 }
 
-func (s *gormService) List(status string) ([]model.Mold, error) {
-	var items []model.Mold
-	query := s.db.Order("id desc")
+func (s *gormService) List(query pagination.Query, status string) (pagination.Result[model.Mold], error) {
+	db := s.db.Model(&model.Mold{})
 	if status != "" {
-		query = query.Where("status = ?", status)
+		db = db.Where("status = ?", status)
 	}
-	return items, query.Find(&items).Error
+	db = pagination.ApplyKeyword(db, query.Keyword, "code", "name", "mold_material", "steel", "size", "manufacturer", "owner", "storage_location", "current_location", "status", "remark")
+	return pagination.Page[model.Mold](db, query, "id desc", nil)
 }
 
 func (s *gormService) Get(id uint) (model.Mold, error) {

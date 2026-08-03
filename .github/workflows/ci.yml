@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Go, Web, and Tauri frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Set up Node.js for web
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web management app
+        working-directory: web
+        run: npm run build
+
+      - name: Set up Node.js for Tauri client
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Tauri client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build Tauri frontend
+        working-directory: client
+        run: npm run build
+
+  build-windows:
+    name: Build Windows desktop package
+    runs-on: windows-latest
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Tauri client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri -> target
+
+      - name: Build Windows Tauri package
+        working-directory: client
+        run: npm run desktop:build -- --bundles nsis
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: bb-erp-windows-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            client/src-tauri/target/release/bundle/**/*.msi
+            client/src-tauri/target/release/bundle/**/*.exe

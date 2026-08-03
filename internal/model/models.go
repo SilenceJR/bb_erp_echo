@@ -273,19 +273,63 @@ type InventoryLedger struct {
 	BalanceAmt  int64  `json:"balance_amount,omitempty" gorm:"not null"`
 }
 
-// WorkOrder 是任务单模块骨架模型。
+// WorkOrder 是可流转任务单主表。
+//
+// 业务说明：
+// 主任务由办公室控制整体状态；部门只提交 DepartmentTask 状态。
+// 生产单的数量使用 4 位定点整数，和库存模块保持一致。
 type WorkOrder struct {
 	BaseModel
-	Code  string `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Title string `json:"title" gorm:"size:160;not null"`
+	Code            string           `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Title           string           `json:"title" gorm:"size:160;not null"`
+	Type            string           `json:"type" gorm:"size:40;not null;default:production;index"`
+	Status          string           `json:"status" gorm:"size:40;not null;default:draft;index"`
+	Priority        string           `json:"priority" gorm:"size:30;not null;default:normal;index"`
+	CustomerID      *uint            `json:"customer_id" gorm:"index"`
+	ProductName     string           `json:"product_name" gorm:"size:160"`
+	PlannedQuantity int64            `json:"planned_quantity" gorm:"not null;default:0"`
+	Unit            string           `json:"unit" gorm:"size:30"`
+	DueAt           *time.Time       `json:"due_at"`
+	Description     string           `json:"description" gorm:"size:1000"`
+	CreatedBy       uint             `json:"created_by" gorm:"index"`
+	DispatchedAt    *time.Time       `json:"dispatched_at"`
+	CompletedAt     *time.Time       `json:"completed_at"`
+	CancelReason    string           `json:"cancel_reason" gorm:"size:500"`
+	DepartmentTasks []DepartmentTask `json:"department_tasks" gorm:"foreignKey:WorkOrderID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
-// DepartmentTask 是部门子任务骨架模型，用于把任务单拆到具体部门执行。
+// DepartmentTask 是部门子任务，用于把任务单拆到具体部门并行执行。
 type DepartmentTask struct {
 	BaseModel
-	WorkOrderID  uint   `json:"work_order_id" gorm:"index"`
-	DepartmentID uint   `json:"department_id" gorm:"index"`
-	Title        string `json:"title" gorm:"size:160;not null"`
+	WorkOrderID        uint       `json:"work_order_id" gorm:"not null;index"`
+	DepartmentID       uint       `json:"department_id" gorm:"not null;index"`
+	Title              string     `json:"title" gorm:"size:160;not null"`
+	Status             string     `json:"status" gorm:"size:40;not null;default:received;index"`
+	PlannedQuantity    int64      `json:"planned_quantity" gorm:"not null;default:0"`
+	CompletedQuantity  int64      `json:"completed_quantity" gorm:"not null;default:0"`
+	AssigneeUserID     *uint      `json:"assignee_user_id" gorm:"index"`
+	Progress           int        `json:"progress" gorm:"not null;default:0"`
+	Remark             string     `json:"remark" gorm:"size:500"`
+	AcceptedAt         *time.Time `json:"accepted_at"`
+	PartialCompletedAt *time.Time `json:"partial_completed_at"`
+	CompletedAt        *time.Time `json:"completed_at"`
+}
+
+// WorkOrderFlowLog 记录任务单和部门子任务的流转审计。
+type WorkOrderFlowLog struct {
+	BaseModel
+	WorkOrderID      uint   `json:"work_order_id" gorm:"not null;index"`
+	DepartmentTaskID *uint  `json:"department_task_id" gorm:"index"`
+	DepartmentID     *uint  `json:"department_id" gorm:"index"`
+	ActorUserID      *uint  `json:"actor_user_id" gorm:"index"`
+	ActorUsername    string `json:"actor_username" gorm:"size:80;index"`
+	Action           string `json:"action" gorm:"size:60;not null;index"`
+	StatusBefore     string `json:"status_before" gorm:"size:40"`
+	StatusAfter      string `json:"status_after" gorm:"size:40"`
+	QuantityBefore   int64  `json:"quantity_before" gorm:"not null;default:0"`
+	QuantityAfter    int64  `json:"quantity_after" gorm:"not null;default:0"`
+	Reason           string `json:"reason" gorm:"size:500"`
+	Remark           string `json:"remark" gorm:"size:500"`
 }
 
 // AllModels 返回需要由 GORM AutoMigrate 管理的全部模型。
@@ -319,5 +363,6 @@ func AllModels() []any {
 		&MoldEvent{},
 		&WorkOrder{},
 		&DepartmentTask{},
+		&WorkOrderFlowLog{},
 	}
 }

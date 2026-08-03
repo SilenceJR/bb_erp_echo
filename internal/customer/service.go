@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
 )
@@ -12,7 +13,7 @@ var ErrCustomerNotFound = errors.New("customer not found")
 
 // Service 是客户模块对传输层暴露的应用服务接口。
 type Service interface {
-	List() ([]model.Customer, error)
+	List(query pagination.Query) (pagination.Result[model.Customer], error)
 	Create(req CreateCustomerRequest) (model.Customer, error)
 	Update(id uint, req UpdateCustomerRequest) (model.Customer, error)
 	Delete(id uint) error
@@ -28,10 +29,12 @@ func NewService(db *gorm.DB) Service {
 	return &gormService{db: db}
 }
 
-func (s *gormService) List() ([]model.Customer, error) {
-	var items []model.Customer
-	err := s.db.Order("id desc").Preload("Contacts.Phones").Find(&items).Error
-	return items, err
+func (s *gormService) List(query pagination.Query) (pagination.Result[model.Customer], error) {
+	db := s.db.Model(&model.Customer{})
+	db = pagination.ApplyKeyword(db, query.Keyword, "name", "code", "phone", "address")
+	return pagination.Page[model.Customer](db, query, "id desc", func(tx *gorm.DB) *gorm.DB {
+		return tx.Preload("Contacts.Phones")
+	})
 }
 
 func (s *gormService) Create(req CreateCustomerRequest) (model.Customer, error) {

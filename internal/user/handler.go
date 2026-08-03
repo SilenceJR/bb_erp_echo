@@ -8,6 +8,7 @@ import (
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -43,11 +44,17 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 // ListUsers 查询当前用户组织内的账号列表。
 func (h *Handler) ListUsers(c *echo.Context) error {
 	var items []model.User
-	query := h.DB.Order("id")
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.User{})
 	if current := auth.GetCurrentUser(c); current != nil {
 		query = query.Where("organization_id = ?", current.OrganizationID)
 	}
-	if err := query.Find(&items).Error; err != nil {
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "username", "name", "account_type", "status")
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return err
+	}
+	if err := query.Order("id").Offset(pageQuery.Offset).Limit(pageQuery.PageSize).Find(&items).Error; err != nil {
 		return err
 	}
 	userIDs := make([]uint, 0, len(items))
@@ -66,7 +73,9 @@ func (h *Handler) ListUsers(c *echo.Context) error {
 	for _, item := range items {
 		result = append(result, userItem{User: item, RoleIDs: roleIDs[item.ID]})
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, pagination.Result[userItem]{
+		Items: result, Total: total, Page: pageQuery.Page, PageSize: pageQuery.PageSize, Keyword: pageQuery.Keyword,
+	})
 }
 
 // CreateUser 创建登录账号。

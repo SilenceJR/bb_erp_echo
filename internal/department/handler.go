@@ -6,6 +6,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -37,15 +38,17 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 
 // ListDepartments 查询当前用户组织内的部门列表。
 func (h *Handler) ListDepartments(c *echo.Context) error {
-	var items []model.Department
-	query := h.DB.Order("id")
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.Department{})
 	if current := auth.GetCurrentUser(c); current != nil {
 		query = query.Where("organization_id = ?", current.OrganizationID)
 	}
-	if err := query.Find(&items).Error; err != nil {
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "status")
+	result, err := pagination.Page[model.Department](query, pageQuery, "id", nil)
+	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateDepartment 创建部门，并校验当前用户是否能访问目标组织。
@@ -70,15 +73,17 @@ func (h *Handler) CreateDepartment(c *echo.Context) error {
 
 // ListTerminals 查询当前用户组织内的终端列表。
 func (h *Handler) ListTerminals(c *echo.Context) error {
-	var items []model.Terminal
-	query := h.DB.Model(&model.Terminal{}).Order("terminals.id")
+	pageQuery := pagination.FromEcho(c)
+	query := h.DB.Model(&model.Terminal{})
 	if current := auth.GetCurrentUser(c); current != nil {
 		query = query.Joins("JOIN departments ON departments.id = terminals.department_id").Where("departments.organization_id = ?", current.OrganizationID)
 	}
-	if err := query.Find(&items).Error; err != nil {
+	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "terminals.code", "terminals.name", "terminals.location", "terminals.status")
+	result, err := pagination.Page[model.Terminal](query, pageQuery, "terminals.id", nil)
+	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateTerminal 创建部门终端。

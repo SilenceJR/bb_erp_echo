@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
 )
@@ -12,7 +13,7 @@ var ErrNotFound = errors.New("supplier not found")
 
 // Service 是供应商应用服务接口，便于替换存储实现或注入测试替身。
 type Service interface {
-	List() ([]model.Supplier, error)
+	List(query pagination.Query) (pagination.Result[model.Supplier], error)
 	Create(request supplierRequest) (model.Supplier, error)
 	Update(id uint, request supplierRequest) (model.Supplier, error)
 }
@@ -27,10 +28,10 @@ func NewService(db *gorm.DB) Service {
 	return &gormService{db: db}
 }
 
-func (service *gormService) List() ([]model.Supplier, error) {
-	var items []model.Supplier
-	err := service.db.Order("id desc").Find(&items).Error
-	return items, err
+func (service *gormService) List(query pagination.Query) (pagination.Result[model.Supplier], error) {
+	db := service.db.Model(&model.Supplier{})
+	db = pagination.ApplyKeyword(db, query.Keyword, "name", "code", "contact", "phone", "address", "status")
+	return pagination.Page[model.Supplier](db, query, "id desc", nil)
 }
 
 func (service *gormService) Create(request supplierRequest) (model.Supplier, error) {

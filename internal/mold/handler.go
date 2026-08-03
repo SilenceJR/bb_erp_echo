@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -64,11 +65,11 @@ type moldRequest struct {
 
 // ListMolds 查询模具台账列表。
 func (h *Handler) ListMolds(c *echo.Context) error {
-	items, err := h.Service.List(c.QueryParam("status"))
+	result, err := h.Service.List(pagination.FromEcho(c), c.QueryParam("status"))
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 // GetMold 查询模具属性和履历。

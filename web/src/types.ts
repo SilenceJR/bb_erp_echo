@@ -37,3 +37,12 @@ export interface SkeletonResponse {
   status: string
   message: string
 }
+
+// 分页列表响应，后端列表接口统一返回该结构。
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  keyword?: string
+}

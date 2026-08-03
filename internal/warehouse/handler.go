@@ -7,6 +7,7 @@ import (
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
+	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
 	"github.com/labstack/echo/v5"
@@ -83,7 +84,7 @@ func (h *Handler) ListItems(c *echo.Context) error {
 	if tab == "" {
 		tab = tabProduct
 	}
-	items, err := listCatalogItems(h.DB, tab)
+	result, err := listCatalogItems(h.DB, tab, pagination.FromEcho(c))
 	if err != nil {
 		return err
 	}
@@ -92,28 +93,28 @@ func (h *Handler) ListItems(c *echo.Context) error {
 		return err
 	}
 	showCost := warehouseCostView(c)
-	for index := range items {
+	for index := range result.Items {
 		var aggregate struct {
 			Quantity int64
 			Amount   int64
 		}
 		if err := h.DB.Model(&model.InventoryBalance{}).
 			Select("COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount").
-			Where("warehouse_id = ? AND item_type = ? AND item_id = ?", warehouse.ID, items[index].ItemType, items[index].ID).
+			Where("warehouse_id = ? AND item_type = ? AND item_id = ?", warehouse.ID, result.Items[index].ItemType, result.Items[index].ID).
 			Scan(&aggregate).Error; err != nil {
 			return err
 		}
-		items[index].Quantity = aggregate.Quantity
+		result.Items[index].Quantity = aggregate.Quantity
 		if showCost {
-			items[index].Amount = aggregate.Amount
+			result.Items[index].Amount = aggregate.Amount
 			if aggregate.Quantity > 0 {
-				items[index].AvgCost = aggregate.Amount * 10000 / aggregate.Quantity
+				result.Items[index].AvgCost = aggregate.Amount * 10000 / aggregate.Quantity
 			}
 		} else {
-			items[index].DefaultCost = 0
+			result.Items[index].DefaultCost = 0
 		}
 	}
-	return c.JSON(http.StatusOK, items)
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreateItem 在仓库标签下创建物品。

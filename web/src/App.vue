@@ -184,6 +184,11 @@
               <el-select v-if="field.kind === 'select'" v-model="formState[field.key]" placeholder="请选择" clearable>
                 <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
               </el-select>
+              <el-select v-else-if="field.kind === 'multi-select'" v-model="formState[field.key]" placeholder="请选择" multiple collapse-tags collapse-tags-tooltip>
+                <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
+              </el-select>
+              <el-date-picker v-else-if="field.kind === 'date'" v-model="formState[field.key]" value-format="YYYY-MM-DD" type="date" placeholder="请选择日期"/>
+              <el-input v-else-if="field.kind === 'textarea'" v-model="formState[field.key]" type="textarea" :rows="3"/>
               <el-input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'" :show-password="field.kind === 'password'"/>
             </el-form-item>
             <div class="form-actions">
@@ -192,43 +197,65 @@
             </div>
           </el-form>
 
-          <el-dialog :model-value="!!assignmentTarget" :title="assignmentConfig?.title" width="min(620px, 92vw)" @close="closeAssignment">
+          <el-dialog :model-value="!!assignmentTarget" :title="assignmentConfig?.title" width="min(680px, 92vw)" @close="closeAssignment">
             <div v-if="assignmentTarget" class="assignment-panel">
-            <div class="assignment-heading">
-              <div>
-                <span>{{ assignmentTarget.name || assignmentTarget.username || assignmentTarget.code }}</span>
+              <div class="assignment-heading">
+                <div>
+                  <strong>{{ assignmentTarget.name || assignmentTarget.username || assignmentTarget.code }}</strong>
+                  <span>已选择 {{ selectedAssignmentIDs.length }} 项</span>
+                </div>
               </div>
-            </div>
-            <p class="assignment-tip">
-              {{ assignmentConfig?.tip }}
-            </p>
-            <div class="assignment-options">
-              <el-checkbox-group v-model="selectedAssignmentIDs">
+              <p class="assignment-tip">
+                {{ assignmentConfig?.tip }}
+              </p>
+              <el-checkbox-group v-model="selectedAssignmentIDs" class="assignment-options">
                 <el-checkbox
-                    v-for="option in assignmentOptions"
-                    :key="option.id"
-                    :value="option.id"
-                    :disabled="isAssignmentOptionDisabled(option)"
-                    class="check-option"
+                  v-for="option in assignmentOptions"
+                  :key="option.id"
+                  :value="option.id"
+                  :disabled="isAssignmentOptionDisabled(option)"
+                  class="check-option"
                 >
-                <span>
-                  <strong>{{ option.name || option.code }}</strong>
-                  <small>{{ option.description || option.code }}</small>
-                </span>
+                  <span class="check-option-copy">
+                    <strong>{{ option.name || option.code }}</strong>
+                    <small>{{ option.description || option.code }}</small>
+                  </span>
                 </el-checkbox>
               </el-checkbox-group>
               <span v-if="!assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
             </div>
-            <div class="assignment-actions">
+            <template #footer>
+              <div class="assignment-actions">
               <el-button @click="closeAssignment">取消</el-button>
               <el-button type="primary" :loading="loading" @click="saveAssignment">保存配置</el-button>
-            </div>
-            </div>
+              </div>
+            </template>
           </el-dialog>
 
           <div class="toolbar">
-            <span class="result-count">共 {{ rows.length }} 条记录</span>
-            <div>
+            <div class="list-filters">
+              <el-input
+                  v-model.trim="searchKeyword"
+                  class="keyword-input"
+                  clearable
+                  placeholder="输入名称、编号、电话等关键字"
+                  @keyup.enter="applySearch"
+                  @clear="applySearch"
+              />
+              <template v-if="activeKey === 'workorder'">
+                <el-select v-model="workorderStatusFilter" class="filter-select" placeholder="状态" @change="applySearch">
+                  <el-option v-for="option in workorderStatusOptions" :key="option.value" :label="option.label" :value="option.value"/>
+                </el-select>
+                <el-select v-model="workorderTypeFilter" class="filter-select" placeholder="类型" @change="applySearch">
+                  <el-option v-for="option in workorderTypeOptions" :key="option.value" :label="option.label" :value="option.value"/>
+                </el-select>
+                <el-select v-model="workorderPriorityFilter" class="filter-select" placeholder="优先级" @change="applySearch">
+                  <el-option v-for="option in workorderPriorityOptions" :key="option.value" :label="option.label" :value="option.value"/>
+                </el-select>
+              </template>
+              <el-button type="primary" plain @click="applySearch">搜索</el-button>
+            </div>
+            <div class="toolbar-actions">
               <span v-if="panelMessage" class="panel-message">{{ panelMessage }}</span>
               <el-button :loading="loading" @click="loadActiveModule">刷新数据</el-button>
             </div>
@@ -238,6 +265,105 @@
             <strong>{{ skeletonResult.name }}</strong>
             <span>{{ skeletonResult.message }}</span>
           </div>
+
+          <section v-else-if="activeKey === 'statistics'" v-loading="loading" class="statistics-page">
+            <div class="stats-grid">
+              <article v-for="card in statisticsCards" :key="card.label" class="stat-card">
+                <span>{{ card.label }}</span>
+                <strong>{{ card.value }}</strong>
+                <small>{{ card.caption }}</small>
+              </article>
+            </div>
+
+            <div class="report-grid">
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>库存分类</h3><small>{{ statisticsData?.can_view_cost ? '含库存金额' : '金额已按权限隐藏' }}</small></div>
+                <div class="metric-list">
+                  <article v-for="item in statisticsData?.inventory?.by_item_type || []" :key="String(item.name)">
+                    <span>{{ inventoryItemTypeLabel(item.name) }}</span>
+                    <strong>{{ formatQuantity(item.value) }}</strong>
+                    <small v-if="statisticsData?.can_view_cost">{{ formatMoney(item.amount) }}</small>
+                  </article>
+                </div>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>任务状态</h3><small>主任务</small></div>
+                <div class="metric-list">
+                  <article v-for="item in statisticsData?.workorders?.by_status || []" :key="String(item.name)">
+                    <span>{{ workorderStatusLabel(item.name) }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </article>
+                </div>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>部门处理</h3><small>子任务</small></div>
+                <div class="department-stat-list">
+                  <article v-for="item in statisticsData?.workorders?.by_department || []" :key="Number(item.department_id)">
+                    <div><strong>{{ item.name || departmentName(item.department_id) }}</strong><small>共 {{ item.total }} 项</small></div>
+                    <el-progress :percentage="departmentCompletionRate(item)" :stroke-width="8"/>
+                    <small>完成 {{ item.completed }} · 处理中 {{ item.processing }} · 部分完成 {{ item.partial }} · 已收到 {{ item.received }}</small>
+                  </article>
+                </div>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>模具状态</h3><small>台账</small></div>
+                <div class="metric-list">
+                  <article v-for="item in statisticsData?.molds?.by_status || []" :key="String(item.name)">
+                    <span>{{ moldStatusLabel(item.name) }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </article>
+                </div>
+              </section>
+            </div>
+
+            <div class="report-grid lower">
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>低库存</h3><small>安全库存预警</small></div>
+                <div v-if="statisticsData?.inventory?.low_stock?.length" class="report-table">
+                  <article v-for="item in statisticsData.inventory.low_stock" :key="`${item.item_type}-${item.item_id}`">
+                    <div><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.category }}</small></div>
+                    <span>{{ formatQuantity(item.quantity) }} / {{ formatQuantity(item.safety_stock) }}</span>
+                  </article>
+                </div>
+                <p v-else class="drawer-empty">暂无低库存预警</p>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>需关注模具</h3><small>借出/维修/保养到期</small></div>
+                <div v-if="statisticsData?.molds?.need_care?.length" class="report-table">
+                  <article v-for="item in statisticsData.molds.need_care" :key="Number(item.id)">
+                    <div><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.current_location || '-' }}</small></div>
+                    <span>{{ moldStatusLabel(item.status) }}</span>
+                  </article>
+                </div>
+                <p v-else class="drawer-empty">暂无需要关注的模具</p>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>最近任务</h3><small>按创建时间</small></div>
+                <div v-if="statisticsData?.recent_workorders?.length" class="report-table">
+                  <article v-for="item in statisticsData.recent_workorders" :key="Number(item.id)">
+                    <div><strong>{{ item.title }}</strong><small>{{ item.code }} · {{ item.product_name || workorderTypeLabel(item.type) }}</small></div>
+                    <span>{{ workorderStatusLabel(item.status) }}</span>
+                  </article>
+                </div>
+                <p v-else class="drawer-empty">暂无任务单</p>
+              </section>
+
+              <section class="report-panel">
+                <div class="drawer-section-title"><h3>近 14 天趋势</h3><small>库存流水和任务创建</small></div>
+                <div class="trend-list">
+                  <article v-for="item in compactTrendItems" :key="`${item.date}-${item.name}-${item.value}`">
+                    <span>{{ item.date }} · {{ trendNameLabel(item.name) }}</span>
+                    <strong>{{ item.quantity ? formatQuantity(item.quantity) : item.value }}</strong>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </section>
 
           <el-table v-else-if="activeKey === 'warehouses'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
             <el-table-column label="物品" min-width="190">
@@ -266,6 +392,47 @@
             <template #empty><el-empty description="该分类还没有物品"/></template>
           </el-table>
 
+          <el-table v-else-if="activeKey === 'workorder'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+            <el-table-column label="任务" min-width="220">
+              <template #default="{row}">
+                <span class="item-name">{{ row.title }}</span>
+                <small class="item-code">{{ row.code }} · {{ workorderTypeLabel(row.type) }}</small>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="130">
+              <template #default="{row}">
+                <el-tag :type="workorderStatusTag(row.status)" effect="light">{{ workorderStatusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="优先级" width="100">
+              <template #default="{row}">
+                <el-tag :type="row.priority === 'urgent' ? 'danger' : 'info'" effect="light">{{ row.priority === 'urgent' ? '加急' : '普通' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="产品/数量" min-width="160">
+              <template #default="{row}">
+                {{ row.product_name || '-' }}<br>
+                <small>{{ formatQuantity(row.planned_quantity) }} {{ row.unit || '' }}</small>
+              </template>
+            </el-table-column>
+            <el-table-column label="部门进度" min-width="220">
+              <template #default="{row}">
+                <div class="workorder-task-tags">
+                  <el-tag v-for="task in departmentTasks(row)" :key="task.id" size="small" effect="plain" :type="departmentTaskTag(task.status)">
+                    {{ departmentName(task.department_id) }} · {{ departmentTaskStatusLabel(task.status) }}
+                  </el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="交期" width="130">
+              <template #default="{row}">{{ formatDate(row.due_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{row}"><el-button link type="primary" @click="openWorkOrder(row)">详情</el-button></template>
+            </el-table-column>
+            <template #empty><el-empty description="还没有任务单"/></template>
+          </el-table>
+
           <el-table v-else v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
             <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
               <template #default="{row}">{{ formatCell(row[column]) }}</template>
@@ -280,6 +447,20 @@
             </el-table-column>
             <template #empty><el-empty description="这里还没有记录"/></template>
           </el-table>
+
+          <div v-if="!skeletonResult" class="pagination-bar">
+            <span>共 {{ pageTotal }} 条记录</span>
+            <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="pageSize"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="pageTotal"
+                background
+                layout="sizes, prev, pager, next, jumper"
+                @current-change="handlePageChange"
+                @size-change="handlePageSizeChange"
+            />
+          </div>
         </div>
       </section>
 
@@ -396,6 +577,71 @@
           </section>
         </div>
       </el-drawer>
+
+      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" :with-header="false" destroy-on-close @closed="resetWorkOrder">
+        <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
+          <div class="drawer-heading">
+            <div>
+              <small>{{ selectedWorkOrder.code }} · {{ workorderTypeLabel(selectedWorkOrder.type) }}</small>
+              <h2>{{ selectedWorkOrder.title }}</h2>
+              <span>{{ selectedWorkOrder.product_name || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
+            </div>
+            <el-button circle @click="closeWorkOrder">×</el-button>
+          </div>
+
+          <div class="stock-summary">
+            <div><span>计划数量</span><strong>{{ formatQuantity(selectedWorkOrder.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</strong></div>
+            <div><span>优先级</span><strong>{{ selectedWorkOrder.priority === 'urgent' ? '加急' : '普通' }}</strong></div>
+            <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong></div>
+          </div>
+          <p v-if="selectedWorkOrder.description" class="drawer-message">{{ selectedWorkOrder.description }}</p>
+
+          <section v-if="canWriteActive" class="movement-section">
+            <h3>办公室操作</h3>
+            <div class="movement-actions">
+              <el-button v-if="selectedWorkOrder.status === 'draft'" type="primary" plain @click="dispatchWorkOrder">派发</el-button>
+              <el-button v-if="selectedWorkOrder.status === 'processing' || selectedWorkOrder.status === 'pending_close'" plain @click="pauseWorkOrder">暂停</el-button>
+              <el-button v-if="selectedWorkOrder.status === 'paused'" plain @click="resumeWorkOrder">恢复</el-button>
+              <el-button :type="selectedWorkOrder.priority === 'urgent' ? 'warning' : 'danger'" plain @click="toggleWorkOrderUrgent">
+                {{ selectedWorkOrder.priority === 'urgent' ? '取消加急' : '加急' }}
+              </el-button>
+              <el-button v-if="selectedWorkOrder.status === 'pending_close'" type="success" plain @click="completeWorkOrder('normal')">确认正常完成</el-button>
+              <el-button v-if="['processing', 'paused', 'pending_close'].includes(String(selectedWorkOrder.status))" type="danger" plain @click="completeWorkOrder('forced')">强制完成</el-button>
+            </div>
+          </section>
+
+          <section class="workorder-department-section">
+            <h3>部门子任务</h3>
+            <div class="department-task-grid">
+              <article v-for="task in departmentTasks(selectedWorkOrder)" :key="task.id" class="department-task-card">
+                <div>
+                  <strong>{{ departmentName(task.department_id) }}</strong>
+                  <el-tag size="small" :type="departmentTaskTag(task.status)" effect="light">{{ departmentTaskStatusLabel(task.status) }}</el-tag>
+                </div>
+                <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</p>
+                <el-progress :percentage="Number(task.progress || 0)" :stroke-width="8"/>
+                <small>{{ task.remark || '暂无备注' }}</small>
+                <div v-if="canOperateDepartmentTask(task)" class="department-task-actions">
+                  <el-button v-if="task.status === 'received'" link type="primary" @click="startDepartmentTask(task)">开始处理</el-button>
+                  <el-button v-if="['received', 'processing', 'partial_completed'].includes(String(task.status))" link type="warning" @click="partialCompleteDepartmentTask(task)">部分完成</el-button>
+                  <el-button v-if="['received', 'processing', 'partial_completed'].includes(String(task.status))" link type="success" @click="completeDepartmentTask(task)">完成</el-button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="movement-history">
+            <div class="drawer-section-title"><h3>流转日志</h3><el-button link type="primary" @click="loadWorkOrderLogs">刷新</el-button></div>
+            <div v-if="workorderLogs.length" class="movement-list">
+              <article v-for="item in workorderLogs" :key="item.id">
+                <span class="movement-kind">{{ workorderActionLabel(item.action) }}</span>
+                <div><strong>{{ item.actor_username || '系统' }}</strong><small>{{ item.remark || item.reason || `${item.status_before || '-'} → ${item.status_after || '-'}` }} · {{ formatDate(item.created_at) }}</small></div>
+              </article>
+            </div>
+            <p v-else class="drawer-empty">暂无流转日志</p>
+          </section>
+        </div>
+      </el-drawer>
     </section>
   </main>
   </el-config-provider>
@@ -403,16 +649,16 @@
 
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue'
-import {ElMessage} from 'element-plus'
+import {ElMessage, ElMessageBox} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {apiBaseUrl, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import {type ModuleItem, modules} from './data/modules'
-import type {BasicItem, CurrentUser, SkeletonResponse} from './types'
+import type {BasicItem, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
 
 type FormField = {
   key: string
   label: string
-  kind?: 'text' | 'password' | 'select'
+  kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date'
   options?: Array<{ label: string; value: string | number }>
 }
 
@@ -433,6 +679,23 @@ type AssignmentConfig = {
   endpoint: (id: number) => string
   requiredPermissions: string[]
   isDisabled?: (target: BasicItem, option: BasicItem) => boolean
+}
+
+type StatisticNameValue = { name: string; value: number; amount?: number }
+type StatisticTrendItem = { date: string; name?: string; value: number; quantity?: number; amount?: number }
+type DepartmentStatistic = { department_id: number; name: string; total: number; completed: number; processing: number; partial: number; received: number }
+type StockStatisticItem = { item_type: string; item_id: number; name: string; code: string; category: string; quantity: number; safety_stock: number; amount?: number }
+type MoldStatisticItem = { id: number; code: string; name: string; status: string; current_location?: string; next_maintenance_at?: string }
+type StatisticsDashboard = {
+  generated_at: string
+  can_view_cost: boolean
+  summary: Record<string, number>
+  inventory: { by_item_type: StatisticNameValue[]; by_material_type: StatisticNameValue[]; low_stock: StockStatisticItem[]; trend: StatisticTrendItem[] }
+  workorders: { by_status: StatisticNameValue[]; by_type: StatisticNameValue[]; by_department: DepartmentStatistic[]; trend: StatisticTrendItem[] }
+  molds: { by_status: StatisticNameValue[]; need_care: MoldStatisticItem[] }
+  business: { by_master_data: StatisticNameValue[] }
+  audit: { by_result: StatisticNameValue[]; trend: StatisticTrendItem[] }
+  recent_workorders: BasicItem[]
 }
 
 // assignmentConfigs 是通用分配编辑器的策略表，后续可按同一协议扩展其他关联配置。
@@ -472,6 +735,10 @@ const editingSupplier = ref<BasicItem | null>(null)
 const rows = ref<BasicItem[]>([])
 const columns = ref<string[]>([])
 const skeletonResult = ref<SkeletonResponse | null>(null)
+const searchKeyword = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const pageTotal = ref(0)
 const loading = ref(false)
 const errorMessage = ref('')
 const panelMessage = ref('')
@@ -496,10 +763,17 @@ const loginForm = reactive({
   password: '',
 })
 
-const formState = reactive<Record<string, string | number>>({})
+const formState = reactive<Record<string, any>>({})
 const movementForm = reactive<Record<string, any>>({})
 const quickSupplier = reactive({name: '', code: '', contact: '', phone: ''})
 const activeWarehouseTab = ref('product')
+const workorderStatusFilter = ref('')
+const workorderTypeFilter = ref('')
+const workorderPriorityFilter = ref('')
+const selectedWorkOrder = ref<BasicItem | null>(null)
+const workorderDrawerVisible = ref(false)
+const workorderLogs = ref<BasicItem[]>([])
+const statisticsData = ref<StatisticsDashboard | null>(null)
 const warehouseTabs = [
   {key: 'product', title: '产品'},
   {key: 'production_material', title: '生产物资'},
@@ -512,6 +786,26 @@ const movementDefinitions: MovementDefinition[] = [
   {key: 'return_rework_inbound', title: '退货返工', requiredAny: ['customers:read', 'system:departments:read']},
   {key: 'customer_outbound', title: '客户出库', requiredAll: ['customers:read']},
   {key: 'department_outbound', title: '部门出库', requiredAll: ['system:departments:read']},
+]
+const workorderStatusOptions = [
+  {label: '全部状态', value: ''},
+  {label: '草稿', value: 'draft'},
+  {label: '正在处理', value: 'processing'},
+  {label: '暂停', value: 'paused'},
+  {label: '待办公室确认', value: 'pending_close'},
+  {label: '正常完成', value: 'completed_normal'},
+  {label: '强制完成', value: 'completed_forced'},
+  {label: '取消', value: 'cancelled'},
+]
+const workorderTypeOptions = [
+  {label: '全部类型', value: ''},
+  {label: '生产单', value: 'production'},
+  {label: '通用任务', value: 'general'},
+]
+const workorderPriorityOptions = [
+  {label: '全部优先级', value: ''},
+  {label: '普通', value: 'normal'},
+  {label: '加急', value: 'urgent'},
 ]
 
 const navItems = computed(() => modules.filter(canReadModule))
@@ -589,6 +883,22 @@ const eligibleOriginalDocuments = computed(() => itemMovements.value.filter((ite
   if (movementForm.source_type === 'department') return Number(item.department_id) === Number(movementForm.department_id)
   return false
 }))
+const statisticsCards = computed(() => {
+  const summary = statisticsData.value?.summary || {}
+  return [
+    {label: '库存总量', value: formatQuantity(summary.inventory_quantity), caption: statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏'},
+    {label: '低库存', value: String(summary.low_stock_items || 0), caption: '低于或等于安全库存'},
+    {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${summary.urgent_workorders || 0} · 待确认 ${summary.pending_close_orders || 0}`},
+    {label: '模具关注', value: String(summary.molds_need_care || 0), caption: `模具总数 ${summary.molds || 0}`},
+    {label: '客户/联系人', value: `${summary.customers || 0}/${summary.contacts || 0}`, caption: '客户档案 / 联系人'},
+    {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案'},
+  ]
+})
+const compactTrendItems = computed(() => {
+  const inventory = statisticsData.value?.inventory?.trend || []
+  const workorders = statisticsData.value?.workorders?.trend || []
+  return [...inventory.slice(-8), ...workorders.slice(-8)].slice(-12)
+})
 
 // formSchema 根据当前模块返回轻量新增表单，和后端已实现能力保持一致。
 const formSchema = computed<FormField[]>(() => {
@@ -675,6 +985,36 @@ const formSchema = computed<FormField[]>(() => {
         {key: 'storage_location', label: '存放位置'},
         {key: 'maintenance_cycle_days', label: '保养周期天'},
       ]
+    case 'workorder':
+      return [
+        {
+          key: 'type',
+          label: '任务类型',
+          kind: 'select',
+          options: [
+            {label: '生产单', value: 'production'},
+            {label: '通用任务', value: 'general'},
+          ],
+        },
+        {key: 'code', label: '任务编号'},
+        {key: 'title', label: '标题'},
+        {key: 'customer_id', label: '客户', kind: 'select', options: rowsFor('customers').map((item) => ({label: item.name || item.code || `#${item.id}`, value: item.id}))},
+        {key: 'product_name', label: '产品'},
+        {key: 'planned_quantity', label: '计划数量'},
+        {key: 'unit', label: '单位'},
+        {key: 'due_at', label: '交期', kind: 'date'},
+        {
+          key: 'priority',
+          label: '优先级',
+          kind: 'select',
+          options: [
+            {label: '普通', value: 'normal'},
+            {label: '加急', value: 'urgent'},
+          ],
+        },
+        {key: 'target_department_ids', label: '流转部门', kind: 'multi-select', options: departmentOptions},
+        {key: 'description', label: '说明', kind: 'textarea'},
+      ]
     default:
       return []
   }
@@ -686,6 +1026,22 @@ const activeWarehouseTabTitle = computed(() => warehouseTabs.find((tab) => tab.k
 
 function rowsFor(key: string): BasicItem[] {
   return cache[key] || []
+}
+
+function isPaginatedResponse(data: BasicItem[] | PaginatedResponse<BasicItem> | SkeletonResponse): data is PaginatedResponse<BasicItem> {
+  return !Array.isArray(data) && Array.isArray((data as PaginatedResponse<BasicItem>).items)
+}
+
+function appendQuery(path: string, params: Record<string, string | number | undefined>): string {
+  const urlParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && String(value) !== '') {
+      urlParams.set(key, String(value))
+    }
+  }
+  const query = urlParams.toString()
+  if (!query) return path
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`
 }
 
 function hasPermission(code?: string): boolean {
@@ -709,9 +1065,11 @@ function switchModule(key: string) {
   }
   activeKey.value = key
   closeWarehouseItem()
+  closeWorkOrder()
   closeAssignment()
   showCreateForm.value = false
   editingSupplier.value = null
+  resetListQuery()
   clearForm()
   void loadActiveModule()
 }
@@ -773,7 +1131,33 @@ async function saveAssignment() {
 
 function switchWarehouseTab(key: string) {
   activeWarehouseTab.value = key
+  resetListQuery()
   clearForm()
+  void loadActiveModule()
+}
+
+function resetListQuery() {
+  searchKeyword.value = ''
+  page.value = 1
+  pageTotal.value = 0
+  workorderStatusFilter.value = ''
+  workorderTypeFilter.value = ''
+  workorderPriorityFilter.value = ''
+}
+
+function applySearch() {
+  page.value = 1
+  void loadActiveModule()
+}
+
+function handlePageChange(value: number) {
+  page.value = value
+  void loadActiveModule()
+}
+
+function handlePageSizeChange(value: number) {
+  pageSize.value = value
+  page.value = 1
   void loadActiveModule()
 }
 
@@ -887,13 +1271,24 @@ async function loadActiveModule() {
   panelMessage.value = ''
   skeletonResult.value = null
   try {
-    await loadList(item.key, true)
+    if (item.key === 'statistics') {
+      await loadStatistics()
+    } else {
+      await loadList(item.key, true)
+    }
     panelMessage.value = '已同步'
   } catch (error) {
     panelMessage.value = error instanceof Error ? error.message : '加载失败'
   } finally {
     loading.value = false
   }
+}
+
+async function loadStatistics() {
+  statisticsData.value = await request<StatisticsDashboard>('/api/v1/statistics', {}, token.value)
+  rows.value = []
+  columns.value = []
+  pageTotal.value = 0
 }
 
 async function loadList(key: string, applyToPanel: boolean) {
@@ -904,20 +1299,47 @@ async function loadList(key: string, applyToPanel: boolean) {
   }
   if (!path) return
   if (key === 'warehouses') {
-    path = `${path}?tab=${activeWarehouseTab.value}`
+    path = appendQuery(path, {tab: activeWarehouseTab.value})
   }
-  const data = await request<BasicItem[] | SkeletonResponse>(path, {}, token.value)
+  if (applyToPanel) {
+    path = appendQuery(path, {
+      page: page.value,
+      page_size: pageSize.value,
+      q: searchKeyword.value,
+      status: key === 'workorder' ? workorderStatusFilter.value : undefined,
+      type: key === 'workorder' ? workorderTypeFilter.value : undefined,
+      priority: key === 'workorder' ? workorderPriorityFilter.value : undefined,
+    })
+  } else {
+    path = appendQuery(path, {page: 1, page_size: 200})
+  }
+  const data = await request<BasicItem[] | PaginatedResponse<BasicItem> | SkeletonResponse>(path, {}, token.value)
+  if (isPaginatedResponse(data)) {
+    cache[key] = data.items
+    if (applyToPanel) {
+      rows.value = data.items
+      page.value = data.page
+      pageSize.value = data.page_size
+      pageTotal.value = data.total
+      if (item) {
+        columns.value = inferColumns(data.items, item)
+      }
+    }
+    return
+  }
   if (!Array.isArray(data)) {
     if (applyToPanel) {
       skeletonResult.value = data
       rows.value = []
       columns.value = []
+      pageTotal.value = 0
     }
     return
   }
   cache[key] = data
   if (applyToPanel) {
     rows.value = data
+    pageTotal.value = data.length
     if (item) {
       columns.value = inferColumns(data, item)
     }
@@ -972,6 +1394,14 @@ function normalizedForm(): Record<string, unknown> {
     }
     if (activeKey.value === 'warehouses' && field.key === 'default_cost') {
       body[field.key] = moneyToCents(value)
+      continue
+    }
+    if (activeKey.value === 'workorder' && field.key === 'planned_quantity') {
+      body[field.key] = decimalToScaled(value)
+      continue
+    }
+    if (activeKey.value === 'workorder' && field.key === 'target_department_ids') {
+      body[field.key] = Array.isArray(value) ? value.map(Number) : []
       continue
     }
     body[field.key] = numericKeys.has(field.key) || field.key.endsWith('_id') ? Number(value) : value
@@ -1220,6 +1650,223 @@ function movementQuantity(document: BasicItem): string {
   const lines = Array.isArray(document.lines) ? document.lines as Array<Record<string, unknown>> : []
   const quantity = formatQuantity(lines[0]?.quantity)
   return `${document.type === 'outbound' ? '−' : '+'}${quantity} ${selectedWarehouseItem.value?.unit || ''}`
+}
+
+function openWorkOrder(item: any) {
+  selectedWorkOrder.value = item
+  workorderDrawerVisible.value = true
+  void loadWorkOrderLogs()
+}
+
+function closeWorkOrder() {
+  workorderDrawerVisible.value = false
+}
+
+function resetWorkOrder() {
+  selectedWorkOrder.value = null
+  workorderLogs.value = []
+}
+
+async function loadWorkOrderLogs() {
+  if (!selectedWorkOrder.value) return
+  workorderLogs.value = await request<BasicItem[]>(`/api/v1/workorder/${selectedWorkOrder.value.id}/logs`, {}, token.value)
+}
+
+async function dispatchWorkOrder() {
+  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/dispatch`, {}, '任务已派发')
+}
+
+async function pauseWorkOrder() {
+  const reason = await promptText('暂停原因', '请输入暂停原因')
+  if (!reason) return
+  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/pause`, {reason}, '任务已暂停')
+}
+
+async function resumeWorkOrder() {
+  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/resume`, {}, '任务已恢复')
+}
+
+async function toggleWorkOrderUrgent() {
+  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/urgent`, {
+    urgent: selectedWorkOrder.value?.priority !== 'urgent',
+  }, selectedWorkOrder.value?.priority === 'urgent' ? '已取消加急' : '已设为加急')
+}
+
+async function completeWorkOrder(mode: 'normal' | 'forced') {
+  let reason = ''
+  if (mode === 'forced') {
+    reason = await promptText('强制完成原因', '请输入强制完成原因')
+    if (!reason) return
+  } else {
+    try {
+      await ElMessageBox.confirm('确认该任务单正常完成？', '确认完成', {type: 'success'})
+    } catch {
+      return
+    }
+  }
+  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/complete`, {mode, reason}, mode === 'normal' ? '任务已正常完成' : '任务已强制完成')
+}
+
+async function startDepartmentTask(task: BasicItem) {
+  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/start`, {}, '已开始处理')
+}
+
+async function partialCompleteDepartmentTask(task: BasicItem) {
+  const quantity = await promptText('部分完成数量', `请输入已完成数量，计划 ${formatQuantity(task.planned_quantity)}`)
+  if (!quantity) return
+  const remark = await promptText('备注', '可填写本次完成说明', false)
+  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/partial-complete`, {
+    completed_quantity: decimalToScaled(quantity),
+    remark,
+  }, '部分完成已提交')
+}
+
+async function completeDepartmentTask(task: BasicItem) {
+  const remark = await promptText('完成备注', '可填写完成说明', false)
+  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/complete`, {remark}, '部门任务已完成')
+}
+
+async function runWorkOrderAction(path: string, body: Record<string, unknown>, successMessage: string) {
+  if (!selectedWorkOrder.value) return
+  loading.value = true
+  panelMessage.value = ''
+  try {
+    selectedWorkOrder.value = await request<BasicItem>(path, {method: 'POST', body}, token.value)
+    await Promise.all([loadActiveModule(), loadWorkOrderLogs()])
+    panelMessage.value = successMessage
+    ElMessage.success(successMessage)
+  } catch (error) {
+    panelMessage.value = error instanceof Error ? error.message : '任务操作失败'
+    ElMessage.error(panelMessage.value)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function promptText(title: string, message: string, required = true): Promise<string> {
+  try {
+    const result = await ElMessageBox.prompt(message, title, {
+      inputType: 'textarea',
+      inputValidator: (value) => !required || !!String(value || '').trim(),
+      inputErrorMessage: '请填写内容',
+    })
+    return String(result.value || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function departmentTasks(row: any): BasicItem[] {
+  return Array.isArray(row.department_tasks) ? row.department_tasks as BasicItem[] : []
+}
+
+function departmentName(id: unknown): string {
+  const item = rowsFor('departments').find((department) => Number(department.id) === Number(id))
+  return String(item?.name || `部门#${id}`)
+}
+
+function canOperateDepartmentTask(task: BasicItem): boolean {
+  if (!canWriteActive.value || ['draft', 'completed'].includes(String(task.status))) return false
+  if (!selectedWorkOrder.value || selectedWorkOrder.value.status === 'paused') return false
+  if (currentUser.value?.department_id) {
+    return Number(currentUser.value.department_id) === Number(task.department_id)
+  }
+  return true
+}
+
+function workorderStatusLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    draft: '草稿',
+    processing: '正在处理',
+    paused: '暂停',
+    pending_close: '待办公室确认',
+    completed_normal: '正常完成',
+    completed_forced: '强制完成',
+    cancelled: '取消',
+  }
+  return labels[String(value)] || String(value || '-')
+}
+
+function workorderTypeLabel(value: unknown): string {
+  return value === 'general' ? '通用任务' : '生产单'
+}
+
+function inventoryItemTypeLabel(value: unknown): string {
+  return value === 'product' ? '产品' : '物料'
+}
+
+function moldStatusLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    in_stock: '在库',
+    loaned: '已借出',
+    repairing: '维修中',
+    maintenance: '保养中',
+    scrapped: '报废',
+  }
+  return labels[String(value)] || String(value || '-')
+}
+
+function departmentCompletionRate(item: DepartmentStatistic): number {
+  if (!item.total) return 0
+  return Math.round((Number(item.completed || 0) * 100) / Number(item.total))
+}
+
+function trendNameLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    inbound: '入库',
+    outbound: '出库',
+    transfer: '调拨',
+    draft: '草稿',
+    processing: '处理中',
+    pending_close: '待确认',
+    completed_normal: '正常完成',
+    completed_forced: '强制完成',
+  }
+  return labels[String(value)] || String(value || '趋势')
+}
+
+function departmentTaskStatusLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    draft: '待派发',
+    received: '已收到',
+    processing: '正在处理',
+    partial_completed: '部分完成',
+    completed: '完成',
+  }
+  return labels[String(value)] || String(value || '-')
+}
+
+function workorderStatusTag(value: unknown): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+  if (value === 'completed_normal') return 'success'
+  if (value === 'completed_forced' || value === 'cancelled') return 'danger'
+  if (value === 'paused' || value === 'pending_close') return 'warning'
+  if (value === 'processing') return 'primary'
+  return 'info'
+}
+
+function departmentTaskTag(value: unknown): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+  if (value === 'completed') return 'success'
+  if (value === 'partial_completed') return 'warning'
+  if (value === 'processing') return 'primary'
+  return 'info'
+}
+
+function workorderActionLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    create: '创建',
+    dispatch: '派发',
+    dispatch_department: '部门收到',
+    department_start: '部门处理',
+    department_partial_complete: '部分完成',
+    department_complete: '部门完成',
+    pending_close: '待确认',
+    pause: '暂停',
+    resume: '恢复',
+    urgent: '加急',
+    complete_normal: '正常完成',
+    complete_forced: '强制完成',
+  }
+  return labels[String(value)] || String(value || '-')
 }
 
 onMounted(() => {

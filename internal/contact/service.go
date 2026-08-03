@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
 )
@@ -16,7 +17,7 @@ var (
 
 // Service 封装联系人及电话明细的一致性规则。
 type Service interface {
-	List() ([]model.Contact, error)
+	List(query pagination.Query) (pagination.Result[model.Contact], error)
 	Get(id uint) (model.Contact, error)
 	Create(req CreateContactRequest) (model.Contact, error)
 	Update(id uint, req UpdateContactRequest) (model.Contact, error)
@@ -33,10 +34,12 @@ func NewService(db *gorm.DB) Service {
 	return &gormService{db: db}
 }
 
-func (s *gormService) List() ([]model.Contact, error) {
-	var items []model.Contact
-	err := s.db.Order("id desc").Preload("Phones").Find(&items).Error
-	return items, err
+func (s *gormService) List(query pagination.Query) (pagination.Result[model.Contact], error) {
+	db := s.db.Model(&model.Contact{})
+	db = pagination.ApplyKeyword(db, query.Keyword, "name")
+	return pagination.Page[model.Contact](db, query, "id desc", func(tx *gorm.DB) *gorm.DB {
+		return tx.Preload("Phones")
+	})
 }
 
 func (s *gormService) Get(id uint) (model.Contact, error) {
