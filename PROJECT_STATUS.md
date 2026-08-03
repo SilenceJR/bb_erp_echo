@@ -35,10 +35,10 @@
 
 - 仓库按单仓库方向实现。
 - Web 仓库页使用分类标签：
-  - `product`：产品
-  - `production_material`：生产物资
-  - `regular_product`：常规产品
-  - `daily_supply`：生活物资
+    - `product`：产品
+    - `production_material`：生产物资
+    - `regular_product`：常规产品
+    - `daily_supply`：生活物资
 - 仓库物品支持分页和模糊查询。
 - 已实现库存单据、库存余额、库存流水、物品出入库、移动加权平均成本、禁止负库存、幂等键和成本字段裁剪。
 - 成本和金额字段需要 `cost:view` 权限。
@@ -52,25 +52,25 @@
 
 - `/api/v1/workorder` 已实现，`/api/v1/tasks` 保留为兼容路径。
 - 任务单类型：
-  - `production`：生产单
-  - `general`：通用任务
+    - `production`：生产单
+    - `general`：通用任务
 - 主任务状态：
-  - `draft`：草稿
-  - `processing`：正在处理
-  - `paused`：暂停
-  - `pending_close`：待办公室确认
-  - `completed_normal`：正常完成
-  - `completed_forced`：强制完成
-  - `cancelled`：取消
+    - `draft`：草稿
+    - `processing`：正在处理
+    - `paused`：暂停
+    - `pending_close`：待办公室确认
+    - `completed_normal`：正常完成
+    - `completed_forced`：强制完成
+    - `cancelled`：取消
 - 优先级：
-  - `normal`：普通
-  - `urgent`：加急
+    - `normal`：普通
+    - `urgent`：加急
 - 部门子任务状态：
-  - `draft`：内部预派发状态
-  - `received`：已收到
-  - `processing`：正在处理
-  - `partial_completed`：部分完成
-  - `completed`：完成
+    - `draft`：内部预派发状态
+    - `received`：已收到
+    - `processing`：正在处理
+    - `partial_completed`：部分完成
+    - `completed`：完成
 - 办公室可创建生产单/通用任务，选择多个流转部门，派发、暂停、恢复、加急、正常完成或填写原因强制完成。
 - 部门可开始处理、填写部分完成数量、完成本部门任务。
 - 所有部门子任务完成后，主任务自动进入 `pending_close`。
@@ -81,15 +81,15 @@
 
 - `/api/v1/statistics` 已实现为统计报表聚合接口。
 - 统计响应包含：
-  - 顶部汇总卡片
-  - 库存按物品类型和物料分类统计
-  - 低库存列表
-  - 库存流水趋势
-  - 任务单状态/类型/部门处理统计和趋势
-  - 模具状态和需关注模具
-  - 基础资料数量
-  - 审计结果和趋势
-  - 最近任务单
+    - 顶部汇总卡片
+    - 库存按物品类型和物料分类统计
+    - 低库存列表
+    - 库存流水趋势
+    - 任务单状态/类型/部门处理统计和趋势
+    - 模具状态和需关注模具
+    - 基础资料数量
+    - 审计结果和趋势
+    - 最近任务单
 - 没有 `cost:view` 权限时会裁剪成本金额。
 - Web/Tauri UI 已有统计报表专用页面，使用指标卡和报表面板展示。
 

@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -36,7 +36,7 @@ jobs:
         run: go test ./...
 
       - name: Set up Node.js for web
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -51,7 +51,7 @@ jobs:
         run: npm run build
 
       - name: Set up Node.js for Tauri client
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -66,17 +66,38 @@ jobs:
         run: npm run build
 
   build-windows:
-    name: Build Windows desktop package
+    name: Build Windows portable package
     runs-on: windows-latest
     needs: validate
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js for web
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web management app
+        working-directory: web
+        run: npm run build
+
+      - name: Set up Node.js for Tauri client
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -89,21 +110,135 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Set up Windows C compiler for SQLite
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc
+          path-type: inherit
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: client/src-tauri -> target
 
-      - name: Build Windows Tauri package
+      - name: Build Windows Go server
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+          CC: gcc
+        run: |
+          New-Item -ItemType Directory -Force -Path release-build
+          go build -trimpath -ldflags "-s -w" -o release-build/bb-erp-server.exe ./cmd/server
+
+      - name: Build Windows Tauri client
         working-directory: client
         run: npm run desktop:build -- --bundles nsis
 
-      - name: Upload Windows installers
-        uses: actions/upload-artifact@v4
+      - name: Assemble portable Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $packageRoot = "release-build/bb-erp-windows"
+          $serverDir = Join-Path $packageRoot "server"
+          $clientDir = Join-Path $packageRoot "client"
+          $webDir = Join-Path $serverDir "web"
+          $dataDir = Join-Path $serverDir "data"
+          $logsDir = Join-Path $serverDir "logs"
+
+          New-Item -ItemType Directory -Force -Path $serverDir, $clientDir, $webDir, $dataDir, $logsDir | Out-Null
+
+          Copy-Item "release-build/bb-erp-server.exe" (Join-Path $serverDir "bb-erp-server.exe") -Force
+          Copy-Item "web/dist" (Join-Path $webDir "dist") -Recurse -Force
+
+          $clientExe = Get-ChildItem "client/src-tauri/target/release" -Filter "*.exe" |
+            Where-Object { $_.Name -notmatch "build-script" } |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $clientExe) {
+            throw "Tauri client executable was not found under client/src-tauri/target/release."
+          }
+          Copy-Item $clientExe.FullName (Join-Path $clientDir $clientExe.Name) -Force
+
+          $installerDir = Join-Path $packageRoot "installer"
+          New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+          $installers = Get-ChildItem "client/src-tauri/target/release/bundle" -Include "*.exe","*.msi" -Recurse -ErrorAction SilentlyContinue
+          foreach ($installer in $installers) {
+            Copy-Item $installer.FullName (Join-Path $installerDir $installer.Name) -Force
+          }
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0server"
+          set BB_ERP_HTTP_HOST=127.0.0.1
+          set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_DATABASE_PATH=data\erp.db
+          set BB_ERP_LOG_DIR=logs
+          set BB_ERP_WEB_ENABLED=true
+          set BB_ERP_WEB_DIST_DIR=web\dist
+          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
+          set BB_ERP_ADMIN_USERNAME=admin
+          set BB_ERP_ADMIN_PASSWORD=admin123456
+          bb-erp-server.exe
+          '@ | Set-Content -Path (Join-Path $packageRoot "启动服务端.bat") -Encoding ASCII
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          start "BB ERP Server" /min cmd /c "启动服务端.bat"
+          timeout /t 3 /nobreak >nul
+          for %%F in ("client\*.exe") do (
+            start "BB ERP Client" "%%~fF"
+            exit /b 0
+          )
+          echo Client exe was not found under the client directory.
+          pause
+          exit /b 1
+          '@ | Set-Content -Path (Join-Path $packageRoot "启动系统.bat") -Encoding ASCII
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0server"
+          bb-erp-server.exe
+          '@ | Set-Content -Path (Join-Path $packageRoot "server\仅前台启动服务端.bat") -Encoding ASCII
+
+          @'
+          博邦 ERP Windows 便携包
+          ======================
+
+          使用方式：
+          1. 解压整个目录，不要只复制其中某一个 exe。
+          2. 双击“启动系统.bat”，脚本会先启动 Go 服务端，再打开 Tauri 客户端。
+          3. 默认服务地址：http://127.0.0.1:8080
+          4. 默认账号：admin
+          5. 默认密码：admin123456
+
+          目录说明：
+          - server/bb-erp-server.exe：Go 后端服务。
+          - server/web/dist：后端托管的 Web 管理端静态文件，不要删除。
+          - server/data：SQLite 数据目录。首次启动会自动创建 erp.db。
+          - server/logs：运行日志目录。
+          - client：Tauri Windows 客户端。
+          - installer：Tauri 生成的安装器，便携使用时不是必须。
+
+          注意：
+          - 如果 Windows 防火墙提示，请允许本机访问 8080 端口。
+          - 正式使用前请修改“启动服务端.bat”里的 BB_ERP_JWT_SECRET 和 BB_ERP_ADMIN_PASSWORD。
+          - 后续备份数据时，优先备份 server/data 目录。
+          '@ | Set-Content -Path (Join-Path $packageRoot "README.txt") -Encoding UTF8
+
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-build/bb-erp-windows-portable.zip" -Force
+
+      - name: Upload Windows portable package
+        uses: actions/upload-artifact@v7
         with:
-          name: bb-erp-windows-${{ github.run_number }}
+          name: bb-erp-windows-portable-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          path: |
-            client/src-tauri/target/release/bundle/**/*.msi
-            client/src-tauri/target/release/bundle/**/*.exe
+          archive: false
+          path: release-build/bb-erp-windows-portable.zip
