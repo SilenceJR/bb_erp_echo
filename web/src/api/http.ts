@@ -1,14 +1,5 @@
 import type { ApiErrorBody } from '../types'
-
-// API_BASE_URL 是后端服务地址。
-//
-// 参数说明：
-// - VITE_API_BASE_URL：可选覆盖值，适合桌面端或跨域调试。
-//
-// 默认值使用空字符串，表示请求当前页面同源服务。
-// 这样 Web 管理端被 Echo 静态托管时，登录请求会直接发送到同一个后端进程，
-// 避免打到写死端口后出现浏览器 Load failed 且后端无请求日志的问题。
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+import {activeTransport, desktopBridge} from './transport'
 
 // ApiRequestOptions 扩展 fetch 配置，允许调用方直接传普通对象作为 JSON body。
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
@@ -53,7 +44,7 @@ export async function request<T>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await activeTransport().fetch(path, {
     ...options,
     headers,
     body,
@@ -80,5 +71,21 @@ export async function request<T>(
 
 // apiBaseUrl 暴露当前后端地址，用于页面状态展示和问题定位。
 export function apiBaseUrl(): string {
-  return API_BASE_URL
+  return activeTransport().baseUrl()
+}
+
+export function isDesktopClient(): boolean {
+  return !!desktopBridge()
+}
+
+export function saveDesktopServerUrl(value: string): string {
+  const bridge = desktopBridge()
+  if (!bridge) throw new Error('Web 版使用当前页面同源服务，无需设置服务器地址')
+  return bridge.setServerUrl(value)
+}
+
+export async function testDesktopServerUrl(value: string): Promise<void> {
+  const bridge = desktopBridge()
+  if (!bridge) throw new Error('Web 版使用当前页面同源服务，无需测试服务器地址')
+  await bridge.testServerUrl(value)
 }

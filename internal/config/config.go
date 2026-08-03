@@ -40,7 +40,7 @@ type AppConfig struct {
 
 // HTTPConfig 描述 HTTP 服务配置。
 type HTTPConfig struct {
-	// Host 是监听地址，开发环境默认 127.0.0.1。
+	// Host 是监听地址，默认监听所有网卡以供同一局域网内的客户端访问。
 	Host string `koanf:"host"`
 	// Port 是监听端口。
 	Port int `koanf:"port"`
@@ -108,7 +108,7 @@ func Load() (*Config, error) {
 	defaults := map[string]any{
 		"app.name":             "博邦 ERP",
 		"app.environment":      "development",
-		"http.host":            "127.0.0.1",
+		"http.host":            "0.0.0.0",
 		"http.port":            8080,
 		"http.allowed_origins": []string{"http://localhost:3000", "http://localhost:5173"},
 		"database.path":        "data/erp.db",

@@ -13,6 +13,18 @@
           </el-form-item>
           <el-button class="login-submit" type="primary" :loading="loading" native-type="submit">登录</el-button>
           <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon/>
+          <div v-if="desktopClient" class="server-settings login-server-settings">
+            <div class="server-settings-heading">
+              <span>服务器</span>
+              <small>填写运行 Go 服务的内网电脑地址</small>
+            </div>
+            <el-input v-model.trim="serverUrlInput" placeholder="例如 http://192.168.1.20:8080" clearable/>
+            <div class="server-actions">
+              <el-button :loading="serverTesting" @click="testServerSetting">测试连接</el-button>
+              <el-button type="primary" plain @click="saveServerSetting">保存地址</el-button>
+            </div>
+            <el-alert v-if="serverMessage" :title="serverMessage" :type="serverMessageType" :closable="false" show-icon/>
+          </div>
         </el-form>
       </div>
     </section>
@@ -32,6 +44,7 @@
             <span>{{ currentUser?.name || currentUser?.username }}</span>
             <small>{{ accountTypeText }}</small>
           </div>
+          <el-button v-if="desktopClient" text @click="openServerSettings">服务器</el-button>
           <el-button text type="primary" @click="logout">退出登录</el-button>
         </div>
       </header>
@@ -270,6 +283,23 @@
         </div>
       </section>
 
+      <el-dialog v-model="serverDialogVisible" title="服务器设置" width="min(520px, 92vw)" append-to-body>
+        <div class="server-settings">
+          <p class="server-description">当前客户端通过此地址访问 Go 服务。内网部署可填写服务器电脑的局域网 IP，后续公网部署可直接改为 HTTPS 地址。切换到其他服务器后需要重新登录。</p>
+          <el-form label-position="top">
+            <el-form-item label="Go 服务地址">
+              <el-input v-model.trim="serverUrlInput" placeholder="例如 http://192.168.1.20:8080" clearable/>
+            </el-form-item>
+          </el-form>
+          <el-alert v-if="serverMessage" :title="serverMessage" :type="serverMessageType" :closable="false" show-icon/>
+        </div>
+        <template #footer>
+          <el-button @click="serverDialogVisible = false">取消</el-button>
+          <el-button :loading="serverTesting" @click="testServerSetting">测试连接</el-button>
+          <el-button type="primary" @click="saveServerSetting">保存地址</el-button>
+        </template>
+      </el-dialog>
+
       <el-drawer v-model="warehouseDrawerVisible" size="min(620px, 100%)" :with-header="false" destroy-on-close @closed="resetWarehouseItem">
         <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
           <div class="drawer-heading">
@@ -373,8 +403,9 @@
 
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue'
+import {ElMessage} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import {request} from './api/http'
+import {apiBaseUrl, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import {type ModuleItem, modules} from './data/modules'
 import type {BasicItem, CurrentUser, SkeletonResponse} from './types'
 
@@ -431,6 +462,7 @@ const assignmentConfigs: Partial<Record<string, AssignmentConfig>> = {
 
 // 本地存储键：只保存 access token，不保存密码。
 const tokenKey = 'bb_erp_access_token'
+const desktopClient = isDesktopClient()
 
 const token = ref(localStorage.getItem(tokenKey) || '')
 const currentUser = ref<CurrentUser | null>(null)
@@ -454,6 +486,11 @@ const showAllItemMovements = ref(false)
 const movementMode = ref<string>('')
 const showQuickSupplier = ref(false)
 const healthStatus = ref('检查中')
+const serverDialogVisible = ref(false)
+const serverTesting = ref(false)
+const serverUrlInput = ref(apiBaseUrl())
+const serverMessage = ref('')
+const serverMessageType = ref<'success' | 'warning' | 'info' | 'error'>('info')
 const loginForm = reactive({
   username: 'admin',
   password: '',
@@ -763,6 +800,47 @@ function logout() {
   token.value = ''
   currentUser.value = null
   localStorage.removeItem(tokenKey)
+}
+
+function openServerSettings() {
+  serverUrlInput.value = apiBaseUrl()
+  serverMessage.value = ''
+  serverDialogVisible.value = true
+}
+
+async function testServerSetting() {
+  serverTesting.value = true
+  serverMessage.value = ''
+  try {
+    await testDesktopServerUrl(serverUrlInput.value)
+    serverMessageType.value = 'success'
+    serverMessage.value = '连接成功，Go 服务可以访问'
+  } catch (error) {
+    serverMessageType.value = 'error'
+    serverMessage.value = error instanceof Error ? error.message : '连接失败，请检查地址和网络'
+  } finally {
+    serverTesting.value = false
+  }
+}
+
+function saveServerSetting() {
+  try {
+    const previous = apiBaseUrl()
+    const saved = saveDesktopServerUrl(serverUrlInput.value)
+    serverUrlInput.value = saved
+    serverMessageType.value = 'success'
+    serverMessage.value = '服务器地址已保存'
+    serverDialogVisible.value = false
+    if (previous !== saved && token.value) {
+      logout()
+      errorMessage.value = '服务器已切换，请使用新服务器的账号重新登录'
+    }
+    void loadHealth()
+    ElMessage.success('服务器地址已保存')
+  } catch (error) {
+    serverMessageType.value = 'error'
+    serverMessage.value = error instanceof Error ? error.message : '服务器地址保存失败'
+  }
 }
 
 async function bootstrap() {

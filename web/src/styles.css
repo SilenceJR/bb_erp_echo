@@ -49,6 +49,13 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 .login-logo { display: block; width: 190px; max-width: 72%; margin: 0 auto 26px; }
 .login-form, .inline-form { display: grid; gap: 14px; }
 .login-form .el-form-item, .inline-form .el-form-item, .movement-form .el-form-item { margin-bottom: 0; }
+.server-settings { display: grid; gap: 14px; }
+.login-server-settings { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+.server-settings-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.server-settings-heading span { font-weight: 650; color: var(--ink); }
+.server-settings-heading small, .server-description { color: var(--muted); }
+.server-description { margin: 0; line-height: 1.7; }
+.server-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .login-submit { width: 100%; }
 .primary-button, .secondary-button, .ghost-button {
   min-height: 40px;

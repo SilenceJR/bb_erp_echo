@@ -1,6 +1,8 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import Components from 'unplugin-vue-components/vite'
+import {ElementPlusResolver} from 'unplugin-vue-components/resolvers'
 
 // Vite 桌面端配置。
 //
@@ -8,13 +10,18 @@ import vue from '@vitejs/plugin-vue'
 // - root 默认为 client 目录。
 // - publicDir 指向 ../web/public，复用 Web 管理端静态资源。
 // - server.fs.allow 允许 Vite 开发服务器读取 ../web/src，桌面端不复制页面代码。
-// - dev 模式下 API 保持同源路径，由 Vite 代理到 Go 后端，方便 Air 看到真实请求。
-// - build 模式下 Tauri 加载本地静态资源，默认把 API 地址写为 Go 后端 8080。
+// - API 实际由 Tauri Rust HTTP 插件发送，构建变量只作为首次启动默认地址。
 export default defineConfig(({ command }) => {
   const desktopApiBase = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 
   return {
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      Components({
+        resolvers: [ElementPlusResolver()],
+        dts: 'src/components.d.ts',
+      }),
+    ],
     publicDir: fileURLToPath(new URL('../web/public', import.meta.url)),
     define: {
       'import.meta.env.VITE_API_BASE_URL': JSON.stringify(command === 'build' ? desktopApiBase : ''),

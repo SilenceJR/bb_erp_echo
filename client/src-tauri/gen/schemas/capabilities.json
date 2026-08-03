@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"博邦 ERP 桌面端默认权限","local":true,"windows":["main"],"permissions":["core:default"]}}
+{"default":{"identifier":"default","description":"博邦 ERP 桌面端默认权限","local":true,"windows":["main"],"permissions":["core:default",{"identifier":"http:default","allow":[{"url":"http://**"},{"url":"https://**"}]}]}}

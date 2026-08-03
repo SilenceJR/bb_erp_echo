@@ -19,11 +19,19 @@
 go run ./cmd/server
 ```
 
-默认地址：
+默认监听所有网卡的 `8080` 端口。本机可访问：
 
 ```text
 http://127.0.0.1:8080
 ```
+
+同一内网的其他电脑或 Tauri 客户端应使用运行 Go 服务电脑的局域网 IP，例如：
+
+```text
+http://192.168.1.20:8080
+```
+
+如操作系统开启了防火墙，需要允许 `8080/TCP` 入站访问。可通过 `BB_ERP_HTTP_HOST`、`BB_ERP_HTTP_PORT` 覆盖监听地址和端口。
 
 默认管理员：
 
@@ -52,6 +60,8 @@ npm run desktop:dev
 
 桌面端 API 同步规则见 [client/API_SYNC.md](client/API_SYNC.md)。
 
+桌面端登录页可测试并保存 Go 服务地址；登录后也可从顶栏“服务器”入口切换。后续部署公网服务时，将地址改为正式 HTTPS 域名即可。
+
 ## 常用检查
 
 ```bash
@@ -68,4 +78,3 @@ go test ./...
 - `client/node_modules/`
 - `client/src-tauri/target/`
 - `web/dist/`
-

@@ -12,6 +12,9 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Log.Level != "info" {
 		t.Fatalf("log level = %q", cfg.Log.Level)
 	}
+	if cfg.HTTP.Host != "0.0.0.0" {
+		t.Fatalf("http host = %q", cfg.HTTP.Host)
+	}
 	if cfg.Log.Dir != "logs" {
 		t.Fatalf("log dir = %q", cfg.Log.Dir)
 	}
