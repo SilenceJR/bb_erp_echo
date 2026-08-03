@@ -10,7 +10,7 @@
 
 - 首版按单工厂、单组织使用，不做多组织 UI 或多组织业务流程。
 - 后端：Go Echo v5、GORM、SQLite WAL、Casbin 权限。
-- Web：Vue 3 管理端。
+- Web：Vue 3 管理端，element-plus 组件。
 - 桌面端：Tauri 客户端复用 Web UI 和同一套 API。
 - 当前可用范围覆盖塑胶工厂内部 ERP 的客户、联系人、仓库库存、模具、任务单、统计报表、权限、审计和桌面端连接。
 
