@@ -11,7 +11,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -113,7 +113,7 @@ func performStatisticsRequest(t *testing.T, handler *Handler, permissions []stri
 	c := e.NewContext(req, rec)
 	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, Permissions: permissions})
 	if err := handler.Dashboard(c); err != nil {
-		e.HTTPErrorHandler(c, err)
+		e.HTTPErrorHandler(err, c)
 	}
 	return rec
 }

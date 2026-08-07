@@ -7,7 +7,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +34,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 }
 
 // ListMaterials 查询物料列表。
-func (h *Handler) ListMaterials(c *echo.Context) error {
+func (h *Handler) ListMaterials(c echo.Context) error {
 	var items []model.Material
 	if err := h.DB.Order("id desc").Find(&items).Error; err != nil {
 		return err
@@ -43,7 +43,7 @@ func (h *Handler) ListMaterials(c *echo.Context) error {
 }
 
 // CreateMaterial 创建物料。
-func (h *Handler) CreateMaterial(c *echo.Context) error {
+func (h *Handler) CreateMaterial(c echo.Context) error {
 	var req struct {
 		Name        string `json:"name" validate:"required"`
 		Code        string `json:"code" validate:"required"`

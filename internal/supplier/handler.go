@@ -8,7 +8,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -40,7 +40,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	group.PATCH("/:id", h.Update, require("/api/v1/suppliers", "write"))
 }
 
-func (h *Handler) List(c *echo.Context) error {
+func (h *Handler) List(c echo.Context) error {
 	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (h *Handler) List(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) Create(c *echo.Context) error {
+func (h *Handler) Create(c echo.Context) error {
 	var req supplierRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -60,7 +60,7 @@ func (h *Handler) Create(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
-func (h *Handler) Update(c *echo.Context) error {
+func (h *Handler) Update(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err

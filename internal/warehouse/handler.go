@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +44,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 }
 
 // ListWarehouses 查询单仓库信息。
-func (h *Handler) ListWarehouses(c *echo.Context) error {
+func (h *Handler) ListWarehouses(c echo.Context) error {
 	item, err := h.ensureDefaultWarehouse()
 	if err != nil {
 		return err
@@ -53,7 +53,7 @@ func (h *Handler) ListWarehouses(c *echo.Context) error {
 }
 
 // CreateWarehouse 更新单仓库名称和编码。
-func (h *Handler) CreateWarehouse(c *echo.Context) error {
+func (h *Handler) CreateWarehouse(c echo.Context) error {
 	var req struct {
 		Name string `json:"name" validate:"required"`
 		Code string `json:"code" validate:"required"`
@@ -74,12 +74,12 @@ func (h *Handler) CreateWarehouse(c *echo.Context) error {
 }
 
 // ListTabs 查询单仓库内的分类标签。
-func (h *Handler) ListTabs(c *echo.Context) error {
+func (h *Handler) ListTabs(c echo.Context) error {
 	return c.JSON(http.StatusOK, catalogTabs)
 }
 
 // ListItems 查询某个仓库标签下的物品。
-func (h *Handler) ListItems(c *echo.Context) error {
+func (h *Handler) ListItems(c echo.Context) error {
 	tab := c.QueryParam("tab")
 	if tab == "" {
 		tab = tabProduct
@@ -118,7 +118,7 @@ func (h *Handler) ListItems(c *echo.Context) error {
 }
 
 // CreateItem 在仓库标签下创建物品。
-func (h *Handler) CreateItem(c *echo.Context) error {
+func (h *Handler) CreateItem(c echo.Context) error {
 	var req CatalogItemInput
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -131,7 +131,7 @@ func (h *Handler) CreateItem(c *echo.Context) error {
 }
 
 // ListLocations 查询库位列表。
-func (h *Handler) ListLocations(c *echo.Context) error {
+func (h *Handler) ListLocations(c echo.Context) error {
 	var items []model.Location
 	query := h.DB.Order("id desc")
 	if warehouseID := c.QueryParam("warehouse_id"); warehouseID != "" {
@@ -144,7 +144,7 @@ func (h *Handler) ListLocations(c *echo.Context) error {
 }
 
 // CreateLocation 创建库位。
-func (h *Handler) CreateLocation(c *echo.Context) error {
+func (h *Handler) CreateLocation(c echo.Context) error {
 	var req struct {
 		WarehouseID uint   `json:"warehouse_id" validate:"required"`
 		Code        string `json:"code" validate:"required"`
@@ -173,7 +173,7 @@ func (h *Handler) ensureDefaultWarehouse() (model.Warehouse, error) {
 	return item, err
 }
 
-func warehouseCostView(c *echo.Context) bool {
+func warehouseCostView(c echo.Context) bool {
 	current := auth.GetCurrentUser(c)
 	if current == nil {
 		return false

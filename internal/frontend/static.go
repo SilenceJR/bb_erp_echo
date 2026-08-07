@@ -2,6 +2,8 @@
 package frontend
 
 import (
+	"bytes"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -11,7 +13,7 @@ import (
 
 	"bb_erp_echo/internal/config"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 )
 
 // RegisterStatic 注册 Web 管理端静态文件路由。
@@ -57,7 +59,7 @@ func resolveDistDir(distDir string) string {
 		return distDir
 	}
 	current := workingDir
-	for range 5 {
+	for i := 0; i < 5; i++ {
 		candidate := filepath.Join(current, distDir)
 		if dirExists(candidate) {
 			return candidate
@@ -82,7 +84,7 @@ func dirExists(dir string) bool {
 }
 
 func spaHandler(fileSystem fs.FS) echo.HandlerFunc {
-	return func(c *echo.Context) error {
+	return func(c echo.Context) error {
 		requestPath := c.Request().URL.Path
 		if isBackendPath(requestPath) {
 			return echo.NewHTTPError(http.StatusNotFound, "接口不存在")
@@ -93,16 +95,45 @@ func spaHandler(fileSystem fs.FS) echo.HandlerFunc {
 			fileName = "index.html"
 		}
 
-		info, err := fs.Stat(fileSystem, fileName)
-		if err == nil && !info.IsDir() {
-			return c.FileFS(fileName, fileSystem)
+		if err := serveFile(c, fileSystem, fileName); err == nil {
+			return nil
 		}
 
 		if _, err := fs.Stat(fileSystem, "index.html"); err != nil {
 			return echo.NewHTTPError(http.StatusNotFound, "Web 管理端静态文件不存在，请先构建 web/dist")
 		}
-		return c.FileFS("index.html", fileSystem)
+		return serveFile(c, fileSystem, "index.html")
 	}
+}
+
+// serveFile 从 fs.FS 中读取文件并通过 http.ServeContent 写入响应。
+func serveFile(c echo.Context, fileSystem fs.FS, name string) error {
+	f, err := fileSystem.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	if stat.IsDir() {
+		return echo.NewHTTPError(http.StatusForbidden, "不允许访问目录")
+	}
+
+	if rs, ok := f.(io.ReadSeeker); ok {
+		http.ServeContent(c.Response(), c.Request(), stat.Name(), stat.ModTime(), rs)
+		return nil
+	}
+
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	http.ServeContent(c.Response(), c.Request(), stat.Name(), stat.ModTime(), bytes.NewReader(content))
+	return nil
 }
 
 func cleanFileName(requestPath string) string {

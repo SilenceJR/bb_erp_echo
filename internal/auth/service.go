@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/model"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -149,7 +149,7 @@ func (s *Service) PermissionCodesForUser(userID uint) ([]string, error) {
 //
 // 参数说明：
 // - c：Echo 请求上下文。
-func GetCurrentUser(c *echo.Context) *CurrentUser {
+func GetCurrentUser(c echo.Context) *CurrentUser {
 	value := c.Get(ContextUserKey)
 	current, _ := value.(*CurrentUser)
 	return current

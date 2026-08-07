@@ -118,9 +118,9 @@ jobs:
       - name: Set up Windows C compiler for SQLite
         uses: msys2/setup-msys2@v2
         with:
-          msystem: UCRT64
+          msystem: MINGW64
           update: true
-          install: mingw-w64-ucrt-x86_64-gcc
+          install: mingw-w64-x86_64-gcc
           path-type: inherit
 
       - name: Cache Rust dependencies
@@ -192,6 +192,12 @@ jobs:
           @echo off
           setlocal
           cd /d "%~dp0"
+          if not exist "bb-erp-server.exe" (
+            echo [Error] bb-erp-server.exe not found.
+            echo Please make sure this bat file stays in the same folder as bb-erp-server.exe.
+            pause
+            exit /b 1
+          )
           set BB_ERP_HTTP_HOST=127.0.0.1
           set BB_ERP_HTTP_PORT=8080
           set BB_ERP_DATABASE_PATH=data\erp.db
@@ -205,6 +211,9 @@ jobs:
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
           bb-erp-server.exe
+          echo.
+          echo [Info] Server exited with code %errorlevel%.
+          pause
           '@ | Set-Content -Path (Join-Path $serverPackageRoot "启动服务端.bat") -Encoding ASCII
 
           @'
@@ -303,6 +312,11 @@ jobs:
           @echo off
           setlocal
           cd /d "%~dp0server"
+          if not exist "bb-erp-server.exe" (
+            echo [Error] bb-erp-server.exe not found under server directory.
+            pause
+            exit /b 1
+          )
           set BB_ERP_HTTP_HOST=127.0.0.1
           set BB_ERP_HTTP_PORT=8080
           set BB_ERP_DATABASE_PATH=data\erp.db
@@ -316,19 +330,44 @@ jobs:
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
           bb-erp-server.exe
+          echo.
+          echo [Info] Server exited with code %errorlevel%.
+          pause
           '@ | Set-Content -Path (Join-Path $allInOneRoot "启动服务端.bat") -Encoding ASCII
 
           @'
           @echo off
           setlocal
           cd /d "%~dp0"
-          start "BB ERP Server" /min cmd /c "启动服务端.bat"
+          if not exist "server\bb-erp-server.exe" (
+            echo [Error] server\bb-erp-server.exe not found.
+            pause
+            exit /b 1
+          )
+          set BB_ERP_HTTP_HOST=127.0.0.1
+          set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_DATABASE_PATH=data\erp.db
+          set BB_ERP_LOG_DIR=logs
+          set BB_ERP_WEB_ENABLED=true
+          set BB_ERP_WEB_DIST_DIR=web\dist
+          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_CACHE_DIR=updates
+          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
+          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
+          set BB_ERP_ADMIN_USERNAME=admin
+          set BB_ERP_ADMIN_PASSWORD=admin123456
+          start "BB ERP Server" /min /d "%~dp0server" cmd /c "bb-erp-server.exe & echo. & echo [Info] Server exited. & pause"
           timeout /t 3 /nobreak >nul
+          if not exist "client\*.exe" (
+            echo [Error] Client exe not found under client directory.
+            pause
+            exit /b 1
+          )
           for %%F in ("client\*.exe") do (
             start "BB ERP Client" "%%~fF"
             exit /b 0
           )
-          echo Client exe was not found under the client directory.
+          echo [Error] Client exe not found under client directory.
           pause
           exit /b 1
           '@ | Set-Content -Path (Join-Path $allInOneRoot "启动系统.bat") -Encoding ASCII

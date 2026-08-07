@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -159,7 +159,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts [get]
-func (h *Handler) ListContacts(c *echo.Context) error {
+func (h *Handler) ListContacts(c echo.Context) error {
 	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
@@ -189,7 +189,7 @@ func (h *Handler) ListContacts(c *echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts/{id} [get]
-func (h *Handler) GetContact(c *echo.Context) error {
+func (h *Handler) GetContact(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -229,7 +229,7 @@ func (h *Handler) GetContact(c *echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts [post]
-func (h *Handler) CreateContact(c *echo.Context) error {
+func (h *Handler) CreateContact(c echo.Context) error {
 	var req CreateContactRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -271,7 +271,7 @@ func (h *Handler) CreateContact(c *echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts/{id} [patch]
-func (h *Handler) UpdateContact(c *echo.Context) error {
+func (h *Handler) UpdateContact(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -314,7 +314,7 @@ func (h *Handler) UpdateContact(c *echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/contacts/{id} [delete]
-func (h *Handler) DeleteContact(c *echo.Context) error {
+func (h *Handler) DeleteContact(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
+
+	"bb_erp_echo/internal/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,8 +39,8 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v5"
-	echomiddleware "github.com/labstack/echo/v5/middleware"
+	"github.com/labstack/echo/v4"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"gorm.io/gorm"
 )
@@ -186,7 +187,7 @@ func (a *App) configureEcho() {
 	a.Echo.Use(echomiddleware.RequestID())
 	a.Echo.Use(echomiddleware.Recover())
 	a.Echo.Use(echomiddleware.Secure())
-	a.Echo.Use(echomiddleware.BodyLimit(10 * 1024 * 1024))
+	a.Echo.Use(echomiddleware.BodyLimit("10M"))
 	a.Echo.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 		AllowOrigins: a.Config.HTTP.AllowedOrigins,
 		AllowMethods: []string{
@@ -342,7 +343,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /health [get]
-func (a *App) health(c *echo.Context) error {
+func (a *App) health(c echo.Context) error {
 	return c.JSON(http.StatusOK, HealthResponse{Status: "ok", Time: time.Now()})
 }
 
@@ -355,7 +356,7 @@ func (a *App) health(c *echo.Context) error {
 // @Success 200 {object} ReadyResponse
 // @Failure 503 {object} ReadyResponse
 // @Router /ready [get]
-func (a *App) ready(c *echo.Context) error {
+func (a *App) ready(c echo.Context) error {
 	sqlDB, err := a.DB.DB()
 	if err != nil {
 		return c.JSON(http.StatusServiceUnavailable, ReadyResponse{Status: "not_ready", Message: "database unavailable"})

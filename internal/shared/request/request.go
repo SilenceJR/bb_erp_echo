@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 )
 
 // BindAndValidate 绑定 JSON 请求体并执行 validator 校验。
@@ -13,7 +13,7 @@ import (
 // 参数说明：
 // - c：Echo 请求上下文。
 // - dst：目标请求结构体指针。
-func BindAndValidate(c *echo.Context, dst any) error {
+func BindAndValidate(c echo.Context, dst any) error {
 	if err := c.Bind(dst); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "请求 JSON 格式错误")
 	}
@@ -27,7 +27,7 @@ func BindAndValidate(c *echo.Context, dst any) error {
 //
 // 参数说明：
 // - c：Echo 请求上下文。
-func ParamID(c *echo.Context) (uint, error) {
+func ParamID(c echo.Context) (uint, error) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		return 0, echo.NewHTTPError(http.StatusBadRequest, "无效 ID")
