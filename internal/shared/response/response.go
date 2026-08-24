@@ -3,11 +3,12 @@ package response
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v5"
+	"bb_erp_echo/internal/slog"
+
+	"github.com/labstack/echo/v4"
 )
 
 // ErrorBody 是统一错误响应结构。
@@ -27,7 +28,7 @@ type ErrorBody struct {
 //
 // 返回说明：返回可赋给 Echo.HTTPErrorHandler 的函数。
 func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
-	return func(c *echo.Context, err error) {
+	return func(err error, c echo.Context) {
 		if ResponseCommitted(c) {
 			return
 		}
@@ -40,8 +41,8 @@ func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 		if errors.As(err, &httpError) {
 			status = httpError.Code
 			code = strings.ToUpper(strings.ReplaceAll(http.StatusText(status), " ", "_"))
-			if httpError.Message != "" {
-				message = httpError.Message
+			if msg, ok := httpError.Message.(string); ok && msg != "" {
+				message = msg
 			}
 		}
 
@@ -76,7 +77,7 @@ func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 // - path：模块路径。
 // - name：模块中文名称。
 // - message：占位说明。
-func Skeleton(c *echo.Context, statusCode int, path string, name string, message string) error {
+func Skeleton(c echo.Context, statusCode int, path string, name string, message string) error {
 	return c.JSON(statusCode, map[string]any{
 		"module":  path,
 		"name":    name,
@@ -89,9 +90,9 @@ func Skeleton(c *echo.Context, statusCode int, path string, name string, message
 //
 // 参数说明：
 // - c：Echo 请求上下文。
-func ResponseStatus(c *echo.Context) int {
-	if res, ok := c.Response().(*echo.Response); ok && res.Status != 0 {
-		return res.Status
+func ResponseStatus(c echo.Context) int {
+	if c.Response().Status != 0 {
+		return c.Response().Status
 	}
 	return http.StatusOK
 }
@@ -100,9 +101,6 @@ func ResponseStatus(c *echo.Context) int {
 //
 // 参数说明：
 // - c：Echo 请求上下文。
-func ResponseCommitted(c *echo.Context) bool {
-	if res, ok := c.Response().(*echo.Response); ok {
-		return res.Committed
-	}
-	return false
+func ResponseCommitted(c echo.Context) bool {
+	return c.Response().Committed
 }

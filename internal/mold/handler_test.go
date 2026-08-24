@@ -11,7 +11,7 @@ import (
 	"bb_erp_echo/internal/model"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -174,14 +174,17 @@ func performMoldJSON(t *testing.T, handler echo.HandlerFunc, method string, path
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	if len(params) > 0 {
-		pathValues := make(echo.PathValues, 0, len(params))
+		names := make([]string, 0, len(params))
+		values := make([]string, 0, len(params))
 		for key, value := range params {
-			pathValues = append(pathValues, echo.PathValue{Name: key, Value: value})
+			names = append(names, key)
+			values = append(values, value)
 		}
-		c.SetPathValues(pathValues)
+		c.SetParamNames(names...)
+		c.SetParamValues(values...)
 	}
 	if err := handler(c); err != nil {
-		e.HTTPErrorHandler(c, err)
+		e.HTTPErrorHandler(err, c)
 	}
 	return rec
 }

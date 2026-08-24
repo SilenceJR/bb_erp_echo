@@ -8,7 +8,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -64,7 +64,7 @@ type moldRequest struct {
 }
 
 // ListMolds 查询模具台账列表。
-func (h *Handler) ListMolds(c *echo.Context) error {
+func (h *Handler) ListMolds(c echo.Context) error {
 	result, err := h.Service.List(pagination.FromEcho(c), c.QueryParam("status"))
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (h *Handler) ListMolds(c *echo.Context) error {
 }
 
 // GetMold 查询模具属性和履历。
-func (h *Handler) GetMold(c *echo.Context) error {
+func (h *Handler) GetMold(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func (h *Handler) GetMold(c *echo.Context) error {
 }
 
 // CreateMold 创建模具档案。
-func (h *Handler) CreateMold(c *echo.Context) error {
+func (h *Handler) CreateMold(c echo.Context) error {
 	var req moldRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -102,7 +102,7 @@ func (h *Handler) CreateMold(c *echo.Context) error {
 }
 
 // UpdateMold 更新模具基础属性。
-func (h *Handler) UpdateMold(c *echo.Context) error {
+func (h *Handler) UpdateMold(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (h *Handler) UpdateMold(c *echo.Context) error {
 }
 
 // DeleteMold 软删除模具档案。
-func (h *Handler) DeleteMold(c *echo.Context) error {
+func (h *Handler) DeleteMold(c echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -137,7 +137,7 @@ func (h *Handler) DeleteMold(c *echo.Context) error {
 }
 
 // LoanMold 登记模具借出。
-func (h *Handler) LoanMold(c *echo.Context) error {
+func (h *Handler) LoanMold(c echo.Context) error {
 	var req struct {
 		Location     string `json:"location" validate:"required"`
 		Counterparty string `json:"counterparty" validate:"required"`
@@ -151,7 +151,7 @@ func (h *Handler) LoanMold(c *echo.Context) error {
 }
 
 // ReturnMold 登记模具归还入库。
-func (h *Handler) ReturnMold(c *echo.Context) error {
+func (h *Handler) ReturnMold(c echo.Context) error {
 	var req struct {
 		Location    string `json:"location"`
 		HandlerName string `json:"handler_name"`
@@ -164,7 +164,7 @@ func (h *Handler) ReturnMold(c *echo.Context) error {
 }
 
 // RepairMold 登记模具维修。
-func (h *Handler) RepairMold(c *echo.Context) error {
+func (h *Handler) RepairMold(c echo.Context) error {
 	var req struct {
 		Location    string `json:"location"`
 		HandlerName string `json:"handler_name"`
@@ -183,7 +183,7 @@ func (h *Handler) RepairMold(c *echo.Context) error {
 }
 
 // MaintainMold 登记模具保养。
-func (h *Handler) MaintainMold(c *echo.Context) error {
+func (h *Handler) MaintainMold(c echo.Context) error {
 	var req struct {
 		Location             string `json:"location"`
 		HandlerName          string `json:"handler_name"`
@@ -208,7 +208,7 @@ func (h *Handler) MaintainMold(c *echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) changeStatus(c *echo.Context, nextStatus string, eventType string, location string, counterparty string, handlerName string, reason string, description string) error {
+func (h *Handler) changeStatus(c echo.Context, nextStatus string, eventType string, location string, counterparty string, handlerName string, reason string, description string) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err

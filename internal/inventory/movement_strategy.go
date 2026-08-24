@@ -6,7 +6,7 @@ import (
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 )
 
 // MovementStrategy 封装一种库存业务的方向和关联对象校验。

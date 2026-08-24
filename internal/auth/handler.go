@@ -8,7 +8,7 @@ import (
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -119,7 +119,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, jwtMiddleware echo.MiddlewareFu
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/auth/login [post]
-func (h *Handler) Login(c *echo.Context) error {
+func (h *Handler) Login(c echo.Context) error {
 	var req LoginRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -167,7 +167,7 @@ func (h *Handler) Login(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/auth/me [get]
-func (h *Handler) Me(c *echo.Context) error {
+func (h *Handler) Me(c echo.Context) error {
 	current := GetCurrentUser(c)
 	if current == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")

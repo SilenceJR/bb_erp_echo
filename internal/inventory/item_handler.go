@@ -11,7 +11,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +34,7 @@ type itemMovementRequest struct {
 	Remark             string `json:"remark"`
 }
 
-func (h *Handler) GetItemDetail(c *echo.Context) error {
+func (h *Handler) GetItemDetail(c echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (h *Handler) GetItemDetail(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) ListItemMovements(c *echo.Context) error {
+func (h *Handler) ListItemMovements(c echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (h *Handler) ListItemMovements(c *echo.Context) error {
 	})
 }
 
-func (h *Handler) CreateItemMovement(c *echo.Context) error {
+func (h *Handler) CreateItemMovement(c echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
 		return err
@@ -210,7 +210,7 @@ func (h *Handler) requireRecord(value any, id uint, message string) error {
 	return nil
 }
 
-func itemParams(c *echo.Context) (string, uint, error) {
+func itemParams(c echo.Context) (string, uint, error) {
 	itemType := c.Param("itemType")
 	if itemType != itemMaterial && itemType != itemProduct {
 		return "", 0, echo.NewHTTPError(http.StatusBadRequest, "无效物品类型")
