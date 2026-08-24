@@ -437,6 +437,17 @@
             <template #empty><el-empty description="还没有任务单"/></template>
           </el-table>
 
+          <el-table v-else-if="activeKey === 'molds'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+            <el-table-column label="模具" min-width="190">
+              <template #default="{row}"><span class="item-name">{{ row.name }}</span><small class="item-code">{{ row.code }}</small></template>
+            </el-table-column>
+            <el-table-column label="状态" width="120"><template #default="{row}"><el-tag :type="row.status === 'scrapped' ? 'danger' : 'info'" effect="light">{{ moldStatusLabel(row.status) }}</el-tag></template></el-table-column>
+            <el-table-column prop="current_location" label="当前位置" min-width="150"><template #default="{row}">{{ formatCell(row.current_location) }}</template></el-table-column>
+            <el-table-column prop="next_maintenance_at" label="下次保养" width="140"><template #default="{row}">{{ formatDate(row.next_maintenance_at) }}</template></el-table-column>
+            <el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openMold(row)">详情</el-button></template></el-table-column>
+            <template #empty><el-empty description="还没有模具记录"/></template>
+          </el-table>
+
           <el-table v-else v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
             <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
               <template #default="{row}">{{ formatCell(row[column]) }}</template>
@@ -501,6 +512,7 @@
             <div><span>安全库存</span><strong>{{ formatQuantity(selectedWarehouseItem.safety_stock) }} {{ selectedWarehouseItem.unit }}</strong></div>
             <div v-if="hasPermission('cost:view')"><span>库存金额</span><strong>{{ formatMoney(warehouseDetail?.amount) }}</strong></div>
           </div>
+          <ImageGallery v-if="activeWarehouseTab === 'product'" owner-type="product" :owner-id="selectedWarehouseItem.id" :token="token" :can-write="hasPermission('warehouse:write')" category="product"/>
           <p v-if="panelMessage" class="drawer-message">{{ panelMessage }}</p>
 
           <section v-if="hasPermission('inventory:documents:write')" class="movement-section">
@@ -582,6 +594,31 @@
         </div>
       </el-drawer>
 
+      <el-drawer v-model="moldDetailDrawerVisible" size="min(720px, 100%)" :with-header="false" destroy-on-close @closed="resetMold">
+        <div v-if="selectedMoldDetail" class="item-drawer mold-drawer" aria-label="模具详情">
+          <div class="drawer-heading">
+            <div><small>{{ selectedMoldDetail.code }}</small><h2>{{ selectedMoldDetail.name }}</h2><span>{{ moldStatusLabel(selectedMoldDetail.status) }} · {{ selectedMoldDetail.current_location || '暂无位置' }}</span></div>
+            <el-button circle aria-label="关闭模具详情" @click="moldDetailDrawerVisible = false">×</el-button>
+          </div>
+          <div class="stock-summary mold-summary">
+            <div><span>穴数</span><strong>{{ formatCell(selectedMoldDetail.cavity_count) }}</strong></div>
+            <div><span>成型材料</span><strong>{{ formatCell(selectedMoldDetail.mold_material) }}</strong></div>
+            <div><span>钢材</span><strong>{{ formatCell(selectedMoldDetail.steel) }}</strong></div>
+            <div><span>存放位置</span><strong>{{ formatCell(selectedMoldDetail.storage_location) }}</strong></div>
+            <div><span>保养周期</span><strong>{{ formatCell(selectedMoldDetail.maintenance_cycle_days) }} 天</strong></div>
+            <div><span>下次保养</span><strong>{{ formatDate(selectedMoldDetail.next_maintenance_at) }}</strong></div>
+          </div>
+          <ImageGallery owner-type="mold" :owner-id="selectedMoldDetail.id" :token="token" :can-write="hasPermission('mold:write')" category="mold"/>
+          <section class="movement-history">
+            <div class="drawer-section-title"><h3>模具履历</h3></div>
+            <div v-if="Array.isArray(selectedMoldDetail.events) && selectedMoldDetail.events.length" class="movement-list">
+              <article v-for="event in selectedMoldDetail.events" :key="event.id"><span class="movement-kind">{{ event.type || '事件' }}</span><div><strong>{{ event.status_before || '-' }} → {{ event.status_after || '-' }}</strong><small>{{ event.description || event.reason || event.remark || '-' }} · {{ formatDate(event.created_at) }}</small></div></article>
+            </div>
+            <p v-else class="drawer-empty">暂无模具履历</p>
+          </section>
+        </div>
+      </el-drawer>
+
       <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" :with-header="false" destroy-on-close @closed="resetWorkOrder">
         <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
           <div class="drawer-heading">
@@ -599,6 +636,7 @@
             <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong></div>
           </div>
           <p v-if="selectedWorkOrder.description" class="drawer-message">{{ selectedWorkOrder.description }}</p>
+          <ImageGallery owner-type="workorder" :owner-id="selectedWorkOrder.id" :token="token" :can-write="hasPermission('workorder:write')" category="workorder"/>
 
           <section v-if="canWriteActive" class="movement-section">
             <h3>办公室操作</h3>
@@ -625,6 +663,7 @@
                 <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</p>
                 <el-progress :percentage="Number(task.progress || 0)" :stroke-width="8"/>
                 <small>{{ task.remark || '暂无备注' }}</small>
+                <ImageGallery owner-type="department_task" :owner-id="task.id" :token="token" :can-write="canOperateDepartmentTask(task)" category="department_task"/>
                 <div v-if="canOperateDepartmentTask(task)" class="department-task-actions">
                   <el-button v-if="task.status === 'received'" link type="primary" @click="startDepartmentTask(task)">开始处理</el-button>
                   <el-button v-if="['received', 'processing', 'partial_completed'].includes(String(task.status))" link type="warning" @click="partialCompleteDepartmentTask(task)">部分完成</el-button>
@@ -656,6 +695,7 @@ import {computed, onMounted, reactive, ref} from 'vue'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {apiBaseUrl, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
+import ImageGallery from './components/ImageGallery.vue'
 import {type ModuleItem, modules} from './data/modules'
 import type {BasicItem, ClientUpdateStatus, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
 
@@ -782,6 +822,8 @@ const workorderPriorityFilter = ref('')
 const selectedWorkOrder = ref<BasicItem | null>(null)
 const workorderDrawerVisible = ref(false)
 const workorderLogs = ref<BasicItem[]>([])
+const moldDetailDrawerVisible = ref(false)
+const selectedMoldDetail = ref<BasicItem | null>(null)
 const statisticsData = ref<StatisticsDashboard | null>(null)
 const warehouseTabs = [
   {key: 'product', title: '产品'},
@@ -1075,6 +1117,7 @@ function switchModule(key: string) {
   activeKey.value = key
   closeWarehouseItem()
   closeWorkOrder()
+  closeMold()
   closeAssignment()
   showCreateForm.value = false
   editingSupplier.value = null
@@ -1526,6 +1569,25 @@ function resetWarehouseItem() {
   movementMode.value = ''
   showQuickSupplier.value = false
   clearMovementForm()
+}
+
+async function openMold(item: any) {
+  selectedMoldDetail.value = null
+  moldDetailDrawerVisible.value = true
+  try {
+    selectedMoldDetail.value = await request<BasicItem>(`/api/v1/molds/${item.id}`, {}, token.value)
+  } catch (error) {
+    panelMessage.value = error instanceof Error ? error.message : '模具详情加载失败'
+    ElMessage.error(panelMessage.value)
+  }
+}
+
+function closeMold() {
+  moldDetailDrawerVisible.value = false
+}
+
+function resetMold() {
+  selectedMoldDetail.value = null
 }
 
 async function loadWarehouseItemDetail() {

@@ -7,6 +7,7 @@ coverage.out
 data/*.db
 data/*.db-*
 logs/*.log
+static/uploads/
 
 # 前端依赖和构建产物
 node_modules/
@@ -19,4 +20,3 @@ client/src-tauri/target/
 # 编辑器和系统文件
 .DS_Store
 .idea/workspace.xml
-

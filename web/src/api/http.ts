@@ -69,6 +69,29 @@ export async function request<T>(
   return data as T
 }
 
+// requestBlob 用于受保护的二进制资源，沿用 request 的 Bearer 认证和 ApiError 体验。
+export async function requestBlob(
+  path: string,
+  options: Omit<RequestInit, 'body'> & {body?: BodyInit} = {},
+  token = '',
+): Promise<Blob> {
+  const headers = new Headers(options.headers)
+  headers.set('Accept', 'image/*, application/octet-stream')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await activeTransport().fetch(path, {...options, headers})
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || ''
+    const data = contentType.includes('application/json') ? await response.json() : await response.text()
+    const fallback: ApiErrorBody = {
+      code: `HTTP_${response.status}`,
+      message: typeof data === 'string' ? data : data?.message || '请求失败',
+      request_id: data?.request_id || '',
+    }
+    throw new ApiError(response.status, fallback)
+  }
+  return response.blob()
+}
+
 // apiBaseUrl 暴露当前后端地址，用于页面状态展示和问题定位。
 export function apiBaseUrl(): string {
   return activeTransport().baseUrl()

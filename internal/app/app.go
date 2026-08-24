@@ -19,6 +19,7 @@ import (
 	"bb_erp_echo/internal/customer"
 	"bb_erp_echo/internal/database"
 	"bb_erp_echo/internal/department"
+	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/frontend"
 	"bb_erp_echo/internal/inventory"
 	erplogger "bb_erp_echo/internal/logger"
@@ -170,7 +171,9 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	app.registerRoutes()
+	if err := app.registerRoutes(); err != nil {
+		return nil, err
+	}
 
 	return app, nil
 }
@@ -186,7 +189,7 @@ func (a *App) configureEcho() {
 	a.Echo.Use(echomiddleware.RequestID())
 	a.Echo.Use(echomiddleware.Recover())
 	a.Echo.Use(echomiddleware.Secure())
-	a.Echo.Use(echomiddleware.BodyLimit(10 * 1024 * 1024))
+	a.Echo.Use(echomiddleware.BodyLimit(25 * 1024 * 1024))
 	a.Echo.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 		AllowOrigins: a.Config.HTTP.AllowedOrigins,
 		AllowMethods: []string{
@@ -213,7 +216,7 @@ func (a *App) configureEcho() {
 // registerRoutes 注册健康检查、认证、系统管理和业务骨架路由。
 //
 // 参数说明：无，直接修改 a.Echo 的路由表。
-func (a *App) registerRoutes() {
+func (a *App) registerRoutes() error {
 	a.Echo.GET("/health", a.health)
 	a.Echo.GET("/ready", a.ready)
 
@@ -246,6 +249,11 @@ func (a *App) registerRoutes() {
 	product.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	mold.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	workorder.RegisterRoutes(protected, a.DB, require, auditMiddleware)
+	imageService := filemodule.NewService(a.Config.Files.RootDir, a.DB)
+	if err := imageService.EnsureRoot(); err != nil {
+		return fmt.Errorf("create image upload root: %w", err)
+	}
+	filemodule.NewHandler(imageService, a.DB, a.Enforcer).RegisterRoutes(protected, auditMiddleware)
 	statistics.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 
 	// Swagger API 文档路由必须放在 Web 静态文件兜底之前，避免被前端路由覆盖。
@@ -255,6 +263,7 @@ func (a *App) registerRoutes() {
 
 	// Web 静态文件必须最后注册，避免覆盖 API、健康检查等后端路由。
 	frontend.RegisterStatic(a.Echo, a.Config.Web)
+	return nil
 }
 
 // Start 启动 HTTP 服务。

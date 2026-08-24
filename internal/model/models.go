@@ -364,5 +364,6 @@ func AllModels() []any {
 		&WorkOrder{},
 		&DepartmentTask{},
 		&WorkOrderFlowLog{},
+		&ImageFile{},
 	}
 }

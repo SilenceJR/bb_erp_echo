@@ -1,6 +1,6 @@
 # BB ERP Echo 项目状态
 
-最后更新：2026-08-03 14:48:35 CST
+最后更新：2026-08-24
 
 ## 用途
 
@@ -98,6 +98,25 @@
 - 已修复桌面端服务器地址配置和测试连接。
 - Tauri HTTP scope 已允许本地服务的 health/API 请求。
 - Tauri 客户端复用 Web UI 行为。
+
+### 图片管理
+
+- 已实现受 Bearer 保护的图片列表、上传、内容读取、替换和删除接口。
+- 支持产品、模具、任务单和部门子任务四类业务归属；权限分别继承仓库、模具和任务单权限，兼容旧 `tasks` 权限，部门子任务写入限制为本部门。
+- 图片元数据软删除，替换和删除会清理对应物理文件；默认存放于 `static/uploads`，可由 `BB_ERP_FILES_ROOT_DIR` 覆盖，不提供公开静态直链。
+- Web 已接入图片图库、上传、预览、替换和删除；Tauri 复用同一 Web UI 和 API。
+- 已同步 Swagger、API Markdown 和 `test.http` 图片链路示例。
+- 2026-08-24 主审已实际完成并通过以下验证：
+
+```bash
+GOCACHE=/private/tmp/bb_erp_echo_final_gocache go test ./...
+# web/ 目录
+npm run build
+# client/ 目录
+npm run build
+```
+
+- 浏览器真实 API 冒烟和 Tauri 运行态仍待主审下一步。
 
 ## API 变更同步要求
 

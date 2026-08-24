@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-03
+更新时间：2026-08-24
 
 ## 文档入口
 
@@ -304,6 +304,50 @@ department_outbound    部门出库，department_id 必填
 ```
 
 退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。旧库存单据接口继续保留，用于历史兼容和冲销。
+
+## 图片文件接口
+
+图片接口均需要 `Authorization: Bearer <token>`。图片元数据保存在数据库，物理文件默认存放在 `static/uploads`，可通过 `BB_ERP_FILES_ROOT_DIR` 覆盖。系统不公开静态直链，读取图片内容必须使用受保护的 content 接口。
+
+`owner_type` 只接受以下四种值：
+
+```text
+product          仓库产品，权限继承 product=warehouse
+mold             模具，权限继承 mold
+workorder        任务单，权限继承 workorder
+department_task  部门子任务，权限继承 workorder，并兼容旧 tasks 权限
+```
+
+### GET /api/v1/files?owner_type=&owner_id=&category=
+
+按业务对象查询图片元数据。`owner_type` 和 `owner_id` 必填，`category` 可选且精确匹配。返回数组，每项包含：`id`、`owner_type`、`owner_id`、`uploaded_by`、`category`、`original_name`、`size`、`mime_type`、`extension`、可选的 `replaces_id`、`content_url` 和 `created_at`。
+
+### POST /api/v1/files/images
+
+使用 `multipart/form-data` 上传一张图片，字段如下：
+
+```text
+file        必填，图片文件
+owner_type  必填，product、mold、workorder 或 department_task
+owner_id    必填，关联业务对象 ID
+category    可选，图片分类
+```
+
+文件大小不得超过 20 MiB；格式白名单为 JPEG、PNG、WebP、GIF，文件扩展名和检测到的 MIME 必须匹配。成功返回 HTTP 201 和上述图片元数据。
+
+### GET /api/v1/files/:id/content
+
+使用 Bearer 权限读取图片二进制内容，返回原始图片 MIME 类型；响应带 `Content-Disposition: inline`，不是公开静态资源。
+
+### PUT /api/v1/files/:id/content
+
+使用 `multipart/form-data` 替换图片，字段为必填 `file` 和可选 `category`。未提供 `category` 时沿用旧分类。替换成功返回新的图片元数据；旧元数据软删除并清理旧物理文件。
+
+### DELETE /api/v1/files/:id
+
+软删除图片元数据并清理对应物理文件，成功返回 HTTP 204。
+
+权限规则：产品图片使用仓库权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限，同时兼容 `/api/v1/tasks` 权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
 
 ## 任务单接口
 

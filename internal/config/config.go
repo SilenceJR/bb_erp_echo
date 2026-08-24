@@ -29,6 +29,12 @@ type Config struct {
 	Web      WebConfig      `koanf:"web"`
 	Admin    AdminConfig    `koanf:"admin"`
 	Update   UpdateConfig   `koanf:"update"`
+	Files    FilesConfig    `koanf:"files"`
+}
+
+// FilesConfig 描述受保护上传文件的存储位置。
+type FilesConfig struct {
+	RootDir string `koanf:"root_dir"`
 }
 
 // AppConfig 描述应用自身信息。
@@ -144,6 +150,7 @@ func Load() (*Config, error) {
 		"update.manifest_url":   "",
 		"update.cache_dir":      "updates",
 		"update.client_version": "0.1.0",
+		"files.root_dir":        "static/uploads",
 	}
 
 	// 默认配置只负责让本地开发可运行，敏感配置需要在部署时由环境变量覆盖。
@@ -194,6 +201,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.Update.ClientVersion == "" {
 		cfg.Update.ClientVersion = "0.1.0"
+	}
+	if cfg.Files.RootDir == "" {
+		cfg.Files.RootDir = "static/uploads"
+	}
+	if rootDir := k.String("files.root.dir"); rootDir != "" {
+		cfg.Files.RootDir = rootDir
 	}
 
 	return &cfg, nil

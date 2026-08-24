@@ -57,3 +57,16 @@ export interface PaginatedResponse<T> {
   page_size: number
   keyword?: string
 }
+
+// 图片元数据，对应文件服务返回结构；content_url 只作为元数据保留，不直接用于渲染。
+export interface ImageFile {
+  id: number
+  owner_type: string
+  owner_id: number
+  original_name: string
+  mime_type: string
+  size: number
+  category: string
+  content_url: string
+  created_at: string
+}

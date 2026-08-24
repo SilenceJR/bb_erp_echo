@@ -4,6 +4,7 @@ import type {DesktopHttpBridge} from '../../web/src/api/transport'
 const serverUrlKey = 'bb_erp_server_url'
 const defaultServerUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 const defaultRequestTimeoutMs = 8000
+const fileRequestTimeoutMs = 60000
 
 // normalizeServerUrl 只接受纯 HTTP(S) 源地址，避免把路径、凭据或查询参数
 // 保存为服务地址。后续切换公网 HTTPS 时无需重新构建客户端。
@@ -59,17 +60,27 @@ function connectionError(error: unknown, serverUrl = currentServerUrl): Error {
 }
 
 async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl): Promise<Response> {
-  const controller = init.signal ? undefined : new AbortController()
-  const timeout = controller ? window.setTimeout(() => controller.abort(), defaultRequestTimeoutMs) : undefined
+  const controller = new AbortController()
+  const requestTimeoutMs = path.startsWith('/api/v1/files')
+      ? fileRequestTimeoutMs
+      : defaultRequestTimeoutMs
+  // 合并调用方取消信号与桌面端请求超时，避免上传下载请求过早中断。
+  const abortFromCaller = () => controller.abort()
+  if (init.signal) {
+    if (init.signal.aborted) controller.abort()
+    else init.signal.addEventListener('abort', abortFromCaller, {once: true})
+  }
+  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
   try {
     return await tauriFetch(apiUrl(path, serverUrl), {
       ...init,
-      signal: init.signal || controller?.signal,
+      signal: controller.signal,
     })
   } catch (error) {
     throw connectionError(error, serverUrl)
   } finally {
-    if (timeout) window.clearTimeout(timeout)
+    window.clearTimeout(timeout)
+    init.signal?.removeEventListener('abort', abortFromCaller)
   }
 }
 

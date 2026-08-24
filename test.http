@@ -81,6 +81,79 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("material_id", response.body.id); %}
 
+### 在产品标签创建测试产品
+POST http://127.0.0.1:8080/api/v1/warehouse/items
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tab": "product",
+  "name": "图片测试产品",
+  "code": "IMAGE-TEST-001",
+  "unit": "个",
+  "spec": "图片接口链路",
+  "safety_stock": 10,
+  "default_cost": 100
+}
+
+> {% client.global.set("product_id", response.body.id); %}
+
+### 上传产品图片
+POST http://127.0.0.1:8080/api/v1/files/images
+Content-Type: multipart/form-data; boundary=image-boundary
+Authorization: Bearer {{token}}
+
+--image-boundary
+Content-Disposition: form-data; name="owner_type"
+
+product
+--image-boundary
+Content-Disposition: form-data; name="owner_id"
+
+{{product_id}}
+--image-boundary
+Content-Disposition: form-data; name="category"
+
+main
+--image-boundary
+Content-Disposition: form-data; name="file"; filename="bobang-logo-hd.png"
+Content-Type: image/png
+
+< ./web/public/bobang-logo-hd.png
+--image-boundary--
+
+> {% client.global.set("image_id", response.body.id); %}
+
+### 查询产品图片列表
+GET http://127.0.0.1:8080/api/v1/files?owner_type=product&owner_id={{product_id}}&category=main
+Authorization: Bearer {{token}}
+
+### 读取产品图片内容
+GET http://127.0.0.1:8080/api/v1/files/{{image_id}}/content
+Authorization: Bearer {{token}}
+
+### 替换产品图片
+PUT http://127.0.0.1:8080/api/v1/files/{{image_id}}/content
+Content-Type: multipart/form-data; boundary=image-replace-boundary
+Authorization: Bearer {{token}}
+
+--image-replace-boundary
+Content-Disposition: form-data; name="category"
+
+replacement
+--image-replace-boundary
+Content-Disposition: form-data; name="file"; filename="bobang-logo-hd.png"
+Content-Type: image/png
+
+< ./web/public/bobang-logo-hd.png
+--image-replace-boundary--
+
+> {% client.global.set("image_id", response.body.id); %}
+
+### 删除产品图片
+DELETE http://127.0.0.1:8080/api/v1/files/{{image_id}}
+Authorization: Bearer {{token}}
+
 ### 创建库存入库草稿
 POST http://127.0.0.1:8080/api/v1/inventory-documents
 Content-Type: application/json
