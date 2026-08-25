@@ -14,6 +14,14 @@
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
 - 桌面端只负责 Rust/Tauri 壳、窗口配置、平台打包配置，不维护另一套业务 API。
+- 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本，请求 `/api/v1/updates/client/status` 时以 `current_version` 传给 Go；Web 端不发送桌面版本，也不显示客户端安装包提示。
+
+## 更新请求
+
+- `/api/v1/version` 保持启动兼容信息。
+- Tauri 调用 `/api/v1/updates/client/status?current_version=<安装版本>`，只有服务端已校验并缓存更高版本客户端包时才展示下载提示。
+- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。
+- 客户端包仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。
 
 ## 调试说明
 

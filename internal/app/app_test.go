@@ -67,6 +67,41 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestUpdateStatusRoutesAndClientVersionParameter(t *testing.T) {
+	erp := newTestApp(t)
+	token := erp.login(t, "admin", "admin123456")
+
+	rec := erp.request(http.MethodGet, "/api/v1/system/updates/status", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET update status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = erp.request(http.MethodPost, "/api/v1/system/updates/check", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST update check = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var checkStatus map[string]any
+	decodeJSON(t, rec, &checkStatus)
+	if checkStatus["last_error"] == "" {
+		t.Fatal("disabled update check should return its state and error detail")
+	}
+
+	rec = erp.request(http.MethodGet, "/api/v1/updates/client/status?current_version=1.2.3-beta.1", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET client update status = %d", rec.Code)
+	}
+	var clientStatus map[string]any
+	decodeJSON(t, rec, &clientStatus)
+	if clientStatus["current_version"] != "1.2.3-beta.1" {
+		t.Fatalf("client current_version = %v", clientStatus["current_version"])
+	}
+
+	limitedToken := erp.createLimitedUserAndLogin(t)
+	rec = erp.request(http.MethodGet, "/api/v1/system/updates/status", limitedToken, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("limited update status access = %d", rec.Code)
+	}
+}
+
 // TestJWTCasbinAndSingleOrganizationDepartmentCreate 验证 JWT 必填、Casbin 权限拒绝，
 // 以及单组织模式下部门创建会自动落到当前默认组织。
 func TestJWTCasbinAndSingleOrganizationDepartmentCreate(t *testing.T) {

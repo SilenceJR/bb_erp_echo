@@ -431,3 +431,23 @@ Authorization: Bearer {{token}}
 ### 删除客户
 DELETE http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
 Authorization: Bearer {{token}}
+
+### 查询服务端版本（兼容接口）
+GET http://127.0.0.1:8080/api/v1/version
+Authorization: Bearer {{token}}
+
+### Tauri 使用真实安装版本查询客户端更新
+GET http://127.0.0.1:8080/api/v1/updates/client/status?current_version=0.1.0
+Authorization: Bearer {{token}}
+
+### 查询版本与更新状态（system:updates:read）
+GET http://127.0.0.1:8080/api/v1/system/updates/status
+Authorization: Bearer {{token}}
+
+### 立即执行完整更新检查（system:updates:write）
+POST http://127.0.0.1:8080/api/v1/system/updates/check
+Authorization: Bearer {{token}}
+
+### 下载服务端已校验缓存的客户端包
+GET http://127.0.0.1:8080/api/v1/updates/client/download
+Authorization: Bearer {{token}}

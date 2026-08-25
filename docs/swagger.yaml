@@ -712,6 +712,137 @@ definitions:
           $ref: '#/definitions/statistics.TrendItem'
         type: array
     type: object
+  update.ClientComponentStatus:
+    properties:
+      available:
+        type: boolean
+      cached:
+        type: boolean
+      current_version:
+        type: string
+      download_path:
+        type: string
+      download_url:
+        type: string
+      file_name:
+        type: string
+      latest_version:
+        type: string
+      manifest:
+        $ref: '#/definitions/update.PackageManifest'
+      sha256:
+        type: string
+      size:
+        type: integer
+    type: object
+  update.ClientUpdateStatus:
+    properties:
+      available:
+        type: boolean
+      cached:
+        type: boolean
+      checked_at:
+        type: string
+      current_version:
+        type: string
+      download_path:
+        type: string
+      file_name:
+        type: string
+      latest_version:
+        type: string
+      manifest:
+        $ref: '#/definitions/update.PackageManifest'
+      message:
+        type: string
+    type: object
+  update.ComponentStatus:
+    properties:
+      available:
+        type: boolean
+      current_version:
+        type: string
+      download_url:
+        type: string
+      latest_version:
+        type: string
+      manifest:
+        $ref: '#/definitions/update.PackageManifest'
+      sha256:
+        type: string
+      size:
+        type: integer
+    type: object
+  update.Manifest:
+    properties:
+      all_in_one:
+        $ref: '#/definitions/update.PackageManifest'
+      client:
+        $ref: '#/definitions/update.PackageManifest'
+      notes:
+        type: string
+      published_at:
+        type: string
+      server:
+        $ref: '#/definitions/update.PackageManifest'
+      updater:
+        $ref: '#/definitions/update.PackageManifest'
+      version:
+        type: string
+    type: object
+  update.PackageManifest:
+    properties:
+      sha256:
+        type: string
+      size:
+        type: integer
+      url:
+        type: string
+      version:
+        type: string
+    type: object
+  update.SystemUpdateStatus:
+    properties:
+      check_interval:
+        type: string
+      checking:
+        type: boolean
+      client:
+        $ref: '#/definitions/update.ClientComponentStatus'
+      enabled:
+        type: boolean
+      interval_seconds:
+        type: integer
+      last_attempt_at:
+        type: string
+      last_error:
+        type: string
+      last_success_at:
+        type: string
+      manifest:
+        $ref: '#/definitions/update.Manifest'
+      manifest_url:
+        type: string
+      next_check_at:
+        type: string
+      reachable:
+        type: boolean
+      server:
+        $ref: '#/definitions/update.ComponentStatus'
+    type: object
+  update.VersionResponse:
+    properties:
+      app_name:
+        type: string
+      client_update:
+        $ref: '#/definitions/update.ClientUpdateStatus'
+      client_version:
+        type: string
+      server_version:
+        type: string
+      update_enabled:
+        type: boolean
+    type: object
   workorder.ErrorResponse:
     properties:
       code:
@@ -1472,6 +1603,100 @@ paths:
       summary: 查询统计报表
       tags:
       - statistics
+  /api/v1/system/updates/check:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/update.SystemUpdateStatus'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 立即执行完整更新检查
+      tags:
+      - system-updates
+  /api/v1/system/updates/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/update.SystemUpdateStatus'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 查询版本与更新状态
+      tags:
+      - system-updates
+  /api/v1/updates/client/download:
+    get:
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 下载已校验缓存的桌面客户端包
+      tags:
+      - updates
+  /api/v1/updates/client/status:
+    get:
+      parameters:
+      - description: Tauri 真实安装版本
+        in: query
+        name: current_version
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/update.ClientUpdateStatus'
+      summary: 查询桌面客户端更新状态
+      tags:
+      - updates
+  /api/v1/version:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/update.VersionResponse'
+      summary: 查询服务端与客户端版本
+      tags:
+      - updates
   /api/v1/workorder:
     get:
       parameters:

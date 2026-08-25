@@ -15,7 +15,8 @@
 - 库存、任务、模具、审计等统计报表。
 - 产品、模具、任务单和部门子任务图片的受保护上传、预览、替换与删除。
 - Web 同源请求与 Tauri Rust HTTP 传输抽象，可动态保存内网或公网服务地址。
-- Windows 服务端、桌面客户端、全量便携包和升级包的 CI 构建流程。
+- 服务启动异步检查更新、周期检查、客户端安装包校验缓存，以及管理员“版本与更新”页面。
+- Gitee 主仓库、GitHub 只读构建镜像和公开 Gitee Release 的 Windows 发布闭环。
 
 ## 目录职责
 
@@ -30,6 +31,7 @@ internal/{业务模块}/     客户、仓库、库存、模具、任务单等模
 docs/                    API Markdown 与 OpenAPI 产物
 web/                     Vue Web 应用
 client/                  Tauri 桌面壳和请求传输
+scripts/                 发布与仓库工程脚本
 ```
 
 ## 本地启动
@@ -86,12 +88,29 @@ BB_ERP_WEB_DIST_DIR=web/dist
 BB_ERP_JWT_SECRET=change-me-in-production
 BB_ERP_ADMIN_USERNAME=admin
 BB_ERP_ADMIN_PASSWORD=change-me-in-production
+BB_ERP_UPDATE_ENABLED=false
+BB_ERP_UPDATE_MANIFEST_URL=https://gitee.com/<发布空间>/<发布仓库>/raw/main/update-manifest.json
+BB_ERP_UPDATE_CACHE_DIR=updates
+BB_ERP_UPDATE_CHECK_INTERVAL=6h
+BB_ERP_UPDATE_MANIFEST_TIMEOUT=20s
+BB_ERP_UPDATE_DOWNLOAD_TIMEOUT=10m
 ```
+
+更新检查在服务启动后异步执行，失败不会阻止 ERP 启动，之后默认每 6 小时检查一次。客户端包通过大小、SHA-256 和 ZIP 格式校验后原子写入缓存；服务端新版本只报告和提供下载，不会自动覆盖正在运行的服务。
+
+## 分支、CI 与发布
+
+Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标签的 Push 镜像并运行 Actions。功能开发采用 `codex/<主题>` 分支，通过 Go、Web、Tauri 和相关发布配置验证后再合并主分支。
+
+任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。只有符合 `vMAJOR.MINOR.PATCH[-prerelease]` 的 Gitee 标签经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库。发布任务先匿名复验全部附件，最后才更新稳定 manifest。
+
+仓库拓扑、remote 切换、Secrets/Variables、最小权限和首次预发布验收见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。在实际 Gitee 地址尚未配置前，本地 `origin` 不应写入占位地址。
 
 ## 权限与仓库原则
 
 - `warehouse:read/write` 控制仓库与物品资料；`inventory:documents:read/write` 控制物品流水和四类出入库操作。
 - `suppliers:read/write`、`customers:read`、`system:departments:read` 控制表单所需关联资料；缺少依赖权限时前端隐藏不可完成的操作，后端仍执行权限校验。
+- `system:updates:read` 控制版本状态页面，`system:updates:write` 控制管理员立即检查；已有 write 角色在升级时自动补充 read。
 - `cost:view` 独立控制采购单价、库存成本和金额，列表、详情、流水与统计接口均不得向无权限用户泄露成本字段。
 - 所有新库存业务由服务端自动使用默认仓库，不接受用户选择任意仓库。每次只办理当前物品并立即过账。
 - 采购入库关联供应商；退货返工可关联客户或部门及可选原出库记录；出库关联客户或目标部门。
@@ -113,7 +132,7 @@ cd src-tauri && cargo check --locked
 
 ## 验证状态
 
-2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移，并通过 `go mod tidy` 差异检查、`go vet ./...`、`go test ./...`、Web 与 Tauri 前端生产构建及 `cargo check --locked`。真实浏览器已验证登录、权限导航、仓库物品新增、详情抽屉、四类出入库入口、图片上传、Bearer Blob 预览、替换、删除确认保护，以及桌面/移动响应式切换；图片删除接口和四类业务归属边界由 Go 测试覆盖。远端 CI 在下一次推送成功前标记为“待复验”。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
+2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移及 Gitee 更新闭环代码，并通过干净副本 `go mod tidy` 差异检查、`go vet ./...`、`go test ./...`、Web 与 Tauri 前端生产构建、`cargo check --locked`、发布脚本语法和 Workflow YAML 校验。更新测试覆盖 302、超时、无效 JSON/ZIP、大小与 SHA-256、缓存复用、并发合并、启动与周期调度、失败状态保留及 SemVer 预发布比较。真实浏览器已验证登录、权限导航、仓库物品新增、详情抽屉、四类出入库入口、图片上传、Bearer Blob 预览、替换、删除确认保护，以及桌面/移动响应式切换。Gitee 镜像、正式 Release 和国内网络更新闭环需要在仓库地址与凭据配置后用预发布标签复验；远端 CI 在下一次镜像推送成功前标记为“待复验”。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
 
 ## 已知限制与路线图
 

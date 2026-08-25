@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"bb_erp_echo/internal/buildinfo"
+
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
@@ -113,6 +115,12 @@ type UpdateConfig struct {
 	CacheDir string `koanf:"cache_dir"`
 	// ClientVersion 是当前随服务端发布的客户端版本，用于判断是否需要缓存新客户端包。
 	ClientVersion string `koanf:"client_version"`
+	// CheckInterval 是自动检查更新的周期。
+	CheckInterval time.Duration `koanf:"check_interval"`
+	// ManifestTimeout 是读取远端清单的超时时间。
+	ManifestTimeout time.Duration `koanf:"manifest_timeout"`
+	// DownloadTimeout 是下载客户端升级包的超时时间。
+	DownloadTimeout time.Duration `koanf:"download_timeout"`
 }
 
 // Load 加载系统配置。
@@ -127,30 +135,33 @@ func Load() (*Config, error) {
 	k := koanf.New(".")
 
 	defaults := map[string]any{
-		"app.name":              "博邦 ERP",
-		"app.version":           "0.1.0",
-		"app.environment":       "development",
-		"http.host":             "0.0.0.0",
-		"http.port":             8080,
-		"http.allowed_origins":  []string{"http://localhost:3000", "http://localhost:5173"},
-		"database.path":         "data/erp.db",
-		"jwt.secret":            "change-me-in-production",
-		"jwt.expires_in":        "24h",
-		"jwt.issuer":            "bb-erp-echo",
-		"log.level":             "info",
-		"log.dir":               "logs",
-		"log.console":           true,
-		"log.retention_days":    30,
-		"web.enabled":           true,
-		"web.dist_dir":          "web/dist",
-		"admin.username":        "admin",
-		"admin.password":        "admin123456",
-		"admin.name":            "系统管理员",
-		"update.enabled":        false,
-		"update.manifest_url":   "",
-		"update.cache_dir":      "updates",
-		"update.client_version": "0.1.0",
-		"files.root_dir":        "static/uploads",
+		"app.name":                "博邦 ERP",
+		"app.version":             buildinfo.Version,
+		"app.environment":         "development",
+		"http.host":               "0.0.0.0",
+		"http.port":               8080,
+		"http.allowed_origins":    []string{"http://localhost:3000", "http://localhost:5173"},
+		"database.path":           "data/erp.db",
+		"jwt.secret":              "change-me-in-production",
+		"jwt.expires_in":          "24h",
+		"jwt.issuer":              "bb-erp-echo",
+		"log.level":               "info",
+		"log.dir":                 "logs",
+		"log.console":             true,
+		"log.retention_days":      30,
+		"web.enabled":             true,
+		"web.dist_dir":            "web/dist",
+		"admin.username":          "admin",
+		"admin.password":          "admin123456",
+		"admin.name":              "系统管理员",
+		"update.enabled":          false,
+		"update.manifest_url":     "",
+		"update.cache_dir":        "updates",
+		"update.client_version":   buildinfo.Version,
+		"update.check_interval":   "6h",
+		"update.manifest_timeout": "20s",
+		"update.download_timeout": "10m",
+		"files.root_dir":          "static/uploads",
 	}
 
 	// 默认配置只负责让本地开发可运行，敏感配置需要在部署时由环境变量覆盖。
@@ -200,7 +211,25 @@ func Load() (*Config, error) {
 		cfg.Update.ClientVersion = clientVersion
 	}
 	if cfg.Update.ClientVersion == "" {
-		cfg.Update.ClientVersion = "0.1.0"
+		cfg.Update.ClientVersion = buildinfo.Version
+	}
+	if checkInterval := k.Duration("update.check.interval"); checkInterval > 0 {
+		cfg.Update.CheckInterval = checkInterval
+	}
+	if cfg.Update.CheckInterval <= 0 {
+		cfg.Update.CheckInterval = 6 * time.Hour
+	}
+	if manifestTimeout := k.Duration("update.manifest.timeout"); manifestTimeout > 0 {
+		cfg.Update.ManifestTimeout = manifestTimeout
+	}
+	if cfg.Update.ManifestTimeout <= 0 {
+		cfg.Update.ManifestTimeout = 20 * time.Second
+	}
+	if downloadTimeout := k.Duration("update.download.timeout"); downloadTimeout > 0 {
+		cfg.Update.DownloadTimeout = downloadTimeout
+	}
+	if cfg.Update.DownloadTimeout <= 0 {
+		cfg.Update.DownloadTimeout = 10 * time.Minute
 	}
 	if cfg.Files.RootDir == "" {
 		cfg.Files.RootDir = "static/uploads"

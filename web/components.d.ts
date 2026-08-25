@@ -41,6 +41,7 @@ declare module 'vue' {
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
     ImageGallery: typeof import('./src/components/ImageGallery.vue')['default']
+    UpdateCenter: typeof import('./src/components/UpdateCenter.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

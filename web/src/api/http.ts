@@ -92,6 +92,25 @@ export async function requestBlob(
   return response.blob()
 }
 
+// downloadApiFile 通过当前 HttpTransport 获取受保护文件。Tauri 会走 Rust HTTP
+// 插件，因此动态内网服务地址、Bearer 认证和跨域行为与普通 API 请求保持一致。
+export async function downloadApiFile(path: string, fileName: string, token = ''): Promise<void> {
+  const blob = await requestBlob(path, {}, token)
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = fileName || 'download'
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  try {
+    anchor.click()
+  } finally {
+    anchor.remove()
+    // 给浏览器和 Tauri WebView 留出接管下载的时间，再释放临时 URL。
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  }
+}
+
 // apiBaseUrl 暴露当前后端地址，用于页面状态展示和问题定位。
 export function apiBaseUrl(): string {
   return activeTransport().baseUrl()
@@ -99,6 +118,12 @@ export function apiBaseUrl(): string {
 
 export function isDesktopClient(): boolean {
   return !!desktopBridge()
+}
+
+// desktopAppVersion 只在 Tauri 桥接存在时读取真实安装版本。Web 端返回空值，
+// 避免用前端 package.json 版本冒充桌面客户端版本。
+export async function desktopAppVersion(): Promise<string> {
+  return await desktopBridge()?.appVersion() || ''
 }
 
 export function saveDesktopServerUrl(value: string): string {

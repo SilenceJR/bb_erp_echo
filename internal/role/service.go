@@ -110,6 +110,9 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 			return err
 		}
 	}
+	if err := s.backfillUpdateReadPermission(); err != nil {
+		return err
+	}
 
 	super := model.Role{Name: "超级管理员", Code: SuperAdminCode, Description: "系统内置管理员角色", System: true}
 	if err := s.DB.FirstOrCreate(&super, model.Role{Code: super.Code}).Error; err != nil {
@@ -151,6 +154,33 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 	return s.AssignRoleCodes(admin.ID, []string{SuperAdminCode})
+}
+
+// backfillUpdateReadPermission 为升级前已拥有更新维护权限的角色补充只读权限。
+func (s *Service) backfillUpdateReadPermission() error {
+	var writePermission model.Permission
+	if err := s.DB.Where("code = ?", "system:updates:write").First(&writePermission).Error; err != nil {
+		return err
+	}
+	var readPermission model.Permission
+	if err := s.DB.Where("code = ?", "system:updates:read").First(&readPermission).Error; err != nil {
+		return err
+	}
+	var roleIDs []uint
+	if err := s.DB.Model(&model.RolePermission{}).
+		Where("permission_id = ?", writePermission.ID).
+		Pluck("role_id", &roleIDs).Error; err != nil {
+		return err
+	}
+	for _, roleID := range roleIDs {
+		binding := model.RolePermission{RoleID: roleID, PermissionID: readPermission.ID}
+		if err := s.DB.FirstOrCreate(&binding, model.RolePermission{
+			RoleID: roleID, PermissionID: readPermission.ID,
+		}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // AttachAllExcept 为角色追加除指定权限码以外的全部权限。
@@ -406,6 +436,7 @@ func DefaultPermissions() []model.Permission {
 		{"角色维护", "system:roles:write", "/api/v1/system/roles", "write"},
 		{"权限查看", "system:permissions:read", "/api/v1/system/permissions", "read"},
 		{"审计查看", "system:audits:read", "/api/v1/system/audits", "read"},
+		{"更新查看", "system:updates:read", "/api/v1/system/updates", "read"},
 		{"更新维护", "system:updates:write", "/api/v1/system/updates", "write"},
 		{"客户查看", "customers:read", "/api/v1/customers", "read"},
 		{"客户维护", "customers:write", "/api/v1/customers", "write"},

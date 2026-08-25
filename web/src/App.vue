@@ -88,7 +88,7 @@
             <div class="service-status" :class="{ warning: healthStatus !== '正常' }">
               <span></span> 服务{{ healthStatus === '正常' ? '正常' : '暂不可用' }}
             </div>
-            <div v-if="clientUpdate.cached" class="client-update">
+            <div v-if="desktopClient && clientUpdate.available && clientUpdate.cached" class="client-update">
               <span>客户端 {{ clientUpdate.latest_version || '新版本' }}</span>
               <el-button link type="primary" @click="downloadClientUpdate">下载更新</el-button>
             </div>
@@ -236,7 +236,7 @@
             </template>
           </el-dialog>
 
-          <div class="toolbar">
+          <div v-if="activeKey !== 'updates'" class="toolbar">
             <div class="list-filters">
               <el-input
                   v-model.trim="searchKeyword"
@@ -269,6 +269,12 @@
             <strong>{{ skeletonResult.name }}</strong>
             <span>{{ skeletonResult.message }}</span>
           </div>
+
+          <UpdateCenter
+              v-else-if="activeKey === 'updates'"
+              :token="token"
+              :can-check="hasPermission('system:updates:write')"
+          />
 
           <section v-else-if="activeKey === 'statistics'" v-loading="loading" class="statistics-page">
             <div class="stats-grid">
@@ -463,7 +469,7 @@
             <template #empty><el-empty description="这里还没有记录"/></template>
           </el-table>
 
-          <div v-if="!skeletonResult" class="pagination-bar">
+          <div v-if="!skeletonResult && activeKey !== 'updates'" class="pagination-bar">
             <span>共 {{ pageTotal }} 条记录</span>
             <el-pagination
                 v-model:current-page="page"
@@ -694,8 +700,9 @@
 import {computed, onMounted, reactive, ref} from 'vue'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import {apiBaseUrl, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
+import {apiBaseUrl, desktopAppVersion, downloadApiFile, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import ImageGallery from './components/ImageGallery.vue'
+import UpdateCenter from './components/UpdateCenter.vue'
 import {type ModuleItem, modules} from './data/modules'
 import type {BasicItem, ClientUpdateStatus, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
 
@@ -803,7 +810,7 @@ const serverUrlInput = ref(apiBaseUrl())
 const serverMessage = ref('')
 const serverMessageType = ref<'success' | 'warning' | 'info' | 'error'>('info')
 const clientUpdate = ref<ClientUpdateStatus>({
-  current_version: '0.1.0',
+  current_version: '',
   available: false,
   cached: false,
 })
@@ -1281,7 +1288,9 @@ function saveServerSetting() {
 }
 
 async function bootstrap() {
-  await Promise.allSettled([loadHealth(), loadClientUpdate(), loadMe(), preloadBaseData()])
+  const startupTasks: Promise<unknown>[] = [loadHealth(), loadMe(), preloadBaseData()]
+  if (desktopClient) startupTasks.push(loadClientUpdate())
+  await Promise.allSettled(startupTasks)
   await loadActiveModule()
 }
 
@@ -1300,21 +1309,31 @@ async function loadMe() {
 }
 
 async function loadClientUpdate() {
+  if (!desktopClient) return
   try {
-    clientUpdate.value = await request<ClientUpdateStatus>('/api/v1/updates/client/status')
+    const currentVersion = await desktopAppVersion()
+    const path = appendQuery('/api/v1/updates/client/status', {current_version: currentVersion})
+    clientUpdate.value = await request<ClientUpdateStatus>(path)
   } catch {
     clientUpdate.value = {
-      current_version: '0.1.0',
+      current_version: '',
       available: false,
       cached: false,
     }
   }
 }
 
-function downloadClientUpdate() {
-  if (!clientUpdate.value.download_path) return
-  const base = apiBaseUrl().replace(/\/$/, '')
-  window.open(`${base}${clientUpdate.value.download_path}`, '_blank')
+async function downloadClientUpdate() {
+  if (!desktopClient || !clientUpdate.value.download_path) return
+  try {
+    await downloadApiFile(
+      clientUpdate.value.download_path,
+      clientUpdate.value.file_name || 'bb-erp-client-windows.zip',
+      token.value,
+    )
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '客户端安装包下载失败')
+  }
 }
 
 async function preloadBaseData() {
@@ -1342,7 +1361,11 @@ async function loadActiveModule() {
   panelMessage.value = ''
   skeletonResult.value = null
   try {
-    if (item.key === 'statistics') {
+    if (item.key === 'updates') {
+      rows.value = []
+      columns.value = []
+      pageTotal.value = 0
+    } else if (item.key === 'statistics') {
       await loadStatistics()
     } else {
       await loadList(item.key, true)

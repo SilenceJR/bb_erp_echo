@@ -19,6 +19,7 @@ export const modules: ModuleItem[] = [
   { key: 'roles', title: '角色', group: 'system', path: '/api/v1/system/roles', readPermission: 'system:roles:read', writePermission: 'system:roles:write', status: 'available', description: '角色清单与权限绑定入口。' },
   { key: 'permissions', title: '权限', group: 'system', path: '/api/v1/system/permissions', readPermission: 'system:permissions:read', status: 'available', description: '系统功能权限清单。' },
   { key: 'audits', title: '操作审计', group: 'system', path: '/api/v1/system/audits', readPermission: 'system:audits:read', status: 'available', description: '最近 200 条组织内操作审计。' },
+  { key: 'updates', title: '版本与更新', group: 'system', path: '/api/v1/system/updates/status', readPermission: 'system:updates:read', writePermission: 'system:updates:write', status: 'available', description: '查看服务端和桌面客户端版本、更新源连通性及安装包缓存状态。' },
   { key: 'customers', title: '客户', group: 'business', path: '/api/v1/customers', readPermission: 'customers:read', writePermission: 'customers:write', status: 'available', description: '客户档案基础创建和列表。' },
   { key: 'contacts', title: '联系人', group: 'business', path: '/api/v1/contacts', readPermission: 'contacts:read', writePermission: 'contacts:write', status: 'available', description: '客户联系人和电话明细。' },
   { key: 'suppliers', title: '供应商', group: 'business', path: '/api/v1/suppliers', readPermission: 'suppliers:read', writePermission: 'suppliers:write', status: 'available', description: '维护采购入库使用的供应商档案。' },

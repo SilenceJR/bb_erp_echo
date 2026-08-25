@@ -8,6 +8,7 @@ export interface HttpTransport {
 export interface DesktopHttpBridge extends HttpTransport {
   setServerUrl(value: string): string
   testServerUrl(value: string): Promise<void>
+  appVersion(): Promise<string>
 }
 
 declare global {
@@ -34,4 +35,3 @@ export function activeTransport(): HttpTransport {
 export function desktopBridge(): DesktopHttpBridge | undefined {
   return window.__BB_ERP_DESKTOP__
 }
-

@@ -88,3 +88,33 @@ func TestAssignmentServiceRejectsSuperAdminForTerminalAccount(t *testing.T) {
 		t.Fatalf("rejected assignment should not write rows, count=%d", count)
 	}
 }
+
+func TestBackfillUpdateReadPermission(t *testing.T) {
+	service := newAssignmentTestService(t)
+	role := model.Role{Name: "更新管理员", Code: "update_admin"}
+	permissions := []model.Permission{
+		{Name: "更新查看", Code: "system:updates:read", Object: "/api/v1/system/updates", Action: "read"},
+		{Name: "更新维护", Code: "system:updates:write", Object: "/api/v1/system/updates", Action: "write"},
+	}
+	if err := service.DB.Create(&role).Error; err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	if err := service.DB.Create(&permissions).Error; err != nil {
+		t.Fatalf("create permissions: %v", err)
+	}
+	if err := service.DB.Create(&model.RolePermission{RoleID: role.ID, PermissionID: permissions[1].ID}).Error; err != nil {
+		t.Fatalf("bind write permission: %v", err)
+	}
+	if err := service.backfillUpdateReadPermission(); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	var count int64
+	if err := service.DB.Model(&model.RolePermission{}).
+		Where("role_id = ? AND permission_id = ?", role.ID, permissions[0].ID).
+		Count(&count).Error; err != nil {
+		t.Fatalf("count read binding: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("read permission binding count = %d", count)
+	}
+}

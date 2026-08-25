@@ -4,14 +4,13 @@ on:
   pull_request:
   push:
     branches:
-      - main
-      - master
+      - "**"
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       update_base_url:
-        description: "可选：GitHub/Gitee Release 或内网文件目录 URL，用于生成 update-manifest.json"
+        description: "可选：仅手动临时包使用的下载基地址；手动构建不会发布 Release"
         required: false
         default: ""
 
@@ -98,11 +97,40 @@ jobs:
     name: Build Windows release packages
     runs-on: windows-latest
     needs: [go, web, client]
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Resolve and validate build version
+        id: release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+            $semverPattern = '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-((0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+            if ($tag -notmatch $semverPattern) {
+              throw "Invalid release tag '$tag'. Expected vMAJOR.MINOR.PATCH[-prerelease]."
+            }
+            $version = $tag.Substring(1)
+            "official=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            $version = "0.0.0-dev.${{ github.run_number }}"
+            "official=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "tag=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Validate Gitee release configuration
+        if: steps.release.outputs.official == 'true'
+        shell: pwsh
+        run: |
+          if (-not "${{ vars.GITEE_RELEASE_OWNER }}" -or -not "${{ vars.GITEE_RELEASE_REPO }}") {
+            throw "GITEE_RELEASE_OWNER and GITEE_RELEASE_REPO repository variables are required for tag builds."
+          }
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -159,7 +187,7 @@ jobs:
           CC: gcc
         run: |
           New-Item -ItemType Directory -Force -Path release-build
-          go build -trimpath -ldflags "-s -w" -o release-build/bb-erp-server.exe ./cmd/server
+          go build -trimpath -ldflags "-s -w -X bb_erp_echo/internal/buildinfo.Version=${{ steps.release.outputs.version }}" -o release-build/bb-erp-server.exe ./cmd/server
 
       - name: Build Windows updater
         shell: pwsh
@@ -169,22 +197,29 @@ jobs:
 
       - name: Build Windows Tauri client
         working-directory: client
-        run: npm run desktop:build -- --bundles nsis
+        shell: pwsh
+        run: |
+          @{ version = "${{ steps.release.outputs.version }}" } | ConvertTo-Json -Compress |
+            Set-Content -Path "../release-build/tauri-version.json" -Encoding UTF8
+          npm run desktop:build -- --bundles nsis --config ../release-build/tauri-version.json
 
       - name: Assemble Windows release packages
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $version = "${{ github.ref_name }}"
-          if (-not $version -or "${{ github.ref_type }}" -ne "tag") {
-            $version = "0.1.0-build.${{ github.run_number }}"
-          }
+          $version = "${{ steps.release.outputs.version }}"
+          $tag = "${{ steps.release.outputs.tag }}"
           $baseUrl = "${{ inputs.update_base_url }}"
-          if (-not $baseUrl -and "${{ github.ref_type }}" -eq "tag") {
-            $baseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          if (-not $baseUrl -and $tag) {
+            $baseUrl = "https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/releases/download/$tag"
           }
           $baseUrl = $baseUrl.TrimEnd("/")
+          $stableManifestUrl = ""
+          if ("${{ vars.GITEE_RELEASE_OWNER }}" -and "${{ vars.GITEE_RELEASE_REPO }}") {
+            $stableManifestUrl = "https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/raw/main/update-manifest.json"
+          }
+          $updateEnabled = if ($stableManifestUrl) { "true" } else { "false" }
 
           $serverPackageRoot = "release-build/packages/server"
           $clientPackageRoot = "release-build/packages/client"
@@ -228,9 +263,9 @@ jobs:
           set BB_ERP_LOG_DIR=logs
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
-          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
-          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
+          set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
@@ -239,6 +274,8 @@ jobs:
           echo [Info] Server exited with code %errorlevel%.
           pause
           '@ | Set-Content -Path (Join-Path $serverPackageRoot "启动服务端.bat") -Encoding ASCII
+          (Get-Content (Join-Path $serverPackageRoot "启动服务端.bat") -Raw).Replace("__UPDATE_MANIFEST_URL__", $stableManifestUrl).Replace("__UPDATE_ENABLED__", $updateEnabled) |
+            Set-Content -Path (Join-Path $serverPackageRoot "启动服务端.bat") -Encoding ASCII
 
           @'
           @echo off
@@ -347,9 +384,9 @@ jobs:
           set BB_ERP_LOG_DIR=logs
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
-          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
-          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
+          set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
@@ -358,6 +395,8 @@ jobs:
           echo [Info] Server exited with code %errorlevel%.
           pause
           '@ | Set-Content -Path (Join-Path $allInOneRoot "启动服务端.bat") -Encoding ASCII
+          (Get-Content (Join-Path $allInOneRoot "启动服务端.bat") -Raw).Replace("__UPDATE_MANIFEST_URL__", $stableManifestUrl).Replace("__UPDATE_ENABLED__", $updateEnabled) |
+            Set-Content -Path (Join-Path $allInOneRoot "启动服务端.bat") -Encoding ASCII
 
           @'
           @echo off
@@ -374,9 +413,9 @@ jobs:
           set BB_ERP_LOG_DIR=logs
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
-          set BB_ERP_UPDATE_ENABLED=true
+          set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
-          set BB_ERP_UPDATE_CLIENT_VERSION=0.1.0
+          set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
           set BB_ERP_ADMIN_PASSWORD=admin123456
@@ -395,6 +434,8 @@ jobs:
           pause
           exit /b 1
           '@ | Set-Content -Path (Join-Path $allInOneRoot "启动系统.bat") -Encoding ASCII
+          (Get-Content (Join-Path $allInOneRoot "启动系统.bat") -Raw).Replace("__UPDATE_MANIFEST_URL__", $stableManifestUrl).Replace("__UPDATE_ENABLED__", $updateEnabled) |
+            Set-Content -Path (Join-Path $allInOneRoot "启动系统.bat") -Encoding ASCII
 
           @'
           博邦 ERP Windows 全量便携包
@@ -429,14 +470,17 @@ jobs:
           $serverHash = (Get-FileHash "release-build/bb-erp-server-windows.zip" -Algorithm SHA256).Hash.ToLower()
           $clientHash = (Get-FileHash "release-build/bb-erp-client-windows.zip" -Algorithm SHA256).Hash.ToLower()
           $allInOneHash = (Get-FileHash "release-build/bb-erp-all-in-one-windows.zip" -Algorithm SHA256).Hash.ToLower()
+          $updaterHash = (Get-FileHash "release-build/bb-erp-updater-windows.zip" -Algorithm SHA256).Hash.ToLower()
 
           $serverUrl = ""
           $clientUrl = ""
           $allInOneUrl = ""
+          $updaterUrl = ""
           if ($baseUrl) {
             $serverUrl = "$baseUrl/bb-erp-server-windows.zip"
             $clientUrl = "$baseUrl/bb-erp-client-windows.zip"
             $allInOneUrl = "$baseUrl/bb-erp-all-in-one-windows.zip"
+            $updaterUrl = "$baseUrl/bb-erp-updater-windows.zip"
           }
 
           $manifest = [ordered]@{
@@ -460,6 +504,12 @@ jobs:
               url = $allInOneUrl
               sha256 = $allInOneHash
               size = (Get-Item "release-build/bb-erp-all-in-one-windows.zip").Length
+            }
+            updater = [ordered]@{
+              version = $version
+              url = $updaterUrl
+              sha256 = $updaterHash
+              size = (Get-Item "release-build/bb-erp-updater-windows.zip").Length
             }
           }
           $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path "release-build/update-manifest.json" -Encoding UTF8
@@ -508,3 +558,45 @@ jobs:
           retention-days: 14
           archive: false
           path: release-build/update-manifest.json
+
+      - name: Upload complete release bundle for publishing
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitee-release-assets-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release-build/bb-erp-server-windows.zip
+            release-build/bb-erp-client-windows.zip
+            release-build/bb-erp-all-in-one-windows.zip
+            release-build/bb-erp-updater-windows.zip
+            release-build/update-manifest.json
+
+  publish-gitee:
+    name: Publish verified Gitee release
+    runs-on: ubuntu-latest
+    needs: [build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: gitee-release
+
+    steps:
+      - name: Checkout publisher
+        uses: actions/checkout@v6
+
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: gitee-release-assets-${{ github.run_number }}
+          path: release-assets
+
+      - name: Publish to public Gitee distribution repository
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_SOURCE_TOKEN: ${{ secrets.GITEE_SOURCE_TOKEN }}
+          GITEE_SOURCE_OWNER: ${{ vars.GITEE_SOURCE_OWNER }}
+          GITEE_SOURCE_REPO: ${{ vars.GITEE_SOURCE_REPO }}
+          GITEE_RELEASE_OWNER: ${{ vars.GITEE_RELEASE_OWNER }}
+          GITEE_RELEASE_REPO: ${{ vars.GITEE_RELEASE_REPO }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_ASSET_DIR: release-assets
+        run: bash scripts/publish-gitee-release.sh

@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-24
+更新时间：2026-08-26
 
 ## 文档入口
 
@@ -210,9 +210,62 @@ POST /api/v1/system/roles
 POST /api/v1/system/roles/:id/permissions
 GET  /api/v1/system/permissions
 GET  /api/v1/system/audits
+GET  /api/v1/system/updates/status
+POST /api/v1/system/updates/check
 ```
 
 以上 GET 列表接口均支持 `page`、`page_size`、`q`。
+
+## 版本与更新
+
+更新源是普通 HTTPS JSON 地址，不绑定 Gitee 或 GitHub API。服务启动后异步检查，之后按配置周期检查；失败不会阻止业务服务，并保留上一次成功状态和已校验缓存。
+
+```text
+GET  /api/v1/version
+GET  /api/v1/updates/client/status?current_version=1.2.2
+GET  /api/v1/updates/client/download
+GET  /api/v1/system/updates/status
+POST /api/v1/system/updates/check
+```
+
+- `/api/v1/version` 和两个客户端接口保持既有兼容。
+- Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。
+- 客户端下载接口只分发已通过大小、SHA-256 和 ZIP 校验的本地缓存包。
+- `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
+- `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
+- 服务端更新只报告和提供远端包下载地址，不会自动替换当前进程。
+
+更新状态示例：
+
+```json
+{
+  "enabled": true,
+  "manifest_url": "https://gitee.com/example/bb-erp-release/raw/main/update-manifest.json",
+  "reachable": true,
+  "checking": false,
+  "check_interval": "6h0m0s",
+  "interval_seconds": 21600,
+  "last_attempt_at": "2026-08-26T02:00:00+08:00",
+  "last_success_at": "2026-08-26T02:00:02+08:00",
+  "next_check_at": "2026-08-26T08:00:02+08:00",
+  "server": {
+    "current_version": "1.2.2",
+    "latest_version": "1.2.3",
+    "available": true,
+    "download_url": "https://gitee.com/example/bb-erp-release/releases/download/v1.2.3/bb-erp-server-windows.zip",
+    "size": 12345678,
+    "sha256": "..."
+  },
+  "client": {
+    "current_version": "1.2.2",
+    "latest_version": "1.2.3",
+    "available": true,
+    "cached": true,
+    "file_name": "bb-erp-client-windows.zip",
+    "download_path": "/api/v1/updates/client/download"
+  }
+}
+```
 
 ## 库存前置闭环接口
 

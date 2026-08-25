@@ -29,6 +29,40 @@ export interface ClientUpdateStatus {
   message?: string
 }
 
+// 更新中心状态兼容服务端、桌面客户端两类包；字段保持可选以容忍禁用更新、
+// 首次检查失败以及旧服务端返回的精简状态。
+export interface UpdatePackageStatus {
+  current_version?: string
+  latest_version?: string
+  available?: boolean
+  cached?: boolean
+  file_name?: string
+  download_path?: string
+  download_url?: string
+  size?: number
+  sha256?: string
+  message?: string
+}
+
+export interface SystemUpdateStatus {
+  enabled?: boolean
+  manifest_url?: string
+  source?: string
+  reachable?: boolean
+  checking?: boolean
+  check_interval?: string
+  last_attempt_at?: string
+  last_success_at?: string
+  next_check_at?: string
+  last_error?: string
+  error?: string
+  server?: UpdatePackageStatus
+  client?: UpdatePackageStatus
+  server_update?: UpdatePackageStatus
+  client_update?: UpdatePackageStatus
+  [key: string]: unknown
+}
+
 // 系统管理列表中的通用基础字段。
 export interface BasicItem {
   id: number

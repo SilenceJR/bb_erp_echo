@@ -58,17 +58,18 @@ import (
 // - RoleService：角色、权限和策略重载服务。
 // - LogSystem：文件化日志系统，负责关闭文件句柄。
 type App struct {
-	Config       *config.Config
-	Logger       *slog.Logger
-	AccessLogger *slog.Logger
-	ErrorLogger  *slog.Logger
-	DB           *gorm.DB
-	Echo         *echo.Echo
-	Server       *http.Server
-	Enforcer     *casbin.Enforcer
-	AuthService  *auth.Service
-	RoleService  *role.Service
-	LogSystem    *erplogger.System
+	Config        *config.Config
+	Logger        *slog.Logger
+	AccessLogger  *slog.Logger
+	ErrorLogger   *slog.Logger
+	DB            *gorm.DB
+	Echo          *echo.Echo
+	Server        *http.Server
+	Enforcer      *casbin.Enforcer
+	AuthService   *auth.Service
+	RoleService   *role.Service
+	UpdateService update.UpdateService
+	LogSystem     *erplogger.System
 }
 
 // Validator 是 Echo 请求校验适配器。
@@ -148,18 +149,20 @@ func New() (*App, error) {
 
 	authService := auth.NewService(cfg, db)
 	roleService := role.NewService(db, enforcer)
+	updateService := update.NewService(cfg.Update, cfg.App.Version)
 
 	app := &App{
-		Config:       cfg,
-		Logger:       logSystem.App,
-		AccessLogger: logSystem.Access,
-		ErrorLogger:  logSystem.Error,
-		DB:           db,
-		Echo:         echo.New(),
-		Enforcer:     enforcer,
-		AuthService:  authService,
-		RoleService:  roleService,
-		LogSystem:    logSystem,
+		Config:        cfg,
+		Logger:        logSystem.App,
+		AccessLogger:  logSystem.Access,
+		ErrorLogger:   logSystem.Error,
+		DB:            db,
+		Echo:          echo.New(),
+		Enforcer:      enforcer,
+		AuthService:   authService,
+		RoleService:   roleService,
+		UpdateService: updateService,
+		LogSystem:     logSystem,
 	}
 
 	app.configureEcho()
@@ -228,7 +231,7 @@ func (a *App) registerRoutes() error {
 	}
 
 	auth.NewHandler(a.DB, a.AuthService).RegisterRoutes(v1, jwtMiddleware)
-	updateHandler := update.NewHandler(a.Config)
+	updateHandler := update.NewHandlerWithService(a.Config, a.UpdateService)
 	updateHandler.RegisterPublicRoutes(v1)
 
 	protected := v1.Group("", jwtMiddleware)
@@ -291,6 +294,11 @@ func (a *App) Start() error {
 // 参数说明：无。
 // 返回说明：服务启动失败或优雅关闭失败时返回错误。
 func (a *App) Run() error {
+	updateContext, cancelUpdates := context.WithCancel(context.Background())
+	defer cancelUpdates()
+	if a.UpdateService != nil {
+		a.UpdateService.Start(updateContext)
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- a.Start()

@@ -1,4 +1,5 @@
 import {fetch as tauriFetch} from '@tauri-apps/plugin-http'
+import {getVersion} from '@tauri-apps/api/app'
 import type {DesktopHttpBridge} from '../../web/src/api/transport'
 
 const serverUrlKey = 'bb_erp_server_url'
@@ -103,6 +104,9 @@ const desktopHttpBridge: DesktopHttpBridge = {
       headers: {Accept: 'application/json'},
     }, candidate)
     if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}，请确认这是博邦 ERP Go 服务地址`)
+  },
+  appVersion() {
+    return getVersion()
   },
 }
 
