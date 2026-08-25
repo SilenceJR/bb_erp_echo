@@ -13,7 +13,7 @@ import (
 
 	"bb_erp_echo/internal/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RegisterStatic 注册 Web 管理端静态文件路由。
@@ -84,7 +84,7 @@ func dirExists(dir string) bool {
 }
 
 func spaHandler(fileSystem fs.FS) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		requestPath := c.Request().URL.Path
 		if isBackendPath(requestPath) {
 			return echo.NewHTTPError(http.StatusNotFound, "接口不存在")
@@ -107,7 +107,7 @@ func spaHandler(fileSystem fs.FS) echo.HandlerFunc {
 }
 
 // serveFile 从 fs.FS 中读取文件并通过 http.ServeContent 写入响应。
-func serveFile(c echo.Context, fileSystem fs.FS, name string) error {
+func serveFile(c *echo.Context, fileSystem fs.FS, name string) error {
 	f, err := fileSystem.Open(name)
 	if err != nil {
 		return err

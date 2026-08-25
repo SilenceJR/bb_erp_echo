@@ -6,7 +6,7 @@ import (
 
 	"bb_erp_echo/internal/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // VersionResponse 是服务端和客户端版本信息。
@@ -43,7 +43,7 @@ func (h *Handler) RegisterSystemRoutes(system *echo.Group, require func(string, 
 }
 
 // Version 返回当前服务端、客户端版本和已缓存客户端升级包状态。
-func (h *Handler) Version(c echo.Context) error {
+func (h *Handler) Version(c *echo.Context) error {
 	return c.JSON(http.StatusOK, VersionResponse{
 		AppName:       h.Config.App.Name,
 		ServerVersion: h.Config.App.Version,
@@ -54,12 +54,12 @@ func (h *Handler) Version(c echo.Context) error {
 }
 
 // ClientStatus 返回服务端已缓存的客户端升级包状态。
-func (h *Handler) ClientStatus(c echo.Context) error {
+func (h *Handler) ClientStatus(c *echo.Context) error {
 	return c.JSON(http.StatusOK, h.Manager.CachedClientStatus())
 }
 
 // DownloadClientPackage 把服务端缓存的客户端升级包分发给员工电脑。
-func (h *Handler) DownloadClientPackage(c echo.Context) error {
+func (h *Handler) DownloadClientPackage(c *echo.Context) error {
 	path := h.Manager.CachedClientPackagePath()
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
@@ -69,7 +69,7 @@ func (h *Handler) DownloadClientPackage(c echo.Context) error {
 }
 
 // CheckRemoteUpdates 由管理员触发服务端检查 GitHub、Gitee 或内网 manifest。
-func (h *Handler) CheckRemoteUpdates(c echo.Context) error {
+func (h *Handler) CheckRemoteUpdates(c *echo.Context) error {
 	status, err := h.Manager.CheckAndCacheClientUpdate()
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())

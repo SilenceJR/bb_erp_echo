@@ -9,7 +9,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +37,7 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 }
 
 // ListDepartments 查询当前用户组织内的部门列表。
-func (h *Handler) ListDepartments(c echo.Context) error {
+func (h *Handler) ListDepartments(c *echo.Context) error {
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.Department{})
 	if current := auth.GetCurrentUser(c); current != nil {
@@ -52,7 +52,7 @@ func (h *Handler) ListDepartments(c echo.Context) error {
 }
 
 // CreateDepartment 创建部门，并校验当前用户是否能访问目标组织。
-func (h *Handler) CreateDepartment(c echo.Context) error {
+func (h *Handler) CreateDepartment(c *echo.Context) error {
 	var req struct {
 		Name string `json:"name" validate:"required"`
 		Code string `json:"code" validate:"required"`
@@ -72,7 +72,7 @@ func (h *Handler) CreateDepartment(c echo.Context) error {
 }
 
 // ListTerminals 查询当前用户组织内的终端列表。
-func (h *Handler) ListTerminals(c echo.Context) error {
+func (h *Handler) ListTerminals(c *echo.Context) error {
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.Terminal{})
 	if current := auth.GetCurrentUser(c); current != nil {
@@ -87,7 +87,7 @@ func (h *Handler) ListTerminals(c echo.Context) error {
 }
 
 // CreateTerminal 创建部门终端。
-func (h *Handler) CreateTerminal(c echo.Context) error {
+func (h *Handler) CreateTerminal(c *echo.Context) error {
 	var req struct {
 		DepartmentID uint   `json:"department_id" validate:"required"`
 		Code         string `json:"code" validate:"required"`
@@ -107,7 +107,7 @@ func (h *Handler) CreateTerminal(c echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
-func (h *Handler) canAccessDepartment(c echo.Context, departmentID uint) bool {
+func (h *Handler) canAccessDepartment(c *echo.Context, departmentID uint) bool {
 	current := auth.GetCurrentUser(c)
 	if current == nil {
 		return true

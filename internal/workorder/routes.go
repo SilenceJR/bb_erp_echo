@@ -14,7 +14,7 @@ import (
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -131,7 +131,7 @@ func (h *Handler) register(v1 *echo.Group, path string, require func(string, str
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [get]
-func (h *Handler) List(c echo.Context) error {
+func (h *Handler) List(c *echo.Context) error {
 	query := pagination.FromEcho(c)
 	db := h.DB.Model(&model.WorkOrder{})
 	db = pagination.ApplyKeyword(db, query.Keyword, "work_orders.code", "work_orders.title", "work_orders.product_name", "work_orders.description")
@@ -170,7 +170,7 @@ func (h *Handler) List(c echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [post]
-func (h *Handler) Create(c echo.Context) error {
+func (h *Handler) Create(c *echo.Context) error {
 	var req createRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -240,7 +240,7 @@ func (h *Handler) Create(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/dispatch [post]
-func (h *Handler) Dispatch(c echo.Context) error {
+func (h *Handler) Dispatch(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -293,7 +293,7 @@ func (h *Handler) Dispatch(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/pause [post]
-func (h *Handler) Pause(c echo.Context) error {
+func (h *Handler) Pause(c *echo.Context) error {
 	var req reasonRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -320,7 +320,7 @@ func (h *Handler) Pause(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/resume [post]
-func (h *Handler) Resume(c echo.Context) error {
+func (h *Handler) Resume(c *echo.Context) error {
 	return h.changeWorkOrderStatus(c, StatusProcessing, "resume", "", func(item model.WorkOrder) error {
 		if item.Status != StatusPaused {
 			return echo.NewHTTPError(http.StatusBadRequest, "只有暂停任务可以恢复")
@@ -341,7 +341,7 @@ func (h *Handler) Resume(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/urgent [post]
-func (h *Handler) SetUrgent(c echo.Context) error {
+func (h *Handler) SetUrgent(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func (h *Handler) SetUrgent(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/complete [post]
-func (h *Handler) Complete(c echo.Context) error {
+func (h *Handler) Complete(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -445,7 +445,7 @@ func (h *Handler) Complete(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/start [post]
-func (h *Handler) StartDepartmentTask(c echo.Context) error {
+func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
 	_ = c.Bind(&req)
 	return h.updateDepartmentTask(c, "department_start", func(item model.WorkOrder, task *model.DepartmentTask) error {
@@ -475,7 +475,7 @@ func (h *Handler) StartDepartmentTask(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/partial-complete [post]
-func (h *Handler) PartialCompleteDepartmentTask(c echo.Context) error {
+func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 	var req partialCompleteRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -514,7 +514,7 @@ func (h *Handler) PartialCompleteDepartmentTask(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/complete [post]
-func (h *Handler) CompleteDepartmentTask(c echo.Context) error {
+func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
 	_ = c.Bind(&req)
 	return h.updateDepartmentTask(c, "department_complete", func(item model.WorkOrder, task *model.DepartmentTask) error {
@@ -540,7 +540,7 @@ func (h *Handler) CompleteDepartmentTask(c echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/logs [get]
-func (h *Handler) ListLogs(c echo.Context) error {
+func (h *Handler) ListLogs(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -552,7 +552,7 @@ func (h *Handler) ListLogs(c echo.Context) error {
 	return c.JSON(http.StatusOK, logs)
 }
 
-func (h *Handler) changeWorkOrderStatus(c echo.Context, targetStatus string, action string, reason string, validate func(model.WorkOrder) error) error {
+func (h *Handler) changeWorkOrderStatus(c *echo.Context, targetStatus string, action string, reason string, validate func(model.WorkOrder) error) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -577,7 +577,7 @@ func (h *Handler) changeWorkOrderStatus(c echo.Context, targetStatus string, act
 	return h.respondWorkOrder(c, item.ID)
 }
 
-func (h *Handler) updateDepartmentTask(c echo.Context, action string, mutate func(model.WorkOrder, *model.DepartmentTask) error) error {
+func (h *Handler) updateDepartmentTask(c *echo.Context, action string, mutate func(model.WorkOrder, *model.DepartmentTask) error) error {
 	taskID, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -633,7 +633,7 @@ func (h *Handler) updateDepartmentTask(c echo.Context, action string, mutate fun
 	return h.respondWorkOrder(c, item.ID)
 }
 
-func (h *Handler) ensureDepartmentTaskAccess(c echo.Context, departmentID uint) error {
+func (h *Handler) ensureDepartmentTaskAccess(c *echo.Context, departmentID uint) error {
 	current := auth.GetCurrentUser(c)
 	if current == nil || current.DepartmentID == nil {
 		return nil
@@ -644,7 +644,7 @@ func (h *Handler) ensureDepartmentTaskAccess(c echo.Context, departmentID uint) 
 	return echo.NewHTTPError(http.StatusForbidden, "不能操作其他部门任务")
 }
 
-func (h *Handler) respondWorkOrder(c echo.Context, id uint) error {
+func (h *Handler) respondWorkOrder(c *echo.Context, id uint) error {
 	var item model.WorkOrder
 	if err := h.DB.Preload("DepartmentTasks", func(tx *gorm.DB) *gorm.DB { return tx.Order("id asc") }).First(&item, id).Error; err != nil {
 		return err
@@ -652,7 +652,7 @@ func (h *Handler) respondWorkOrder(c echo.Context, id uint) error {
 	return c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) createFlowLog(tx *gorm.DB, c echo.Context, workOrderID uint, taskID *uint, departmentID *uint, action string, before string, after string, quantityBefore int64, quantityAfter int64, reason string, remark string) error {
+func (h *Handler) createFlowLog(tx *gorm.DB, c *echo.Context, workOrderID uint, taskID *uint, departmentID *uint, action string, before string, after string, quantityBefore int64, quantityAfter int64, reason string, remark string) error {
 	log := model.WorkOrderFlowLog{
 		WorkOrderID:      workOrderID,
 		DepartmentTaskID: taskID,

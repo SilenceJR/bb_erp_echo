@@ -1,15 +1,14 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
-
-	"bb_erp_echo/internal/slog"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RequestLogger 记录每次 HTTP 请求的结构化访问日志。
@@ -19,7 +18,7 @@ import (
 // - logger：结构化日志器。
 func RequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			startedAt := time.Now()
 			err := next(c)
 			method := c.Request().Method

@@ -7,7 +7,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +37,7 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 }
 
 // ListRoles 查询角色列表。
-func (h *Handler) ListRoles(c echo.Context) error {
+func (h *Handler) ListRoles(c *echo.Context) error {
 	var items []model.Role
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.Role{})
@@ -71,7 +71,7 @@ func (h *Handler) ListRoles(c echo.Context) error {
 }
 
 // CreateRole 创建角色。
-func (h *Handler) CreateRole(c echo.Context) error {
+func (h *Handler) CreateRole(c *echo.Context) error {
 	var req struct {
 		Name        string `json:"name" validate:"required"`
 		Code        string `json:"code" validate:"required"`
@@ -88,7 +88,7 @@ func (h *Handler) CreateRole(c echo.Context) error {
 }
 
 // AssignRolePermissions 为角色重新绑定权限。
-func (h *Handler) AssignRolePermissions(c echo.Context) error {
+func (h *Handler) AssignRolePermissions(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func (h *Handler) AssignRolePermissions(c echo.Context) error {
 }
 
 // ListPermissions 查询系统内置权限列表。
-func (h *Handler) ListPermissions(c echo.Context) error {
+func (h *Handler) ListPermissions(c *echo.Context) error {
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.Permission{})
 	query = pagination.ApplyKeyword(query, pageQuery.Keyword, "name", "code", "object", "action", "description")

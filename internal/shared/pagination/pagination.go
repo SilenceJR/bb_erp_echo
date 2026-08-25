@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -42,7 +42,7 @@ type Result[T any] struct {
 // - c：Echo 请求上下文。
 //
 // 返回说明：返回已经兜底和裁剪过的分页参数。
-func FromEcho(c echo.Context) Query {
+func FromEcho(c *echo.Context) Query {
 	page := parsePositive(c.QueryParam("page"), defaultPage)
 	pageSize := parsePositive(c.QueryParam("page_size"), defaultPageSize)
 	if pageSize > maxPageSize {

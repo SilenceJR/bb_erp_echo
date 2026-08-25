@@ -6,7 +6,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 

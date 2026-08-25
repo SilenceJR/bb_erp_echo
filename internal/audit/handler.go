@@ -8,7 +8,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -31,7 +31,7 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 // ListAudits 查询最近 200 条操作审计。
 //
 // 数据范围：当前实现按当前用户所属组织过滤。
-func (h *Handler) ListAudits(c echo.Context) error {
+func (h *Handler) ListAudits(c *echo.Context) error {
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.AuditLog{})
 	if current := auth.GetCurrentUser(c); current != nil {

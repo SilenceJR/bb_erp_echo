@@ -12,7 +12,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +23,7 @@ import (
 // - db：GORM 数据库连接，用于校验用户是否仍然有效。
 func JWT(service *auth.Service, db *gorm.DB) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			header := c.Request().Header.Get(echo.HeaderAuthorization)
 			tokenText := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 			if tokenText == "" || tokenText == header {
@@ -71,7 +71,7 @@ func JWT(service *auth.Service, db *gorm.DB) echo.MiddlewareFunc {
 // - action：动作，当前约定为 read 或 write。
 func RequirePermission(enforcer *casbin.Enforcer, object string, action string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			current := auth.GetCurrentUser(c)
 			if current == nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "未登录")

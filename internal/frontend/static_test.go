@@ -7,7 +7,7 @@ import (
 )
 
 // chdir 保存原工作目录并切换到 dir，返回一个恢复函数。
-// Go 1.20 没有 t.Chdir，需要手动保存和恢复。
+// 手动保存和恢复工作目录，避免测试影响其他用例。
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	orig, err := os.Getwd()

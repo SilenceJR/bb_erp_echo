@@ -170,7 +170,7 @@
                 type="primary"
                 @click="toggleCreateForm"
             >
-              {{ showCreateForm ? '收起' : `＋ 新增${activeModule?.title || ''}` }}
+              {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
             </el-button>
             <el-tag v-else-if="activeModule?.writePermission" type="info" round>仅查看</el-tag>
           </div>
@@ -181,7 +181,7 @@
 
           <el-form v-if="formSchema.length && canWriteActive && showCreateForm" class="inline-form" label-position="top" @submit.prevent="createItem">
             <div class="form-heading">
-              <strong>{{ editingSupplier ? '编辑供应商' : `新增${activeModule?.title}` }}</strong>
+              <strong>{{ editingSupplier ? '编辑供应商' : `新增${createEntityTitle}` }}</strong>
               <span>请填写以下信息，带 * 为常用必填项</span>
             </div>
             <el-form-item v-for="field in formSchema" :key="field.key" :label="field.label">
@@ -1074,6 +1074,7 @@ const formSchema = computed<FormField[]>(() => {
 // cache 保存基础资料列表，为用户、部门、终端表单提供选项。
 const cache = reactive<Record<string, BasicItem[]>>({})
 const activeWarehouseTabTitle = computed(() => warehouseTabs.find((tab) => tab.key === activeWarehouseTab.value)?.title || '物品')
+const createEntityTitle = computed(() => activeKey.value === 'warehouses' ? '物品' : (activeModule.value?.title || ''))
 
 function rowsFor(key: string): BasicItem[] {
   return cache[key] || []

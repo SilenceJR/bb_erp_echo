@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/model"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -119,7 +119,7 @@ func performWarehouseJSON(t *testing.T, handler echo.HandlerFunc, method string,
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	if err := handler(c); err != nil {
-		e.HTTPErrorHandler(err, c)
+		e.HTTPErrorHandler(c, err)
 	}
 	return rec
 }

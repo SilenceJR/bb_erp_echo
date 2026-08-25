@@ -4,9 +4,8 @@ package logger
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
-
-	"bb_erp_echo/internal/slog"
 	"path/filepath"
 	"strings"
 	"sync"

@@ -12,7 +12,7 @@ import (
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -72,7 +72,7 @@ type lineRequest struct {
 }
 
 // ListDocuments 查询库存单据。
-func (h *Handler) ListDocuments(c echo.Context) error {
+func (h *Handler) ListDocuments(c *echo.Context) error {
 	var items []model.InventoryDocument
 	if err := h.DB.Order("id desc").Preload("Lines").Find(&items).Error; err != nil {
 		return err
@@ -81,7 +81,7 @@ func (h *Handler) ListDocuments(c echo.Context) error {
 }
 
 // CreateDocument 创建库存草稿单据。
-func (h *Handler) CreateDocument(c echo.Context) error {
+func (h *Handler) CreateDocument(c *echo.Context) error {
 	var req struct {
 		Code          string        `json:"code" validate:"required"`
 		Type          string        `json:"type" validate:"required,oneof=inbound outbound transfer"`
@@ -141,7 +141,7 @@ func (h *Handler) CreateDocument(c echo.Context) error {
 }
 
 // PostDocument 审核过账库存单据。
-func (h *Handler) PostDocument(c echo.Context) error {
+func (h *Handler) PostDocument(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (h *Handler) PostDocument(c echo.Context) error {
 }
 
 // ReverseDocument 冲销已过账库存单据。
-func (h *Handler) ReverseDocument(c echo.Context) error {
+func (h *Handler) ReverseDocument(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func (h *Handler) ReverseDocument(c echo.Context) error {
 }
 
 // ListBalances 查询库存余额。
-func (h *Handler) ListBalances(c echo.Context) error {
+func (h *Handler) ListBalances(c *echo.Context) error {
 	var items []model.InventoryBalance
 	query := h.DB.Order("id desc")
 	if warehouseID := c.QueryParam("warehouse_id"); warehouseID != "" {
@@ -236,7 +236,7 @@ func (h *Handler) ListBalances(c echo.Context) error {
 }
 
 // ListLedgers 查询库存流水。
-func (h *Handler) ListLedgers(c echo.Context) error {
+func (h *Handler) ListLedgers(c *echo.Context) error {
 	var items []model.InventoryLedger
 	if err := h.DB.Order("id desc").Limit(500).Find(&items).Error; err != nil {
 		return err
@@ -404,7 +404,7 @@ func scaledAmount(quantity int64, unitCost int64) int64 {
 	return quantity * unitCost / 10000
 }
 
-func hasCostView(c echo.Context) bool {
+func hasCostView(c *echo.Context) bool {
 	current := auth.GetCurrentUser(c)
 	if current == nil {
 		return false

@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -174,7 +174,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers [get]
-func (h *Handler) ListCustomers(c echo.Context) error {
+func (h *Handler) ListCustomers(c *echo.Context) error {
 	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
@@ -205,7 +205,7 @@ func (h *Handler) ListCustomers(c echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers [post]
-func (h *Handler) CreateCustomer(c echo.Context) error {
+func (h *Handler) CreateCustomer(c *echo.Context) error {
 	var req CreateCustomerRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -248,7 +248,7 @@ func (h *Handler) CreateCustomer(c echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers/{id} [patch]
-func (h *Handler) UpdateCustomer(c echo.Context) error {
+func (h *Handler) UpdateCustomer(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -295,7 +295,7 @@ func (h *Handler) UpdateCustomer(c echo.Context) error {
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/customers/{id} [delete]
-func (h *Handler) DeleteCustomer(c echo.Context) error {
+func (h *Handler) DeleteCustomer(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err

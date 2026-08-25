@@ -1,15 +1,14 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
-
-	"bb_erp_echo/internal/slog"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +22,7 @@ import (
 // 身份规则：个人账号记录具体人员；部门终端账号记录部门、终端和“未知”人员。
 func Audit(db *gorm.DB, logger *slog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			err := next(c)
 			method := c.Request().Method
 			if method == http.MethodGet || method == http.MethodOptions {

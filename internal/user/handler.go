@@ -11,7 +11,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -42,7 +42,7 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 }
 
 // ListUsers 查询当前用户组织内的账号列表。
-func (h *Handler) ListUsers(c echo.Context) error {
+func (h *Handler) ListUsers(c *echo.Context) error {
 	var items []model.User
 	pageQuery := pagination.FromEcho(c)
 	query := h.DB.Model(&model.User{})
@@ -79,7 +79,7 @@ func (h *Handler) ListUsers(c echo.Context) error {
 }
 
 // CreateUser 创建登录账号。
-func (h *Handler) CreateUser(c echo.Context) error {
+func (h *Handler) CreateUser(c *echo.Context) error {
 	var req struct {
 		Username       string `json:"username" validate:"required"`
 		Password       string `json:"password" validate:"required,min=8"`
@@ -124,7 +124,7 @@ func (h *Handler) CreateUser(c echo.Context) error {
 }
 
 // UpdateUserStatus 启用或停用账号。
-func (h *Handler) UpdateUserStatus(c echo.Context) error {
+func (h *Handler) UpdateUserStatus(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -142,7 +142,7 @@ func (h *Handler) UpdateUserStatus(c echo.Context) error {
 }
 
 // ResetUserPassword 重置账号密码。
-func (h *Handler) ResetUserPassword(c echo.Context) error {
+func (h *Handler) ResetUserPassword(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -164,7 +164,7 @@ func (h *Handler) ResetUserPassword(c echo.Context) error {
 }
 
 // AssignUserRoles 为用户重新绑定角色。
-func (h *Handler) AssignUserRoles(c echo.Context) error {
+func (h *Handler) AssignUserRoles(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -189,7 +189,7 @@ func (h *Handler) AssignUserRoles(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func (h *Handler) canAccessOrg(c echo.Context, orgID uint) bool {
+func (h *Handler) canAccessOrg(c *echo.Context, orgID uint) bool {
 	current := auth.GetCurrentUser(c)
 	return current == nil || current.OrganizationID == orgID
 }

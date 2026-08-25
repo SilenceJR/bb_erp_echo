@@ -14,7 +14,7 @@ import (
 	"bb_erp_echo/internal/role"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -237,11 +237,13 @@ func performItemMovementJSON(t *testing.T, handler *Handler, item any, body any,
 	default:
 		t.Fatalf("unsupported item type %T", item)
 	}
-	c.SetParamNames("itemType", "itemID")
-	c.SetParamValues(itemTypeValue, strconv.FormatUint(uint64(itemID), 10))
+	c.SetPathValues(echo.PathValues{
+		{Name: "itemType", Value: itemTypeValue},
+		{Name: "itemID", Value: strconv.FormatUint(uint64(itemID), 10)},
+	})
 	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, Permissions: permissions})
 	if err := handler.CreateItemMovement(c); err != nil {
-		e.HTTPErrorHandler(err, c)
+		e.HTTPErrorHandler(c, err)
 	}
 	return rec
 }
@@ -268,8 +270,11 @@ func performInventoryJSON(t *testing.T, handler echo.HandlerFunc, method string,
 			names = append(names, key)
 			values = append(values, value)
 		}
-		c.SetParamNames(names...)
-		c.SetParamValues(values...)
+		pathValues := make(echo.PathValues, 0, len(names))
+		for i := range names {
+			pathValues = append(pathValues, echo.PathValue{Name: names[i], Value: values[i]})
+		}
+		c.SetPathValues(pathValues)
 	}
 	current := &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1}
 	if costView {
@@ -277,7 +282,7 @@ func performInventoryJSON(t *testing.T, handler echo.HandlerFunc, method string,
 	}
 	c.Set(auth.ContextUserKey, current)
 	if err := handler(c); err != nil {
-		e.HTTPErrorHandler(err, c)
+		e.HTTPErrorHandler(c, err)
 	}
 	return rec
 }

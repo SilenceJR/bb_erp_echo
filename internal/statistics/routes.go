@@ -10,7 +10,7 @@ import (
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -149,7 +149,7 @@ func RegisterRoutes(v1 *echo.Group, db *gorm.DB, require func(string, string) ec
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/statistics [get]
-func (h *Handler) Dashboard(c echo.Context) error {
+func (h *Handler) Dashboard(c *echo.Context) error {
 	canViewCost := hasCostView(c)
 	result := DashboardResponse{GeneratedAt: time.Now(), CanViewCost: canViewCost}
 	if err := h.fillSummary(&result); err != nil {
@@ -367,7 +367,7 @@ func (h *Handler) lowStockItems(summaryOnly bool) ([]StockItem, error) {
 	return rows, nil
 }
 
-func hasCostView(c echo.Context) bool {
+func hasCostView(c *echo.Context) bool {
 	current := auth.GetCurrentUser(c)
 	if current == nil {
 		return false

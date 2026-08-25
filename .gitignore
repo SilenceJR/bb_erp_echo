@@ -16,7 +16,8 @@ web/dist/
 client/node_modules/
 client/dist/
 client/src-tauri/target/
+/tmp/
 
 # 编辑器和系统文件
 .DS_Store
-.idea/workspace.xml
+.idea/

@@ -11,7 +11,7 @@ import (
 	"bb_erp_echo/internal/model"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -265,11 +265,14 @@ func performJSONWithParams(t *testing.T, handler echo.HandlerFunc, method string
 			names = append(names, key)
 			values = append(values, value)
 		}
-		c.SetParamNames(names...)
-		c.SetParamValues(values...)
+		pathValues := make(echo.PathValues, 0, len(names))
+		for i := range names {
+			pathValues = append(pathValues, echo.PathValue{Name: names[i], Value: values[i]})
+		}
+		c.SetPathValues(pathValues)
 	}
 	if err := handler(c); err != nil {
-		e.HTTPErrorHandler(err, c)
+		e.HTTPErrorHandler(c, err)
 	}
 	return rec
 }
