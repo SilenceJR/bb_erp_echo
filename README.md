@@ -44,11 +44,21 @@ scripts/                 发布与仓库工程脚本
 go run ./cmd/server
 ```
 
-也可使用 Air：
+后端开发推荐使用 Air 快速编译和热重启。Go 1.27 可直接安装当前 Air：
 
 ```bash
-air
+go install github.com/air-verse/air@latest
+air -c .air.toml
 ```
+
+Air 监听 Go、模板和 HTML 文件，构建 `./cmd/server` 到忽略提交的 `tmp` 目录；保存代码后会先优雅中断旧进程，再启动新进程。`data`、`logs`、上传目录、前端依赖和 Tauri target 均排除监听，避免无关文件触发后端重启。可用以下命令确认重启后的服务：
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/ready
+```
+
+Air 只负责 Go 服务热重启。Web 热更新仍在另一个终端运行 `cd web && npm run dev`；Tauri 调试运行 `cd client && npm run desktop:dev`。Windows 10/11 使用同一份 `.air.toml`，平台覆盖会构建 `tmp\\bb-erp-dev.exe`。
 
 Web 开发端：
 

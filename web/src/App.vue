@@ -31,51 +31,74 @@
 
     <section v-else class="workspace">
       <header class="topbar">
+        <el-button
+          id="mobile-menu-button"
+          class="mobile-menu-button"
+          circle
+          aria-label="打开系统导航"
+          @click="mobileNavOpen = true"
+        >
+          <span class="mobile-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        </el-button>
         <div class="brand">
           <img src="/bobang-logo-hd.png" alt="博邦光电"/>
+          <span class="brand-mark" aria-label="博邦光电">BB</span>
           <div>
             <strong>博邦光电</strong>
             <span>业务工作台</span>
           </div>
         </div>
         <div class="user-chip">
-          <div class="user-avatar">{{ userInitial }}</div>
           <div class="user-copy">
             <span>{{ currentUser?.name || currentUser?.username }}</span>
             <small>{{ accountTypeText }}</small>
           </div>
-          <el-button v-if="desktopClient" text @click="openServerSettings">服务器</el-button>
-          <el-button text type="primary" @click="logout">退出登录</el-button>
+          <el-dropdown trigger="click" @command="handleUserCommand">
+            <el-button circle class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="desktopClient" command="server">服务器设置</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </header>
 
-      <div class="mobile-tabs" aria-label="模块导航">
-        <el-button
-            v-for="item in navItems"
-            :key="item.key"
-            :class="{ active: activeKey === item.key }"
-            @click="switchModule(item.key)"
-        >
-          {{ item.title }}
-        </el-button>
-      </div>
-
       <aside class="sidebar" aria-label="系统导航">
-        <el-menu class="main-nav" :default-active="activeKey" @select="switchModule">
-          <el-menu-item index="dashboard">首页</el-menu-item>
-          <el-menu-item-group v-if="businessItems.length" title="日常业务">
-            <el-menu-item v-for="item in businessItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
-          </el-menu-item-group>
-          <el-sub-menu v-if="systemItems.length" index="system">
-            <template #title>系统设置</template>
-            <el-menu-item v-for="item in systemItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
-          </el-sub-menu>
-        </el-menu>
-        <div class="sidebar-help">
-          <span>遇到问题？</span>
-          <small>请联系系统管理员</small>
-        </div>
+        <AppNavigation
+          :active-key="activeKey"
+          :business-items="businessItems"
+          :system-items="systemItems"
+          @select="switchModule"
+        />
       </aside>
+
+      <el-drawer
+        v-model="mobileNavOpen"
+        class="mobile-navigation-drawer"
+        direction="ltr"
+        size="min(320px, 88vw)"
+        title="系统导航"
+        :with-header="false"
+        append-to-body
+        @closed="restoreMobileMenuFocus"
+      >
+        <div class="mobile-navigation">
+          <div class="mobile-navigation__brand">
+            <img src="/bobang-logo-hd.png" alt=""/>
+            <div><strong>博邦光电</strong><span>业务工作台</span></div>
+            <el-button aria-label="关闭系统导航" @click="mobileNavOpen = false">关闭</el-button>
+          </div>
+          <AppNavigation
+            :active-key="activeKey"
+            :business-items="businessItems"
+            :system-items="systemItems"
+            aria-label="移动端系统导航"
+            @select="selectMobileModule"
+          />
+        </div>
+      </el-drawer>
 
       <section class="content">
         <div v-if="activeModule?.key === 'dashboard'" class="dashboard">
@@ -109,15 +132,17 @@
                   shadow="hover"
                   role="button"
                   tabindex="0"
+                  :aria-label="`打开${item.title}：${item.description}`"
                   @click="switchModule(item.key)"
                   @keyup.enter="switchModule(item.key)"
+                  @keyup.space.prevent="switchModule(item.key)"
               >
-                <span class="quick-icon">{{ item.icon }}</span>
+                <span class="quick-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="quick-copy">
                   <strong>{{ item.title }}</strong>
                   <small>{{ item.description }}</small>
                 </span>
-                <span class="quick-arrow">→</span>
+                <span class="quick-arrow" aria-hidden="true">→</span>
               </el-card>
             </div>
           </section>
@@ -132,7 +157,7 @@
             <div class="business-grid">
               <el-card v-for="group in businessGroups" :key="group.title" class="business-card" shadow="never">
                 <div class="business-card-heading">
-                  <span>{{ group.icon }}</span>
+                  <span aria-hidden="true">{{ group.icon }}</span>
                   <div>
                     <strong>{{ group.title }}</strong>
                     <small>{{ group.caption }}</small>
@@ -149,31 +174,32 @@
               </el-card>
             </div>
           </section>
-          <div v-if="!businessItems.length" class="permission-empty">
-            <span class="permission-empty-icon">✓</span>
-            <strong>当前没有待处理的业务</strong>
-            <p>如需使用其他功能，请联系管理员为你的账号配置权限。</p>
-          </div>
+          <PageState
+            v-if="!businessItems.length"
+            kind="permission"
+            title="当前账号没有可用的日常业务"
+            description="如需使用其他功能，请联系管理员为账号配置对应的查看权限。"
+          />
         </div>
 
         <div v-else class="data-page">
-          <div class="page-heading">
-            <div class="section-title">
-              <el-button class="back-home" link @click="switchModule('dashboard')">首页</el-button>
-              <span>/</span>
-              <h1>{{ activeModule?.title }}</h1>
-              <p>{{ activeModule?.description }}</p>
-            </div>
-            <el-button
+          <PageHeader
+            :title="activeModule?.title || '业务页面'"
+            :description="activeModule?.description"
+            :readonly="activePageReadonly"
+            @back="switchModule('dashboard')"
+          >
+            <template #actions>
+              <el-button
                 v-if="formSchema.length && canWriteActive"
                 class="add-button"
                 type="primary"
                 @click="toggleCreateForm"
             >
               {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
-            </el-button>
-            <el-tag v-else-if="activeModule?.writePermission" type="info" round>仅查看</el-tag>
-          </div>
+              </el-button>
+            </template>
+          </PageHeader>
 
           <div v-if="activeModule?.key === 'warehouses'" class="warehouse-tabs" aria-label="仓库分类">
             <el-segmented v-model="activeWarehouseTab" :options="warehouseTabOptions" @change="switchWarehouseTab"/>
@@ -236,44 +262,56 @@
             </template>
           </el-dialog>
 
-          <div v-if="activeKey !== 'updates'" class="toolbar">
-            <div class="list-filters">
-              <el-input
-                  v-model.trim="searchKeyword"
-                  class="keyword-input"
-                  clearable
-                  placeholder="输入名称、编号、电话等关键字"
-                  @keyup.enter="applySearch"
-                  @clear="applySearch"
-              />
-              <template v-if="activeKey === 'workorder'">
-                <el-select v-model="workorderStatusFilter" class="filter-select" placeholder="状态" @change="applySearch">
-                  <el-option v-for="option in workorderStatusOptions" :key="option.value" :label="option.label" :value="option.value"/>
-                </el-select>
-                <el-select v-model="workorderTypeFilter" class="filter-select" placeholder="类型" @change="applySearch">
-                  <el-option v-for="option in workorderTypeOptions" :key="option.value" :label="option.label" :value="option.value"/>
-                </el-select>
-                <el-select v-model="workorderPriorityFilter" class="filter-select" placeholder="优先级" @change="applySearch">
-                  <el-option v-for="option in workorderPriorityOptions" :key="option.value" :label="option.label" :value="option.value"/>
-                </el-select>
-              </template>
-              <el-button type="primary" plain @click="applySearch">搜索</el-button>
-            </div>
-            <div class="toolbar-actions">
-              <span v-if="panelMessage" class="panel-message">{{ panelMessage }}</span>
-              <el-button :loading="loading" @click="loadActiveModule">刷新数据</el-button>
-            </div>
-          </div>
+          <FilterBar
+            v-if="activeKey !== 'updates'"
+            :message="panelMessage"
+            :loading="loading"
+            :resettable="hasActiveFilters"
+            :aria-label="`${activeModule?.title || '数据'}筛选`"
+            @submit="applySearch"
+            @reset="resetFilters"
+            @refresh="loadActiveModule"
+          >
+            <el-input
+              v-model.trim="searchKeyword"
+              class="keyword-input"
+              clearable
+              :placeholder="listSearchPlaceholder"
+              aria-label="关键词"
+            />
+            <template v-if="activeKey === 'workorder'">
+              <el-select v-model="workorderStatusFilter" class="filter-select" placeholder="状态" aria-label="任务状态" @change="applySearch">
+                <el-option v-for="option in workorderStatusOptions" :key="option.value" :label="option.label" :value="option.value"/>
+              </el-select>
+              <el-select v-model="workorderTypeFilter" class="filter-select" placeholder="类型" aria-label="任务类型" @change="applySearch">
+                <el-option v-for="option in workorderTypeOptions" :key="option.value" :label="option.label" :value="option.value"/>
+              </el-select>
+              <el-select v-model="workorderPriorityFilter" class="filter-select" placeholder="优先级" aria-label="任务优先级" @change="applySearch">
+                <el-option v-for="option in workorderPriorityOptions" :key="option.value" :label="option.label" :value="option.value"/>
+              </el-select>
+            </template>
+          </FilterBar>
 
-          <div v-if="skeletonResult" class="skeleton-state">
-            <strong>{{ skeletonResult.name }}</strong>
-            <span>{{ skeletonResult.message }}</span>
-          </div>
+          <PageState
+            v-if="skeletonResult"
+            kind="readonly"
+            :title="skeletonResult.name"
+            :description="skeletonResult.message"
+          />
 
           <UpdateCenter
               v-else-if="activeKey === 'updates'"
               :token="token"
               :can-check="hasPermission('system:updates:write')"
+          />
+
+          <PageState
+            v-else-if="listError && !hasRenderableData"
+            kind="error"
+            title="数据加载失败"
+            :description="listError"
+            action-label="重新加载"
+            @action="loadActiveModule"
           />
 
           <section v-else-if="activeKey === 'statistics'" v-loading="loading" class="statistics-page">
@@ -357,7 +395,7 @@
                 <div v-if="statisticsData?.recent_workorders?.length" class="report-table">
                   <article v-for="item in statisticsData.recent_workorders" :key="Number(item.id)">
                     <div><strong>{{ item.title }}</strong><small>{{ item.code }} · {{ item.product_name || workorderTypeLabel(item.type) }}</small></div>
-                    <span>{{ workorderStatusLabel(item.status) }}</span>
+                    <StatusTag :label="workorderStatusLabel(item.status)" :tone="workorderStatusTone(item.status)"/>
                   </article>
                 </div>
                 <p v-else class="drawer-empty">暂无任务单</p>
@@ -375,7 +413,23 @@
             </div>
           </section>
 
-          <el-table v-else-if="activeKey === 'warehouses'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+          <DataTableShell
+            v-else-if="activeKey === 'warehouses'"
+            :loading="loading"
+            :error="listError"
+            :rows-count="rows.length"
+            :total="pageTotal"
+            :page="page"
+            :page-size="pageSize"
+            aria-label="仓库物品列表"
+            :empty-title="filteredEmptyTitle"
+            :empty-description="filteredEmptyDescription"
+            @retry="loadActiveModule"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          >
+          <div class="responsive-table-desktop">
+          <el-table :data="rows" row-key="id" stripe class="data-table">
             <el-table-column label="物品" min-width="190">
               <template #default="{row}">
                 <span class="item-name">{{ row.name }}</span>
@@ -388,9 +442,10 @@
             <el-table-column prop="unit" label="单位" width="90"/>
             <el-table-column label="当前库存" width="140">
               <template #default="{row}">
-                <el-tag :type="Number(row.quantity || 0) <= Number(row.safety_stock || 0) ? 'danger' : 'success'" effect="light">
-                  {{ formatQuantity(row.quantity) }}
-                </el-tag>
+                <div class="stock-state-cell">
+                  <strong>{{ formatQuantity(row.quantity) }}</strong>
+                  <StatusTag :label="stockState(row).label" :tone="stockState(row).tone"/>
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="安全库存" width="120">
@@ -401,8 +456,39 @@
             </el-table-column>
             <template #empty><el-empty description="该分类还没有物品"/></template>
           </el-table>
+          </div>
+          <div class="responsive-card-list" role="list">
+            <article v-for="row in rows" :key="`${row.item_type}-${row.id}`" class="warehouse-list-card" role="listitem">
+              <div class="responsive-card-heading">
+                <div><strong>{{ row.name }}</strong><small>{{ row.code }} · {{ row.spec || '无规格' }}</small></div>
+                <StatusTag :label="stockState(row).label" :tone="stockState(row).tone"/>
+              </div>
+              <dl>
+                <div><dt>当前库存</dt><dd>{{ formatQuantity(row.quantity) }} {{ row.unit }}</dd></div>
+                <div><dt>安全库存</dt><dd>{{ formatQuantity(row.safety_stock) }} {{ row.unit }}</dd></div>
+              </dl>
+              <el-button type="primary" plain @click="openWarehouseItem(row)">查看物品详情</el-button>
+            </article>
+          </div>
+          </DataTableShell>
 
-          <el-table v-else-if="activeKey === 'workorder'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
+          <DataTableShell
+            v-else-if="activeKey === 'workorder'"
+            :loading="loading"
+            :error="listError"
+            :rows-count="rows.length"
+            :total="pageTotal"
+            :page="page"
+            :page-size="pageSize"
+            aria-label="任务单列表"
+            :empty-title="filteredEmptyTitle"
+            :empty-description="filteredEmptyDescription"
+            @retry="loadActiveModule"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          >
+          <div class="responsive-table-desktop">
+          <el-table :data="rows" row-key="id" stripe class="data-table">
             <el-table-column label="任务" min-width="220">
               <template #default="{row}">
                 <span class="item-name">{{ row.title }}</span>
@@ -411,12 +497,12 @@
             </el-table-column>
             <el-table-column label="状态" width="130">
               <template #default="{row}">
-                <el-tag :type="workorderStatusTag(row.status)" effect="light">{{ workorderStatusLabel(row.status) }}</el-tag>
+                <StatusTag :label="workorderStatusLabel(row.status)" :tone="workorderStatusTone(row.status)"/>
               </template>
             </el-table-column>
             <el-table-column label="优先级" width="100">
               <template #default="{row}">
-                <el-tag :type="row.priority === 'urgent' ? 'danger' : 'info'" effect="light">{{ row.priority === 'urgent' ? '加急' : '普通' }}</el-tag>
+                <StatusTag :label="row.priority === 'urgent' ? '加急' : '普通'" :tone="row.priority === 'urgent' ? 'danger' : 'info'"/>
               </template>
             </el-table-column>
             <el-table-column label="产品/数量" min-width="160">
@@ -428,9 +514,7 @@
             <el-table-column label="部门进度" min-width="220">
               <template #default="{row}">
                 <div class="workorder-task-tags">
-                  <el-tag v-for="task in departmentTasks(row)" :key="task.id" size="small" effect="plain" :type="departmentTaskTag(task.status)">
-                    {{ departmentName(task.department_id) }} · {{ departmentTaskStatusLabel(task.status) }}
-                  </el-tag>
+                  <StatusTag v-for="task in departmentTasks(row)" :key="task.id" :label="`${departmentName(task.department_id)} · ${departmentTaskStatusLabel(task.status)}`" :tone="departmentTaskStatusTone(task.status)"/>
                 </div>
               </template>
             </el-table-column>
@@ -442,17 +526,99 @@
             </el-table-column>
             <template #empty><el-empty description="还没有任务单"/></template>
           </el-table>
+          </div>
+          <div class="responsive-card-list" role="list">
+            <article v-for="row in rows" :key="row.id" class="workorder-list-card" role="listitem">
+              <div class="responsive-card-heading">
+                <div><strong>{{ row.title }}</strong><small>{{ row.code }} · {{ workorderTypeLabel(row.type) }}</small></div>
+                <StatusTag :label="workorderStatusLabel(row.status)" :tone="workorderStatusTone(row.status)"/>
+              </div>
+              <div class="responsive-card-tags"><StatusTag :label="row.priority === 'urgent' ? '加急' : '普通'" :tone="row.priority === 'urgent' ? 'danger' : 'info'"/></div>
+              <dl>
+                <div><dt>产品/数量</dt><dd>{{ row.product_name || '-' }} · {{ formatQuantity(row.planned_quantity) }} {{ row.unit || '' }}</dd></div>
+                <div><dt>交期</dt><dd>{{ formatDate(row.due_at) }}</dd></div>
+                <div><dt>部门进度</dt><dd>{{ departmentProgressSummary(row) }}</dd></div>
+              </dl>
+              <el-button type="primary" plain @click="openWorkOrder(row)">查看任务详情</el-button>
+            </article>
+          </div>
+          </DataTableShell>
 
           <el-table v-else-if="activeKey === 'molds'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
             <el-table-column label="模具" min-width="190">
               <template #default="{row}"><span class="item-name">{{ row.name }}</span><small class="item-code">{{ row.code }}</small></template>
             </el-table-column>
-            <el-table-column label="状态" width="120"><template #default="{row}"><el-tag :type="row.status === 'scrapped' ? 'danger' : 'info'" effect="light">{{ moldStatusLabel(row.status) }}</el-tag></template></el-table-column>
+            <el-table-column label="状态" width="120"><template #default="{row}"><StatusTag :label="moldStatusLabel(row.status)" :tone="moldStatusTone(row.status)"/></template></el-table-column>
             <el-table-column prop="current_location" label="当前位置" min-width="150"><template #default="{row}">{{ formatCell(row.current_location) }}</template></el-table-column>
             <el-table-column prop="next_maintenance_at" label="下次保养" width="140"><template #default="{row}">{{ formatDate(row.next_maintenance_at) }}</template></el-table-column>
             <el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openMold(row)">详情</el-button></template></el-table-column>
-            <template #empty><el-empty description="还没有模具记录"/></template>
+            <template #empty><el-empty :description="filteredEmptyTitle"/></template>
           </el-table>
+
+          <DataTableShell
+            v-else-if="isMasterDataValidationPage"
+            :loading="loading"
+            :error="listError"
+            :rows-count="rows.length"
+            :total="pageTotal"
+            :page="page"
+            :page-size="pageSize"
+            :aria-label="`${activeModule?.title || '档案'}列表`"
+            :empty-title="masterDataEmptyTitle"
+            :empty-description="masterDataEmptyDescription"
+            @retry="loadActiveModule"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          >
+            <div class="master-data-desktop">
+              <el-table :data="rows" row-key="id" stripe class="data-table master-data-table">
+                <el-table-column :label="activeKey === 'customers' ? '客户' : '供应商'" min-width="190">
+                  <template #default="{row}">
+                    <span class="item-name">{{ row.name }}</span>
+                    <small class="item-code">{{ row.code || '未设置编码' }}</small>
+                  </template>
+                </el-table-column>
+                <el-table-column v-if="activeKey === 'suppliers'" prop="contact" label="联系人" min-width="120">
+                  <template #default="{row}">{{ formatCell(row.contact) }}</template>
+                </el-table-column>
+                <el-table-column prop="phone" label="联系电话" min-width="150">
+                  <template #default="{row}">{{ formatCell(row.phone) }}</template>
+                </el-table-column>
+                <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip>
+                  <template #default="{row}">{{ formatCell(row.address) }}</template>
+                </el-table-column>
+                <el-table-column v-if="activeKey === 'suppliers'" label="状态" width="110" align="center">
+                  <template #default="{row}">
+                    <StatusTag :label="genericStatusLabel(row.status)" :tone="genericStatusTone(row.status)" />
+                  </template>
+                </el-table-column>
+                <el-table-column v-if="activeKey === 'suppliers' && canWriteActive" label="操作" width="90" fixed="right">
+                  <template #default="{row}"><el-button link type="primary" @click="editSupplier(row)">编辑</el-button></template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <div class="master-data-mobile" role="list">
+              <article v-for="row in rows" :key="row.id" class="master-data-card" role="listitem">
+                <div class="master-data-card__heading">
+                  <div>
+                    <strong>{{ row.name }}</strong>
+                    <small>{{ row.code || '未设置编码' }}</small>
+                  </div>
+                  <StatusTag
+                    v-if="activeKey === 'suppliers'"
+                    :label="genericStatusLabel(row.status)"
+                    :tone="genericStatusTone(row.status)"
+                  />
+                </div>
+                <dl>
+                  <div v-if="activeKey === 'suppliers'"><dt>联系人</dt><dd>{{ formatCell(row.contact) }}</dd></div>
+                  <div><dt>联系电话</dt><dd>{{ formatCell(row.phone) }}</dd></div>
+                  <div><dt>地址</dt><dd>{{ formatCell(row.address) }}</dd></div>
+                </dl>
+                <el-button v-if="activeKey === 'suppliers' && canWriteActive" link type="primary" @click="editSupplier(row)">编辑供应商</el-button>
+              </article>
+            </div>
+          </DataTableShell>
 
           <el-table v-else v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
             <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
@@ -466,10 +632,10 @@
             <el-table-column v-if="activeKey === 'suppliers' && canWriteActive" label="操作" width="90" fixed="right">
               <template #default="{row}"><el-button link type="primary" @click="editSupplier(row)">编辑</el-button></template>
             </el-table-column>
-            <template #empty><el-empty description="这里还没有记录"/></template>
+            <template #empty><el-empty :description="filteredEmptyTitle"/></template>
           </el-table>
 
-          <div v-if="!skeletonResult && activeKey !== 'updates'" class="pagination-bar">
+          <div v-if="!skeletonResult && activeKey !== 'updates' && !isMasterDataValidationPage && !['warehouses', 'workorder'].includes(activeKey)" class="pagination-bar">
             <span>共 {{ pageTotal }} 条记录</span>
             <el-pagination
                 v-model:current-page="page"
@@ -502,7 +668,7 @@
         </template>
       </el-dialog>
 
-      <el-drawer v-model="warehouseDrawerVisible" size="min(620px, 100%)" :with-header="false" destroy-on-close @closed="resetWarehouseItem">
+      <el-drawer v-model="warehouseDrawerVisible" size="min(620px, 100%)" title="物品详情" :with-header="false" :before-close="handleWarehouseBeforeClose" destroy-on-close @closed="resetWarehouseItem">
         <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
           <div class="drawer-heading">
             <div>
@@ -510,7 +676,7 @@
               <h2>{{ selectedWarehouseItem.name }}</h2>
               <span>{{ selectedWarehouseItem.code }} · {{ selectedWarehouseItem.spec || '无规格' }}</span>
             </div>
-            <el-button circle @click="closeWarehouseItem">×</el-button>
+            <el-button circle aria-label="关闭物品详情" @click="closeWarehouseItem">×</el-button>
           </div>
 
           <div class="stock-summary">
@@ -521,35 +687,38 @@
           <ImageGallery v-if="activeWarehouseTab === 'product'" owner-type="product" :owner-id="selectedWarehouseItem.id" :token="token" :can-write="hasPermission('warehouse:write')" category="product"/>
           <p v-if="panelMessage" class="drawer-message">{{ panelMessage }}</p>
 
-          <section v-if="hasPermission('inventory:documents:write')" class="movement-section">
+          <section class="movement-section">
             <h3>办理出入库</h3>
-            <div class="movement-actions">
-              <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" @click="startMovement(definition.key)">
+            <div v-if="hasPermission('inventory:documents:write')" class="movement-actions">
+              <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" :disabled="movementSubmitting" @click="startMovement(definition.key)">
                 {{ definition.title }}
               </el-button>
             </div>
+            <el-alert v-else title="当前账号只能查看库存，办理出入库需要库存单据写入权限。" type="info" :closable="false" show-icon/>
             <p v-if="movementDependencyMessage" class="permission-hint">{{ movementDependencyMessage }}</p>
           </section>
 
-          <el-form v-if="movementMode" class="movement-form" label-position="top" @submit.prevent="submitMovement">
+          <el-form v-if="movementMode" class="movement-form" label-position="top" :disabled="movementSubmitting" @submit.prevent="submitMovement">
             <div class="form-heading">
               <strong>{{ movementTitle }}</strong>
-              <span>库存将在提交后立即生效</span>
+              <span>本次只办理当前物品，提交后立即过账</span>
             </div>
+            <el-alert v-if="movementFormError" :title="movementFormError" type="error" :closable="false" show-icon/>
             <el-form-item v-if="movementMode === 'purchase_inbound'" label="供应商" required>
               <el-select v-model="movementForm.supplier_id" filterable placeholder="请选择供应商">
                 <el-option v-for="item in rowsFor('suppliers')" :key="item.id" :label="`${item.name}（${item.code}）`" :value="item.id"/>
               </el-select>
             </el-form-item>
-            <el-button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" link type="primary" class="inline-link" @click="showQuickSupplier = !showQuickSupplier">
+            <el-button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" link type="primary" class="inline-link" :disabled="movementSubmitting" @click="showQuickSupplier = !showQuickSupplier">
               {{ showQuickSupplier ? '取消新增供应商' : '＋ 快捷新增供应商' }}
             </el-button>
             <div v-if="showQuickSupplier" class="quick-supplier">
-              <el-input v-model.trim="quickSupplier.name" placeholder="供应商名称"/>
-              <el-input v-model.trim="quickSupplier.code" placeholder="供应商编码"/>
-              <el-input v-model.trim="quickSupplier.contact" placeholder="联系人"/>
-              <el-input v-model.trim="quickSupplier.phone" placeholder="联系电话"/>
-              <el-button :loading="loading" @click="createQuickSupplier">保存供应商</el-button>
+              <el-form-item label="供应商名称" required><el-input v-model.trim="quickSupplier.name" placeholder="请输入供应商名称"/></el-form-item>
+              <el-form-item label="供应商编码" required><el-input v-model.trim="quickSupplier.code" placeholder="请输入唯一编码"/></el-form-item>
+              <el-form-item label="联系人"><el-input v-model.trim="quickSupplier.contact" placeholder="选填"/></el-form-item>
+              <el-form-item label="联系电话"><el-input v-model.trim="quickSupplier.phone" placeholder="选填"/></el-form-item>
+              <el-alert v-if="quickSupplierError" :title="quickSupplierError" type="error" :closable="false" show-icon/>
+              <el-button :loading="quickSupplierSubmitting" :disabled="movementSubmitting || quickSupplierSubmitting" @click="createQuickSupplier">保存并选择供应商</el-button>
             </div>
             <el-form-item v-if="movementMode === 'return_rework_inbound'" label="退回来源">
               <el-radio-group v-model="movementForm.source_type" @change="resetMovementSource">
@@ -573,7 +742,9 @@
               </el-select>
             </el-form-item>
             <el-form-item :label="`数量（${selectedWarehouseItem.unit}）`" required>
-              <el-input-number v-model="movementForm.quantity" :min="0" :precision="4" :controls="false" placeholder="请输入数量"/>
+              <el-input-number v-model="movementForm.quantity" :min="0.0001" :precision="4" :controls="false" :input-attrs="{'aria-invalid': Boolean(movementQuantityError), 'aria-describedby': 'movement-quantity-help movement-quantity-error'}" placeholder="请输入大于 0 的数量"/>
+              <small id="movement-quantity-help" class="field-help">当前库存 {{ formatQuantity(warehouseDetail?.quantity) }}；办理后预计 {{ formatQuantity(expectedStockQuantity) }} {{ selectedWarehouseItem.unit }}</small>
+              <small v-show="movementQuantityError" id="movement-quantity-error" class="field-error" aria-live="polite">{{ movementQuantityError }}</small>
             </el-form-item>
             <el-form-item v-if="movementMode === 'purchase_inbound' && hasPermission('cost:view')" label="采购单价（元）">
               <el-input-number v-model="movementForm.unit_cost" :min="0" :precision="2" :controls="false" placeholder="选填"/>
@@ -581,9 +752,18 @@
             <el-form-item :label="movementMode === 'return_rework_inbound' ? '返工原因' : '备注'" :required="movementMode === 'return_rework_inbound'">
               <el-input v-model.trim="movementForm.reason" type="textarea" :rows="2" placeholder="补充业务说明"/>
             </el-form-item>
-            <div class="form-actions">
-              <el-button @click="cancelMovement">取消</el-button>
-              <el-button type="primary" native-type="submit" :loading="loading">确认并更新库存</el-button>
+            <aside class="movement-confirm-summary" aria-label="本次办理摘要">
+              <strong>本次办理摘要</strong>
+              <dl>
+                <div><dt>物品</dt><dd>{{ selectedWarehouseItem.name }}</dd></div>
+                <div><dt>类型</dt><dd>{{ movementTitle }}</dd></div>
+                <div><dt>对象</dt><dd>{{ movementCounterpartyLabel }}</dd></div>
+                <div><dt>数量</dt><dd>{{ formatMovementInputQuantity }} {{ selectedWarehouseItem.unit }}</dd></div>
+              </dl>
+            </aside>
+            <div class="form-actions movement-submit-bar">
+              <el-button :disabled="movementSubmitting" @click="cancelMovement">取消</el-button>
+              <el-button type="primary" native-type="submit" :loading="movementSubmitting" :disabled="!movementCanSubmit">{{ movementSubmitLabel }}</el-button>
             </div>
           </el-form>
 
@@ -597,10 +777,11 @@
             </div>
             <p v-else class="drawer-empty">暂无出入库记录</p>
           </section>
+          <el-alert v-else title="出入库记录需要库存单据查看权限。" type="info" :closable="false" show-icon/>
         </div>
       </el-drawer>
 
-      <el-drawer v-model="moldDetailDrawerVisible" size="min(720px, 100%)" :with-header="false" destroy-on-close @closed="resetMold">
+      <el-drawer v-model="moldDetailDrawerVisible" size="min(720px, 100%)" title="模具详情" :with-header="false" destroy-on-close @closed="resetMold">
         <div v-if="selectedMoldDetail" class="item-drawer mold-drawer" aria-label="模具详情">
           <div class="drawer-heading">
             <div><small>{{ selectedMoldDetail.code }}</small><h2>{{ selectedMoldDetail.name }}</h2><span>{{ moldStatusLabel(selectedMoldDetail.status) }} · {{ selectedMoldDetail.current_location || '暂无位置' }}</span></div>
@@ -625,7 +806,7 @@
         </div>
       </el-drawer>
 
-      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" :with-header="false" destroy-on-close @closed="resetWorkOrder">
+      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" title="任务单详情" :with-header="false" destroy-on-close @closed="resetWorkOrder">
         <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
           <div class="drawer-heading">
             <div>
@@ -633,7 +814,7 @@
               <h2>{{ selectedWorkOrder.title }}</h2>
               <span>{{ selectedWorkOrder.product_name || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
             </div>
-            <el-button circle @click="closeWorkOrder">×</el-button>
+            <el-button circle aria-label="关闭任务单详情" @click="closeWorkOrder">×</el-button>
           </div>
 
           <div class="stock-summary">
@@ -642,6 +823,11 @@
             <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong></div>
           </div>
           <p v-if="selectedWorkOrder.description" class="drawer-message">{{ selectedWorkOrder.description }}</p>
+          <section class="workorder-stage-card" aria-label="任务当前阶段">
+            <span>当前阶段</span>
+            <StatusTag :label="workorderStatusLabel(selectedWorkOrder.status)" :tone="workorderStatusTone(selectedWorkOrder.status)"/>
+            <strong>下一步：{{ workorderNextAction(selectedWorkOrder) }}</strong>
+          </section>
           <ImageGallery owner-type="workorder" :owner-id="selectedWorkOrder.id" :token="token" :can-write="hasPermission('workorder:write')" category="workorder"/>
 
           <section v-if="canWriteActive" class="movement-section">
@@ -664,7 +850,7 @@
               <article v-for="task in departmentTasks(selectedWorkOrder)" :key="task.id" class="department-task-card">
                 <div>
                   <strong>{{ departmentName(task.department_id) }}</strong>
-                  <el-tag size="small" :type="departmentTaskTag(task.status)" effect="light">{{ departmentTaskStatusLabel(task.status) }}</el-tag>
+                  <StatusTag :label="departmentTaskStatusLabel(task.status)" :tone="departmentTaskStatusTone(task.status)"/>
                 </div>
                 <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</p>
                 <el-progress :percentage="Number(task.progress || 0)" :stroke-width="8"/>
@@ -703,6 +889,12 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {apiBaseUrl, desktopAppVersion, downloadApiFile, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import ImageGallery from './components/ImageGallery.vue'
 import UpdateCenter from './components/UpdateCenter.vue'
+import AppNavigation from './components/ui/AppNavigation.vue'
+import DataTableShell from './components/ui/DataTableShell.vue'
+import FilterBar from './components/ui/FilterBar.vue'
+import PageHeader from './components/ui/PageHeader.vue'
+import PageState from './components/ui/PageState.vue'
+import StatusTag, {type StatusTone} from './components/ui/StatusTag.vue'
 import {type ModuleItem, modules} from './data/modules'
 import type {BasicItem, ClientUpdateStatus, CurrentUser, PaginatedResponse, SkeletonResponse} from './types'
 
@@ -793,6 +985,7 @@ const pageTotal = ref(0)
 const loading = ref(false)
 const errorMessage = ref('')
 const panelMessage = ref('')
+const listError = ref('')
 const assignmentTarget = ref<BasicItem | null>(null)
 const assignmentModuleKey = ref('')
 const selectedAssignmentIDs = ref<number[]>([])
@@ -803,7 +996,12 @@ const itemMovements = ref<BasicItem[]>([])
 const showAllItemMovements = ref(false)
 const movementMode = ref<string>('')
 const showQuickSupplier = ref(false)
+const movementSubmitting = ref(false)
+const movementFormError = ref('')
+const quickSupplierSubmitting = ref(false)
+const quickSupplierError = ref('')
 const healthStatus = ref('检查中')
+const mobileNavOpen = ref(false)
 const serverDialogVisible = ref(false)
 const serverTesting = ref(false)
 const serverUrlInput = ref(apiBaseUrl())
@@ -871,6 +1069,36 @@ const businessItems = computed(() => navItems.value.filter((item) => item.group 
 const systemItems = computed(() => navItems.value.filter((item) => item.group === 'system'))
 const activeModule = computed(() => modules.find((item) => item.key === activeKey.value))
 const canWriteActive = computed(() => !!activeModule.value && canWriteModule(activeModule.value))
+const activePageReadonly = computed(() => {
+  if (activeKey.value === 'warehouses') {
+    return !hasPermission('warehouse:write') && !hasPermission('inventory:documents:write')
+  }
+  return Boolean(activeModule.value?.writePermission && !canWriteActive.value)
+})
+const hasActiveFilters = computed(() => Boolean(
+  searchKeyword.value || workorderStatusFilter.value || workorderTypeFilter.value || workorderPriorityFilter.value,
+))
+const filteredEmptyTitle = computed(() => hasActiveFilters.value ? '没有符合当前条件的结果' : `还没有${activeModule.value?.title || '业务'}记录`)
+const filteredEmptyDescription = computed(() => hasActiveFilters.value
+  ? '请调整筛选条件或点击重置查看全部记录。'
+  : '当前分类尚未创建可显示的记录。')
+const isMasterDataValidationPage = computed(() => ['customers', 'suppliers'].includes(activeKey.value))
+const hasRenderableData = computed(() => activeKey.value === 'statistics'
+  ? Boolean(statisticsData.value)
+  : rows.value.length > 0)
+const listSearchPlaceholder = computed(() => {
+  if (activeKey.value === 'customers') return '搜索客户名称、编码、电话或地址'
+  if (activeKey.value === 'suppliers') return '搜索供应商名称、编码、联系人或电话'
+  return '输入名称、编号、电话等关键字'
+})
+const masterDataEmptyTitle = computed(() => searchKeyword.value
+  ? '没有符合当前条件的结果'
+  : `还没有${activeModule.value?.title || '档案'}记录`)
+const masterDataEmptyDescription = computed(() => searchKeyword.value
+  ? '请尝试缩短关键词或清空筛选条件。'
+  : canWriteActive.value
+    ? '可以使用页面右上角的新增操作创建第一条记录。'
+    : '当前账号仅可查看，暂无可显示的记录；如需新增，请联系具备编辑权限的人员。')
 const hasAssignmentAction = computed(() => {
   const config = assignmentConfigs[activeKey.value]
   return Boolean(config?.requiredPermissions.every(hasPermission))
@@ -888,6 +1116,7 @@ const greeting = computed(() => {
   return '晚上好'
 })
 const quickActionDefinitions = [
+  {key: 'workorder', title: '任务单', description: '查看当前任务与部门处理进度', icon: '✓'},
   {key: 'warehouses', title: '仓库', description: '查询库存并办理物品出入库', icon: '▦'},
   {key: 'customers', title: '客户档案', description: '查找或新增客户资料', icon: '◎'},
   {key: 'suppliers', title: '供应商', description: '维护采购供应商资料', icon: '↙'},
@@ -896,6 +1125,12 @@ const quickActionDefinitions = [
 const quickActions = computed(() => quickActionDefinitions.filter((item) => {
   const moduleItem = modules.find((candidate) => candidate.key === item.key)
   return !!moduleItem && canReadModule(moduleItem)
+}).sort((left, right) => {
+  const departmentTerminal = currentUser.value?.account_type === 'department_terminal'
+  const order = departmentTerminal
+    ? ['workorder', 'warehouses', 'molds', 'customers', 'suppliers']
+    : ['warehouses', 'workorder', 'customers', 'suppliers', 'molds']
+  return order.indexOf(left.key) - order.indexOf(right.key)
 }))
 const businessGroups = computed(() => [
   {
@@ -927,13 +1162,53 @@ const availableMovementDefinitions = computed(() => movementDefinitions.filter((
   return allAllowed && anyAllowed
 }))
 const movementDependencyMessage = computed(() => {
+  if (!hasPermission('inventory:documents:write')) return ''
   const missing: string[] = []
   if (!hasPermission('suppliers:read')) missing.push('采购入库需要供应商查看权限')
+  if (!hasPermission('customers:read') && !hasPermission('system:departments:read')) missing.push('退货返工需要客户或部门查看权限')
   if (!hasPermission('customers:read')) missing.push('客户出库需要客户查看权限')
   if (!hasPermission('system:departments:read')) missing.push('部门出库需要部门查看权限')
-  return missing.join('；')
+  return missing.length ? `${missing.join('；')}。请联系管理员配置所需权限。` : ''
 })
 const movementTitle = computed(() => movementDefinitions.find((item) => item.key === movementMode.value)?.title || '办理出入库')
+const movementIsOutbound = computed(() => ['customer_outbound', 'department_outbound'].includes(movementMode.value))
+const expectedStockQuantity = computed(() => {
+  const current = Number(warehouseDetail.value?.quantity || 0)
+  const delta = decimalToScaled(movementForm.quantity)
+  return movementIsOutbound.value ? current - delta : current + delta
+})
+const movementQuantityError = computed(() => {
+  if (movementForm.quantity === undefined || movementForm.quantity === null || movementForm.quantity === '') return ''
+  if (decimalToScaled(movementForm.quantity) <= 0) return '数量必须大于 0。'
+  if (movementIsOutbound.value && expectedStockQuantity.value < 0) return '出库数量超过当前可用库存，请减少数量。'
+  return ''
+})
+const movementCounterpartyLabel = computed(() => {
+  const source = movementMode.value === 'purchase_inbound' ? rowsFor('suppliers').find((item) => Number(item.id) === Number(movementForm.supplier_id))
+    : movementMode.value === 'customer_outbound' || movementForm.source_type === 'customer' ? rowsFor('customers').find((item) => Number(item.id) === Number(movementForm.customer_id))
+      : rowsFor('departments').find((item) => Number(item.id) === Number(movementForm.department_id))
+  return String(source?.name || '尚未选择')
+})
+const formatMovementInputQuantity = computed(() => {
+  const quantity = Number(movementForm.quantity || 0)
+  return Number.isFinite(quantity) && quantity > 0 ? quantity.toLocaleString('zh-CN', {maximumFractionDigits: 4}) : '0'
+})
+const movementCanSubmit = computed(() => {
+  if (movementSubmitting.value || decimalToScaled(movementForm.quantity) <= 0) return false
+  if (movementIsOutbound.value && expectedStockQuantity.value < 0) return false
+  if (movementMode.value === 'purchase_inbound') return Boolean(movementForm.supplier_id)
+  if (movementMode.value === 'customer_outbound') return Boolean(movementForm.customer_id)
+  if (movementMode.value === 'department_outbound') return Boolean(movementForm.department_id)
+  if (movementMode.value === 'return_rework_inbound') {
+    const sourceSelected = movementForm.source_type === 'customer' ? movementForm.customer_id : movementForm.department_id
+    return Boolean(sourceSelected && String(movementForm.reason || '').trim())
+  }
+  return false
+})
+const movementSubmitLabel = computed(() => `确认${movementTitle.value}并过账`)
+const movementFormDirty = computed(() => Boolean(movementMode.value && (
+  Object.keys(movementForm).some((key) => key !== 'source_type') || showQuickSupplier.value || Object.values(quickSupplier).some(Boolean)
+)))
 const displayedItemMovements = computed(() => showAllItemMovements.value ? itemMovements.value : itemMovements.value.slice(0, 10))
 const eligibleOriginalDocuments = computed(() => itemMovements.value.filter((item) => {
   if (item.type !== 'outbound' || item.status !== 'posted') return false
@@ -1115,15 +1390,24 @@ function canWriteModule(item: ModuleItem): boolean {
   return !!item.writePermission && hasPermission(item.writePermission)
 }
 
-function switchModule(key: string) {
+async function switchModule(key: string) {
   const target = modules.find((item) => item.key === key)
   if (!target || !canReadModule(target)) {
     panelMessage.value = '你的账号暂无该功能权限'
     activeKey.value = 'dashboard'
     return
   }
+  if (warehouseDrawerVisible.value) {
+    const canClose = await requestWarehouseClose()
+    if (!canClose) return
+    performWarehouseClose()
+  }
   activeKey.value = key
-  closeWarehouseItem()
+  rows.value = []
+  columns.value = []
+  pageTotal.value = 0
+  skeletonResult.value = null
+  listError.value = ''
   closeWorkOrder()
   closeMold()
   closeAssignment()
@@ -1132,6 +1416,36 @@ function switchModule(key: string) {
   resetListQuery()
   clearForm()
   void loadActiveModule()
+}
+
+function selectMobileModule(key: string) {
+  mobileNavOpen.value = false
+  void switchModule(key)
+}
+
+function restoreMobileMenuFocus() {
+  document.getElementById('mobile-menu-button')?.focus()
+}
+
+async function handleUserCommand(command: string) {
+  if (command === 'server') openServerSettings()
+  if (command === 'logout') {
+    if (warehouseDrawerVisible.value) {
+      const canClose = await requestWarehouseClose()
+      if (!canClose) return
+      warehouseDrawerVisible.value = false
+      resetWarehouseItem()
+    }
+    logout()
+  }
+}
+
+function resetFilters() {
+  searchKeyword.value = ''
+  workorderStatusFilter.value = ''
+  workorderTypeFilter.value = ''
+  workorderPriorityFilter.value = ''
+  applySearch()
 }
 
 async function openAssignment(row: any) {
@@ -1359,6 +1673,7 @@ async function loadActiveModule() {
   }
   loading.value = true
   panelMessage.value = ''
+  listError.value = ''
   skeletonResult.value = null
   try {
     if (item.key === 'updates') {
@@ -1372,7 +1687,8 @@ async function loadActiveModule() {
     }
     panelMessage.value = '已同步'
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '加载失败'
+    listError.value = error instanceof Error ? error.message : '加载失败'
+    panelMessage.value = listError.value
   } finally {
     loading.value = false
   }
@@ -1556,6 +1872,34 @@ function formatCell(value: unknown): string {
   return String(value)
 }
 
+function genericStatusLabel(value: unknown): string {
+  const status = String(value || 'unknown').toLowerCase()
+  const labels: Record<string, string> = {
+    active: '正常',
+    enabled: '正常',
+    normal: '正常',
+    inactive: '停用',
+    disabled: '停用',
+    stopped: '停用',
+    unknown: '未设置',
+  }
+  return labels[status] || formatCell(value)
+}
+
+function genericStatusTone(value: unknown): StatusTone {
+  const status = String(value || 'unknown').toLowerCase()
+  return ['active', 'enabled', 'normal'].includes(status) ? 'success' : 'info'
+}
+
+function stockState(row: unknown): {label: string; tone: StatusTone} {
+  const item = row as Record<string, unknown>
+  const quantity = Number(item.quantity || 0)
+  const safetyStock = Number(item.safety_stock || 0)
+  if (quantity <= 0) return {label: '缺货', tone: 'danger'}
+  if (quantity <= safetyStock) return {label: '低于安全库存', tone: 'warning'}
+  return {label: '库存正常', tone: 'success'}
+}
+
 const columnLabels: Record<string, string> = {
   id: '编号', username: '账号', account_type: '账号类型', name: '名称', organization_id: '组织',
   department_id: '部门', terminal_id: '终端', status: '状态', code: '编码', description: '说明',
@@ -1582,16 +1926,57 @@ async function openWarehouseItem(item: any) {
   await Promise.allSettled([loadWarehouseItemDetail(), loadItemMovements()])
 }
 
-function closeWarehouseItem() {
+let warehouseCloseBypass = false
+
+async function closeWarehouseItem() {
+  if (!await requestWarehouseClose()) return
+  performWarehouseClose()
+}
+
+function performWarehouseClose() {
+  warehouseCloseBypass = true
   warehouseDrawerVisible.value = false
+  window.setTimeout(() => { warehouseCloseBypass = false }, 0)
+}
+
+async function requestWarehouseClose(): Promise<boolean> {
+  if (movementSubmitting.value) {
+    ElMessage.warning('正在提交库存变动，请等待办理完成后再关闭。')
+    return false
+  }
+  if (!movementFormDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前出入库表单尚未提交，关闭后已填写内容将丢失。', '放弃本次办理？', {
+      confirmButtonText: '放弃并关闭',
+      cancelButtonText: '继续填写',
+      type: 'warning',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function handleWarehouseBeforeClose(done: () => void) {
+  if (warehouseCloseBypass) {
+    warehouseCloseBypass = false
+    done()
+    return
+  }
+  void requestWarehouseClose().then((canClose) => {
+    if (canClose) done()
+  })
 }
 
 function resetWarehouseItem() {
+  warehouseCloseBypass = false
   selectedWarehouseItem.value = null
   warehouseDetail.value = null
   itemMovements.value = []
   movementMode.value = ''
   showQuickSupplier.value = false
+  movementFormError.value = ''
+  quickSupplierError.value = ''
   clearMovementForm()
 }
 
@@ -1643,17 +2028,33 @@ async function loadAllItemMovements() {
 }
 
 function startMovement(mode: string) {
+  if (movementSubmitting.value) return
   movementMode.value = mode
   showQuickSupplier.value = false
   clearMovementForm()
+  movementFormError.value = ''
   if (mode === 'return_rework_inbound') {
     movementForm.source_type = hasPermission('customers:read') ? 'customer' : 'department'
   }
 }
 
-function cancelMovement() {
+async function cancelMovement() {
+  if (movementSubmitting.value) return
+  if (movementFormDirty.value) {
+    try {
+      await ElMessageBox.confirm('取消后本次填写内容不会保留。', '取消本次办理？', {
+        confirmButtonText: '确认取消',
+        cancelButtonText: '继续填写',
+        type: 'warning',
+      })
+    } catch {
+      return
+    }
+  }
   movementMode.value = ''
   showQuickSupplier.value = false
+  movementFormError.value = ''
+  quickSupplierError.value = ''
   clearMovementForm()
 }
 
@@ -1668,11 +2069,20 @@ function clearMovementForm() {
 }
 
 async function submitMovement() {
+  if (movementSubmitting.value) return
   const item = selectedWarehouseItem.value
   if (!item || !movementMode.value) return
   const quantity = decimalToScaled(movementForm.quantity)
   if (quantity <= 0) {
-    panelMessage.value = '请输入大于 0 的数量'
+    movementFormError.value = '数量必须大于 0。'
+    return
+  }
+  if (movementIsOutbound.value && expectedStockQuantity.value < 0) {
+    movementFormError.value = `当前可用库存为 ${formatQuantity(warehouseDetail.value?.quantity)} ${item.unit}，本次出库数量不能超过可用库存。`
+    return
+  }
+  if (!movementCanSubmit.value) {
+    movementFormError.value = '请补全办理对象、数量和必填业务说明后再提交。'
     return
   }
   const body: Record<string, unknown> = {
@@ -1687,34 +2097,38 @@ async function submitMovement() {
   if (movementMode.value === 'purchase_inbound' && movementForm.unit_cost) {
     body.unit_cost = moneyToCents(movementForm.unit_cost)
   }
-  loading.value = true
-  panelMessage.value = ''
+  movementSubmitting.value = true
+  movementFormError.value = ''
   try {
     await request(`/api/v1/warehouse/items/${item.item_type}/${item.id}/movements`, {
       method: 'POST',
       headers: {'Idempotency-Key': crypto.randomUUID()},
       body,
     }, token.value)
-    cancelMovement()
+    movementMode.value = ''
+    showQuickSupplier.value = false
+    clearMovementForm()
     await Promise.all([loadActiveModule(), loadWarehouseItemDetail(), loadItemMovements()])
     const refreshed = rows.value.find((row) => row.id === item.id && row.item_type === item.item_type)
     if (refreshed) selectedWarehouseItem.value = refreshed
     panelMessage.value = '库存已更新'
     ElMessage.success('库存已更新')
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '办理失败'
-    ElMessage.error(panelMessage.value)
+    movementFormError.value = error instanceof Error ? error.message : '办理失败，请检查填写内容后重试。'
+    ElMessage.error(movementFormError.value)
   } finally {
-    loading.value = false
+    movementSubmitting.value = false
   }
 }
 
 async function createQuickSupplier() {
+  if (movementSubmitting.value || quickSupplierSubmitting.value) return
   if (!quickSupplier.name || !quickSupplier.code) {
-    panelMessage.value = '请填写供应商名称和编码'
+    quickSupplierError.value = '请填写供应商名称和唯一编码。'
     return
   }
-  loading.value = true
+  quickSupplierSubmitting.value = true
+  quickSupplierError.value = ''
   try {
     const created = await request<BasicItem>('/api/v1/suppliers', {method: 'POST', body: {...quickSupplier}}, token.value)
     await loadList('suppliers', false)
@@ -1724,10 +2138,10 @@ async function createQuickSupplier() {
     panelMessage.value = '供应商已新增'
     ElMessage.success('供应商已新增')
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '供应商新增失败'
-    ElMessage.error(panelMessage.value)
+    quickSupplierError.value = error instanceof Error ? error.message : '供应商新增失败，请检查编码是否重复。'
+    ElMessage.error(quickSupplierError.value)
   } finally {
-    loading.value = false
+    quickSupplierSubmitting.value = false
   }
 }
 
@@ -1873,6 +2287,21 @@ function departmentTasks(row: any): BasicItem[] {
   return Array.isArray(row.department_tasks) ? row.department_tasks as BasicItem[] : []
 }
 
+function departmentProgressSummary(row: BasicItem): string {
+  const tasks = departmentTasks(row)
+  if (!tasks.length) return '0% · 尚未分配部门'
+  const completed = tasks.filter((task) => task.status === 'completed').length
+  const totalProgress = tasks.reduce((sum, task) => {
+    const explicit = Number(task.progress)
+    if (Number.isFinite(explicit)) return sum + Math.min(100, Math.max(0, explicit))
+    const planned = Number(task.planned_quantity || 0)
+    const finished = Number(task.completed_quantity || 0)
+    return sum + (planned > 0 ? Math.min(100, Math.max(0, finished * 100 / planned)) : 0)
+  }, 0)
+  const percentage = Math.round(totalProgress / tasks.length)
+  return `${percentage}% · ${completed}/${tasks.length} 个部门已完成`
+}
+
 function departmentName(id: unknown): string {
   const item = rowsFor('departments').find((department) => Number(department.id) === Number(id))
   return String(item?.name || `部门#${id}`)
@@ -1919,6 +2348,13 @@ function moldStatusLabel(value: unknown): string {
   return labels[String(value)] || String(value || '-')
 }
 
+function moldStatusTone(value: unknown): StatusTone {
+  if (value === 'in_stock') return 'success'
+  if (value === 'repairing' || value === 'maintenance') return 'warning'
+  if (value === 'scrapped') return 'danger'
+  return 'info'
+}
+
 function departmentCompletionRate(item: DepartmentStatistic): number {
   if (!item.total) return 0
   return Math.round((Number(item.completed || 0) * 100) / Number(item.total))
@@ -1949,19 +2385,27 @@ function departmentTaskStatusLabel(value: unknown): string {
   return labels[String(value)] || String(value || '-')
 }
 
-function workorderStatusTag(value: unknown): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+function workorderStatusTone(value: unknown): StatusTone {
   if (value === 'completed_normal') return 'success'
   if (value === 'completed_forced' || value === 'cancelled') return 'danger'
-  if (value === 'paused' || value === 'pending_close') return 'warning'
-  if (value === 'processing') return 'primary'
+  if (value === 'pending_close') return 'warning'
   return 'info'
 }
 
-function departmentTaskTag(value: unknown): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+function departmentTaskStatusTone(value: unknown): StatusTone {
   if (value === 'completed') return 'success'
   if (value === 'partial_completed') return 'warning'
-  if (value === 'processing') return 'primary'
   return 'info'
+}
+
+function workorderNextAction(item: BasicItem): string {
+  const status = String(item.status || '')
+  if (status === 'draft') return hasPermission('workorder:write') ? '办公室派发任务' : '等待办公室派发'
+  if (status === 'processing') return '各部门继续处理并回报进度'
+  if (status === 'paused') return hasPermission('workorder:write') ? '办公室确认后恢复任务' : '等待办公室恢复任务'
+  if (status === 'pending_close') return hasPermission('workorder:write') ? '办公室核对并确认完成' : '等待办公室确认完成'
+  if (status.startsWith('completed')) return '任务已结束，可查看流转日志'
+  return '查看部门进度与流转日志'
 }
 
 function workorderActionLabel(value: unknown): string {
