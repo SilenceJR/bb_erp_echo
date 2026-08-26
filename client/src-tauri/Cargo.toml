@@ -1,5 +1,6 @@
 [package]
 name = "bb_erp_client"
+default-run = "bb_erp_client"
 version = "0.1.0"
 description = "博邦 ERP 桌面端"
 authors = ["Bobang ERP"]
