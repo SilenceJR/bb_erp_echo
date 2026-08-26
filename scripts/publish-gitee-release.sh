@@ -118,12 +118,13 @@ existing_response="$verify_dir/existing.json"
 existing_code="$(curl --silent --show-error --location "${auth[@]}" "${json[@]}" \
   --output "$existing_response" --write-out '%{http_code}' "$content_api?ref=main")"
 encoded_content="$(base64 <"$asset_dir/update-manifest.json" | tr -d '\n')"
-if [[ "$existing_code" == "200" ]]; then
+if [[ "$existing_code" == "200" ]] && jq -e 'type == "object" and (.sha | type == "string")' "$existing_response" >/dev/null; then
   existing_sha="$(jq -er '.sha' "$existing_response")"
   payload="$(jq -n --arg content "$encoded_content" --arg sha "$existing_sha" --arg message "chore: publish $tag manifest" \
     '{content:$content, sha:$sha, message:$message, branch:"main"}')"
   method=PUT
-elif [[ "$existing_code" == "404" ]]; then
+elif [[ "$existing_code" == "404" ]] \
+  || { [[ "$existing_code" == "200" ]] && jq -e 'type == "array" and length == 0' "$existing_response" >/dev/null; }; then
   payload="$(jq -n --arg content "$encoded_content" --arg message "chore: publish $tag manifest" \
     '{content:$content, message:$message, branch:"main"}')"
   method=POST
