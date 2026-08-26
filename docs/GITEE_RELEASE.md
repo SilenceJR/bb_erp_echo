@@ -91,4 +91,14 @@ git push origin v0.1.0-rc.1
 
 验收以下结果：Gitee 标签同步到 GitHub；Actions 三项验证和 Windows 构建成功；Gitee Release 四个附件可匿名下载；稳定 manifest 中版本、URL、大小和 SHA-256 一致；国内内网服务电脑可访问稳定地址并由管理员立即检查、缓存客户端包。真实网络耗时和错误记录在发布验收单中。
 
+首次闭环已于 2026-08-26 16:35 CST 完成：
+
+- 源码提交：`f26d8c62081a8821c973972a28a9b9d2e1d8a091`
+- 预发布标签：`v0.1.0-rc.3`
+- [GitHub Actions #18](https://github.com/SilenceJR/bb_erp_echo/actions/runs/32942763389)：Go、Web、Tauri 前端、Windows 打包和 Gitee 发布全部成功，总耗时 1 小时 6 分 7 秒。
+- [Gitee 预发布版本](https://gitee.com/SilenceJR/bb_erp_releases/releases/tag/v0.1.0-rc.3)：四个 Windows ZIP 均可匿名下载。
+- [稳定 manifest](https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json)：版本为 `0.1.0-rc.3`；四个附件的 URL、实际字节数和 SHA-256 经本地匿名下载复验一致。
+
+首次联调中发现并修复了 Gitee API 对不存在 Release 返回 `200 null`、对不存在文件返回 `200 []` 的兼容问题。`v0.1.0-rc.1` 和 `v0.1.0-rc.2` 保留用于故障追踪；稳定 manifest 只在 `v0.1.0-rc.3` 的全部附件复验成功后更新。GitHub 向 Gitee 上传约 51.5 MB 发布附件耗时约 53 分钟，后续正式发布需为该阶段预留足够时间。
+
 参考：[Gitee 仓库镜像说明](https://blog.gitee.com/2021/07/15/repo-mirror/)、[Gitee Release 附件下载路由](https://blog.gitee.com/2022/08/18/update/)、[GitHub Actions Artifact](https://github.com/actions/upload-artifact)。
