@@ -3,6 +3,7 @@ module bb_erp_echo
 go 1.27
 
 require (
+	aead.dev/minisign v0.3.0
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/golang-jwt/jwt/v5 v5.2.0

@@ -138,10 +138,12 @@
             <div class="service-status" :class="`is-${healthStatus}`" role="status" aria-live="polite">
               <span></span> {{ healthStatusLabel }}
             </div>
-            <div v-if="desktopClient && clientUpdate.available && clientUpdate.cached" class="client-update">
-              <span>客户端 {{ clientUpdate.latest_version || '新版本' }}</span>
-              <el-button link type="primary" @click="downloadClientUpdate">下载更新</el-button>
-            </div>
+            <DesktopUpdatePanel
+              v-if="desktopClient"
+              compact
+              :legacy-status="clientUpdate"
+              @download-recovery="downloadClientUpdate"
+            />
           </div>
 
           <section class="home-section dashboard-overview" aria-labelledby="dashboard-overview-title">
@@ -1174,6 +1176,7 @@ import type {InputInstance} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {ApiError, apiBaseUrl, desktopAppVersion, downloadApiFile, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import ImageGallery from './components/ImageGallery.vue'
+import DesktopUpdatePanel from './components/DesktopUpdatePanel.vue'
 import UpdateCenter from './components/UpdateCenter.vue'
 import AppNavigation from './components/ui/AppNavigation.vue'
 import DataTableShell from './components/ui/DataTableShell.vue'

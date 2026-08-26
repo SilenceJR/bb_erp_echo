@@ -1136,6 +1136,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/updates/client/artifacts/{sha256}": {
+            "get": {
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "updates"
+                ],
+                "summary": "下载已验签客户端更新资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "当前 manifest 资源 SHA-256",
+                        "name": "sha256",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "206": {
+                        "description": "Partial Content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/updates/client/download": {
             "get": {
                 "produces": [
@@ -1154,6 +1195,65 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/updates/client/plan": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "updates"
+                ],
+                "summary": "规划 Windows 客户端自动更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "当前客户端 SemVer",
+                        "name": "current_version",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "当前客户端 EXE SHA-256",
+                        "name": "current_sha256",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "目标平台，固定 windows-x86_64",
+                        "name": "target",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "安装模式：nsis 或 portable",
+                        "name": "install_mode",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/update.ClientUpdatePlan"
+                        }
+                    },
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1184,6 +1284,58 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/update.ClientUpdateStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/updates/client/tauri/{target}/{arch}/{current_version}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "updates"
+                ],
+                "summary": "查询 Tauri 完整客户端更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tauri target，固定 windows",
+                        "name": "target",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "CPU 架构，固定 x86_64",
+                        "name": "arch",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "当前客户端 SemVer",
+                        "name": "current_version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/update.TauriUpdateResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -2951,6 +3103,85 @@ const docTemplate = `{
                 }
             }
         },
+        "update.ClientUpdatePlan": {
+            "type": "object",
+            "properties": {
+                "artifact": {
+                    "$ref": "#/definitions/update.ClientUpdatePlanArtifact"
+                },
+                "current_version": {
+                    "type": "string"
+                },
+                "download_size": {
+                    "type": "integer"
+                },
+                "full_fallback": {
+                    "$ref": "#/definitions/update.ClientUpdatePlanArtifact"
+                },
+                "full_size": {
+                    "type": "integer"
+                },
+                "install_mode": {
+                    "type": "string"
+                },
+                "latest_version": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "protocol_version": {
+                    "type": "integer"
+                },
+                "saved_bytes": {
+                    "type": "integer"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "signed_payload": {
+                    "type": "string"
+                },
+                "strategy": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "update.ClientUpdatePlanArtifact": {
+            "type": "object",
+            "properties": {
+                "algorithm": {
+                    "type": "string"
+                },
+                "download_path": {
+                    "type": "string"
+                },
+                "from_sha256": {
+                    "type": "string"
+                },
+                "from_version": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "target_sha256": {
+                    "type": "string"
+                }
+            }
+        },
         "update.ClientUpdateStatus": {
             "type": "object",
             "properties": {
@@ -3018,6 +3249,9 @@ const docTemplate = `{
                 "client": {
                     "$ref": "#/definitions/update.PackageManifest"
                 },
+                "client_update_v2": {
+                    "$ref": "#/definitions/update.SignedClientUpdateManifest"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -3052,6 +3286,17 @@ const docTemplate = `{
                 }
             }
         },
+        "update.SignedClientUpdateManifest": {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string"
+                },
+                "signature": {
+                    "type": "string"
+                }
+            }
+        },
         "update.SystemUpdateStatus": {
             "type": "object",
             "properties": {
@@ -3063,6 +3308,24 @@ const docTemplate = `{
                 },
                 "client": {
                     "$ref": "#/definitions/update.ClientComponentStatus"
+                },
+                "client_cache_bytes": {
+                    "type": "integer"
+                },
+                "client_delta_cached": {
+                    "type": "boolean"
+                },
+                "client_delta_degraded": {
+                    "type": "string"
+                },
+                "client_delta_from_version": {
+                    "type": "string"
+                },
+                "client_full_cached": {
+                    "type": "boolean"
+                },
+                "client_protocol_version": {
+                    "type": "integer"
                 },
                 "enabled": {
                     "type": "boolean"
@@ -3093,6 +3356,23 @@ const docTemplate = `{
                 },
                 "server": {
                     "$ref": "#/definitions/update.ComponentStatus"
+                }
+            }
+        },
+        "update.TauriUpdateResponse": {
+            "type": "object",
+            "properties": {
+                "pub_date": {
+                    "type": "string"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },

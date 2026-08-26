@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppNavigation: typeof import('./src/components/ui/AppNavigation.vue')['default']
     DataTableShell: typeof import('./src/components/ui/DataTableShell.vue')['default']
+    DesktopUpdatePanel: typeof import('./src/components/DesktopUpdatePanel.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
@@ -42,6 +43,8 @@ declare module 'vue' {
     ElSegmented: typeof import('element-plus/es')['ElSegmented']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
+    ElStep: typeof import('element-plus/es')['ElStep']
+    ElSteps: typeof import('element-plus/es')['ElSteps']
     ElSubMenu: typeof import('element-plus/es')['ElSubMenu']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']

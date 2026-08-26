@@ -20,6 +20,10 @@ import (
 )
 
 func zipBytes(t *testing.T) []byte {
+	return zipBytesWithComment(t, "")
+}
+
+func zipBytesWithComment(t *testing.T, comment string) []byte {
 	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
@@ -30,6 +34,7 @@ func zipBytes(t *testing.T) []byte {
 	if _, err := file.Write([]byte("bb erp update")); err != nil {
 		t.Fatalf("write zip entry: %v", err)
 	}
+	writer.SetComment(comment)
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close zip: %v", err)
 	}
@@ -113,7 +118,7 @@ func TestServicePreservesSuccessfulStateAfterPackageFailure(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(Manifest{
 			Server: PackageManifest{Version: version},
-			Client: PackageManifest{Version: version, URL: server.URL + "/client.zip", SHA256: hash},
+			Client: PackageManifest{Version: version, URL: server.URL + "/client.zip", SHA256: hash, Size: int64(len(archive))},
 		})
 	}))
 	defer server.Close()
@@ -155,7 +160,7 @@ func TestServiceCachesSameVersionClientForOlderInstalledClients(t *testing.T) {
 			Server: PackageManifest{Version: "1.2.3"},
 			Client: PackageManifest{
 				Version: "1.2.3", URL: server.URL + "/client.zip",
-				SHA256: hex.EncodeToString(digest[:]),
+				SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
 			},
 		})
 	}))
@@ -279,6 +284,72 @@ func TestLocalPackageStoreRejectsInvalidZip(t *testing.T) {
 	}
 	if store.Cached(clientPackageName, PackageManifest{}) {
 		t.Fatal("invalid ZIP must not be reported as cached")
+	}
+}
+
+func TestLocalPackageStoreVerifiedSnapshotAvoidsRepeatedHashScans(t *testing.T) {
+	archive := zipBytes(t)
+	digest := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+	var scans atomic.Int32
+	store := &LocalPackageStore{Root: t.TempDir(), Client: server.Client(), verifyFile: func(path, want string) error {
+		scans.Add(1)
+		return verifySHA256(path, want)
+	}}
+	pkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive))}
+	service := NewServiceWithAllDependencies(config.UpdateConfig{Enabled: true, CacheDir: t.TempDir(), ClientVersion: "1.0.0", CheckInterval: time.Hour}, "1.0.0",
+		staticManifestSource{manifest: &Manifest{Version: "1.0.1", Client: pkg}}, store,
+		&LocalArtifactStore{Root: t.TempDir(), Client: server.Client()}, nil, nil)
+	if _, err := service.Check(context.Background()); err != nil {
+		t.Fatalf("check legacy package: %v", err)
+	}
+	for range 3 {
+		if status := service.Status(""); !status.Client.Cached {
+			t.Fatal("verified legacy package should remain cached during repeated status requests")
+		}
+	}
+	if scans.Load() != 0 {
+		t.Fatalf("legacy status path performed %d redundant SHA scans", scans.Load())
+	}
+}
+
+func TestLocalPackageStoreSnapshotIncludesDeclaredDigest(t *testing.T) {
+	first := zipBytesWithComment(t, "first")
+	second := zipBytesWithComment(t, "other")
+	if len(first) != len(second) {
+		t.Fatalf("test archives must have identical sizes: %d != %d", len(first), len(second))
+	}
+	firstDigest := sha256.Sum256(first)
+	secondDigest := sha256.Sum256(second)
+	var serveSecond atomic.Bool
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		if serveSecond.Load() {
+			_, _ = w.Write(second)
+			return
+		}
+		_, _ = w.Write(first)
+	}))
+	defer server.Close()
+	store := &LocalPackageStore{Root: t.TempDir(), Client: server.Client()}
+	firstPkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(firstDigest[:]), Size: int64(len(first))}
+	if _, _, err := store.Ensure(context.Background(), clientPackageName, firstPkg); err != nil {
+		t.Fatalf("cache first package: %v", err)
+	}
+	serveSecond.Store(true)
+	secondPkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(secondDigest[:]), Size: int64(len(second))}
+	if store.Cached(clientPackageName, secondPkg) {
+		t.Fatal("same-name, same-size package with a new digest must not hit old snapshot")
+	}
+	if _, reused, err := store.Ensure(context.Background(), clientPackageName, secondPkg); err != nil || reused {
+		t.Fatalf("new digest must download replacement: reused=%v err=%v", reused, err)
+	}
+	if requests.Load() != 2 || !store.Cached(clientPackageName, secondPkg) {
+		t.Fatalf("new digest cache result requests=%d cached=%v", requests.Load(), store.Cached(clientPackageName, secondPkg))
 	}
 }
 

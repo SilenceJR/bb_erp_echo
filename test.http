@@ -451,3 +451,16 @@ Authorization: Bearer {{token}}
 ### 下载服务端已校验缓存的客户端包
 GET http://127.0.0.1:8080/api/v1/updates/client/download
 Authorization: Bearer {{token}}
+
+### 规划 Windows 便携客户端更新；204 表示已是最新
+GET http://127.0.0.1:8080/api/v1/updates/client/plan?current_version=0.1.0-rc.4&current_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&target=windows-x86_64&install_mode=portable
+
+### 规划 Windows NSIS 客户端更新
+GET http://127.0.0.1:8080/api/v1/updates/client/plan?current_version=0.1.0-rc.4&current_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&target=windows-x86_64&install_mode=nsis
+
+### Tauri 官方 updater 完整包响应
+GET http://127.0.0.1:8080/api/v1/updates/client/tauri/windows/x86_64/0.1.0-rc.4
+
+### 内容寻址资源（替换为 plan 返回的 SHA-256，支持 Range）
+GET http://127.0.0.1:8080/api/v1/updates/client/artifacts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Range: bytes=0-1023

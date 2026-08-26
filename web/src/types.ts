@@ -60,6 +60,52 @@ export interface SystemUpdateStatus {
   client?: UpdatePackageStatus
   server_update?: UpdatePackageStatus
   client_update?: UpdatePackageStatus
+  client_protocol_version?: number
+  client_full_cached?: boolean
+  client_delta_cached?: boolean
+  client_delta_from_version?: string
+  client_cache_bytes?: number
+  client_delta_degraded?: string
+  [key: string]: unknown
+}
+
+export type DesktopUpdateStrategy = 'delta' | 'full'
+export type DesktopUpdateState = 'Idle' | 'Checking' | 'Ready' | 'Downloading' | 'Verifying' | 'Applying' | 'Restarting' | 'Failed'
+
+// 桌面升级计划由 Rust 校验后返回。Vue 只展示计划摘要，不读取资源 URL、
+// 本地路径或签名内容，避免把安全决策下放到 WebView。
+export interface DesktopUpdatePlan {
+  current_version?: string
+  latest_version?: string
+  version?: string
+  strategy: DesktopUpdateStrategy
+  download_size?: number
+  full_size?: number
+  saved_bytes?: number
+  saved_percent?: number
+  message?: string
+  artifact?: Record<string, unknown>
+  full_fallback?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface DesktopUpdateProgress {
+  state: DesktopUpdateState
+  message?: string
+  downloaded_bytes?: number
+  total_bytes?: number
+  strategy?: DesktopUpdateStrategy
+  fallback_reason?: string
+}
+
+export interface DesktopUpdateApplyResult {
+  success?: boolean
+  state?: DesktopUpdateState
+  strategy?: DesktopUpdateStrategy
+  message?: string
+  fallback_reason?: string
+  fallback_used?: boolean
+  restart_required?: boolean
   [key: string]: unknown
 }
 

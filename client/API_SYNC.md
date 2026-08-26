@@ -14,14 +14,17 @@
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
 - 桌面端只负责 Rust/Tauri 壳、窗口配置、平台打包配置，不维护另一套业务 API。
-- 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本，请求 `/api/v1/updates/client/status` 时以 `current_version` 传给 Go；Web 端不发送桌面版本，也不显示客户端安装包提示。
+- 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本；Rust 更新引擎计算当前 EXE SHA 并向 Go 请求更新计划。Vue 只触发检查/安装并展示状态，不接触本机路径、任意下载 URL或签名决策；Web 端不显示桌面自动安装按钮。
 
 ## 更新请求
 
 - `/api/v1/version` 保持启动兼容信息。
-- Tauri 调用 `/api/v1/updates/client/status?current_version=<安装版本>`，只有服务端已校验并缓存更高版本客户端包时才展示下载提示。
+- 旧客户端继续调用 `/api/v1/updates/client/status?current_version=<安装版本>`。
+- 新客户端由 Rust 调用 `/api/v1/updates/client/plan`，传入真实版本、当前 EXE SHA、`windows-x86_64` 和安装模式。返回 `204` 表示已是最新；返回 `404` 表示旧服务端，界面退回完整 ZIP 提示。
+- 差分包仅适用于签名 payload 声明的精确上一版本和来源 EXE 哈希；任何不匹配或失败均自动切换完整资源。NSIS 安装版由 Tauri updater 安装，便携版由本地 helper 原子替换并在 90 秒 Ready 超时后回滚。
+- `/api/v1/updates/client/tauri/windows/x86_64/<当前版本>` 提供官方 updater JSON；`/api/v1/updates/client/artifacts/<sha256>` 只分发当前已验签 manifest 中的内容寻址资源，支持 ETag 和 Range。
 - 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。
-- 客户端包仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。
+- 兼容客户端 ZIP 仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。局域网服务可使用 HTTP，但 Rust 只接受 loopback/私网地址，所有自动更新资源仍须通过端到端签名与哈希验证；公网服务必须 HTTPS。
 
 ## 调试说明
 

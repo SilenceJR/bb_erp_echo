@@ -224,13 +224,20 @@ POST /api/v1/system/updates/check
 GET  /api/v1/version
 GET  /api/v1/updates/client/status?current_version=1.2.2
 GET  /api/v1/updates/client/download
+GET  /api/v1/updates/client/plan?current_version=1.2.2&current_sha256=<sha256>&target=windows-x86_64&install_mode=portable
+GET  /api/v1/updates/client/tauri/windows/x86_64/1.2.2
+GET  /api/v1/updates/client/artifacts/<sha256>
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
 ```
 
-- `/api/v1/version` 和两个客户端接口保持既有兼容。
+- `/api/v1/version`、`status` 和 `download` 保持既有兼容；新客户端发现 `/plan` 为 `404` 时退回旧版完整 ZIP 体验。
 - Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。
 - 客户端下载接口只分发已通过大小、SHA-256 和 ZIP 校验的本地缓存包。
+- `/plan` 仅支持 `windows-x86_64`，无更新返回 `204`；按精确版本、当前 EXE SHA、布局与缓存状态返回 `delta` 或 `full`，并始终带完整兜底资源。
+- `/tauri/{target}/{arch}/{current_version}` 返回 Tauri updater 的 `version/url/signature`，无更新返回 `204`。
+- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 v2 manifest 声明并缓存的资源，支持 `ETag`、`Content-Length` 与 HTTP Range。
+- `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；服务端必须配置对应 Minisign 公钥后才接受 v2 更新。
 - `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
 - `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
 - 服务端更新只报告和提供远端包下载地址，不会自动替换当前进程。
@@ -263,7 +270,13 @@ POST /api/v1/system/updates/check
     "cached": true,
     "file_name": "bb-erp-client-windows.zip",
     "download_path": "/api/v1/updates/client/download"
-  }
+  },
+  "client_protocol_version": 2,
+  "client_full_cached": true,
+  "client_delta_cached": true,
+  "client_delta_from_version": "1.2.2",
+  "client_cache_bytes": 34567890,
+  "client_delta_degraded": ""
 }
 ```
 

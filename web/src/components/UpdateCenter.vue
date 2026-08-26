@@ -48,21 +48,54 @@
         :known="statusKnown"
         @download="openDownload"
       />
+      <DesktopUpdatePanel
+        v-if="desktopClient"
+        :legacy-status="clientStatus"
+        @download-recovery="openDownload"
+      />
       <PackageCard
+        v-else
         title="桌面客户端"
-        description="安装包由服务端校验并缓存；Web 用户无需安装客户端升级包。"
+        description="Web 端不执行桌面客户端安装；完整 ZIP 仅供管理员故障恢复使用。"
+        download-label="下载完整 ZIP（故障恢复）"
+        :allow-download="canCheck"
         :item="clientStatus"
         :known="statusKnown"
         @download="openDownload"
       />
     </div>
+
+    <article v-if="clientProtocolVersion > 0" class="update-package-card" aria-labelledby="client-v2-cache-title">
+      <div class="update-card-heading">
+        <div>
+          <span class="update-kicker">客户端更新缓存</span>
+          <h2 id="client-v2-cache-title">增量更新资源</h2>
+        </div>
+        <el-tag type="info" effect="light">协议 v{{ clientProtocolVersion }}</el-tag>
+      </div>
+      <p class="update-package-description">服务端已验签并缓存的 Windows 客户端更新资源摘要。</p>
+      <dl class="update-version-list">
+        <div><dt>完整包</dt><dd>{{ cacheStateLabel(status?.client_full_cached) }}</dd></div>
+        <div><dt>差分来源版本</dt><dd>{{ status?.client_delta_from_version || '暂无可用差分' }}</dd></div>
+        <div><dt>差分包</dt><dd>{{ cacheStateLabel(status?.client_delta_cached) }}</dd></div>
+        <div><dt>缓存总量</dt><dd>{{ formatBytes(status?.client_cache_bytes) }}</dd></div>
+      </dl>
+      <el-alert
+        v-if="clientDeltaDegraded"
+        :title="`差分更新已降级：${clientDeltaDegraded}`"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+    </article>
   </section>
 </template>
 
 <script setup lang="ts">
 import {computed, defineComponent, h, onMounted, ref} from 'vue'
 import {ElButton, ElMessage, ElTag} from 'element-plus'
-import {downloadApiFile, request} from '../api/http'
+import DesktopUpdatePanel from './DesktopUpdatePanel.vue'
+import {downloadApiFile, isDesktopClient, request} from '../api/http'
 import type {SystemUpdateStatus, UpdatePackageStatus} from '../types'
 
 const props = defineProps<{
@@ -71,6 +104,7 @@ const props = defineProps<{
 }>()
 
 const status = ref<SystemUpdateStatus | null>(null)
+const desktopClient = isDesktopClient()
 const loading = ref(false)
 const checking = ref(false)
 const loadError = ref('')
@@ -78,6 +112,8 @@ let statusRequestGeneration = 0
 const requestBusy = computed(() => loading.value || checking.value)
 const manifestUrl = computed(() => String(status.value?.manifest_url || status.value?.source || ''))
 const statusError = computed(() => String(status.value?.last_error || status.value?.error || ''))
+const clientProtocolVersion = computed(() => Math.max(0, Number(status.value?.client_protocol_version || 0)))
+const clientDeltaDegraded = computed(() => String(status.value?.client_delta_degraded || '').trim())
 const statusKnown = computed(() => Boolean(
   status.value
   && !loadError.value
@@ -117,6 +153,22 @@ function formatTime(value?: string): string {
   if (!value) return '—'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', {hour12: false})
+}
+
+function formatBytes(value?: number): string {
+  const amount = Number(value || 0)
+  if (amount <= 0) return '0 B'
+  const units = ['B', 'KiB', 'MiB', 'GiB']
+  let size = amount
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1 }
+  return `${size.toFixed(unit ? 1 : 0)} ${units[unit]}`
+}
+
+function cacheStateLabel(value?: boolean): string {
+  if (value === true) return '已校验并缓存'
+  if (value === false) return '尚未缓存'
+  return '状态未知'
 }
 
 async function openDownload(item: UpdatePackageStatus) {
@@ -173,6 +225,8 @@ const PackageCard = defineComponent({
     description: {type: String, required: true},
     item: {type: Object as () => UpdatePackageStatus, required: true},
     known: {type: Boolean, required: true},
+    downloadLabel: {type: String, default: ''},
+    allowDownload: {type: Boolean, default: true},
   },
   emits: ['download'],
   setup(cardProps, {emit}) {
@@ -185,7 +239,8 @@ const PackageCard = defineComponent({
       while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1 }
       return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
     }
-    const canDownload = () => Boolean(cardProps.item.download_url || cardProps.item.download_path)
+    const canDownload = () => cardProps.allowDownload && Boolean(cardProps.item.download_url || cardProps.item.download_path)
+    const downloadUnavailableText = () => !cardProps.allowDownload ? '需要更新管理权限才能下载故障恢复包' : '当前没有可下载的安装包'
     const hasVersionData = () => Boolean(cardProps.item.current_version && cardProps.item.latest_version)
     const packageState = () => {
       if (!cardProps.known) return {type: 'info' as const, label: '状态未知'}
@@ -208,7 +263,7 @@ const PackageCard = defineComponent({
       ]),
       cardProps.item.message ? h('p', {class: 'update-package-message'}, cardProps.item.message) : null,
       h('div', {class: 'update-actions'}, [
-        canDownload() ? h(ElButton, {type: 'primary', plain: true, onClick: () => emit('download', cardProps.item)}, () => cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端') : h('small', '当前没有可下载的安装包'),
+        canDownload() ? h(ElButton, {type: 'primary', plain: true, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端')) : h('small', downloadUnavailableText()),
       ]),
     ])
   },
