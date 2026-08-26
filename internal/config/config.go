@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -121,6 +122,10 @@ type UpdateConfig struct {
 	ManifestTimeout time.Duration `koanf:"manifest_timeout"`
 	// DownloadTimeout 是下载客户端升级包的超时时间。
 	DownloadTimeout time.Duration `koanf:"download_timeout"`
+	// SigningPublicKey 是 Minisign 公钥内容。非空时用于验证 v2 客户端更新签名。
+	SigningPublicKey string `koanf:"signing_public_key"`
+	// SigningPublicKeyFile 是 Minisign 公钥文件路径；SigningPublicKey 非空时优先使用直接值。
+	SigningPublicKeyFile string `koanf:"signing_public_key_file"`
 }
 
 // Load 加载系统配置。
@@ -135,33 +140,35 @@ func Load() (*Config, error) {
 	k := koanf.New(".")
 
 	defaults := map[string]any{
-		"app.name":                "博邦 ERP",
-		"app.version":             buildinfo.Version,
-		"app.environment":         "development",
-		"http.host":               "0.0.0.0",
-		"http.port":               8080,
-		"http.allowed_origins":    []string{"http://localhost:3000", "http://localhost:5173"},
-		"database.path":           "data/erp.db",
-		"jwt.secret":              "change-me-in-production",
-		"jwt.expires_in":          "24h",
-		"jwt.issuer":              "bb-erp-echo",
-		"log.level":               "info",
-		"log.dir":                 "logs",
-		"log.console":             true,
-		"log.retention_days":      30,
-		"web.enabled":             true,
-		"web.dist_dir":            "web/dist",
-		"admin.username":          "admin",
-		"admin.password":          "admin123456",
-		"admin.name":              "系统管理员",
-		"update.enabled":          false,
-		"update.manifest_url":     "",
-		"update.cache_dir":        "updates",
-		"update.client_version":   buildinfo.Version,
-		"update.check_interval":   "6h",
-		"update.manifest_timeout": "20s",
-		"update.download_timeout": "10m",
-		"files.root_dir":          "static/uploads",
+		"app.name":                       "博邦 ERP",
+		"app.version":                    buildinfo.Version,
+		"app.environment":                "development",
+		"http.host":                      "0.0.0.0",
+		"http.port":                      8080,
+		"http.allowed_origins":           []string{"http://localhost:3000", "http://localhost:5173"},
+		"database.path":                  "data/erp.db",
+		"jwt.secret":                     "change-me-in-production",
+		"jwt.expires_in":                 "24h",
+		"jwt.issuer":                     "bb-erp-echo",
+		"log.level":                      "info",
+		"log.dir":                        "logs",
+		"log.console":                    true,
+		"log.retention_days":             30,
+		"web.enabled":                    true,
+		"web.dist_dir":                   "web/dist",
+		"admin.username":                 "admin",
+		"admin.password":                 "admin123456",
+		"admin.name":                     "系统管理员",
+		"update.enabled":                 false,
+		"update.manifest_url":            "",
+		"update.cache_dir":               "updates",
+		"update.client_version":          buildinfo.Version,
+		"update.check_interval":          "6h",
+		"update.manifest_timeout":        "20s",
+		"update.download_timeout":        "10m",
+		"update.signing_public_key":      "",
+		"update.signing_public_key_file": "",
+		"files.root_dir":                 "static/uploads",
 	}
 
 	// 默认配置只负责让本地开发可运行，敏感配置需要在部署时由环境变量覆盖。
@@ -230,6 +237,19 @@ func Load() (*Config, error) {
 	}
 	if cfg.Update.DownloadTimeout <= 0 {
 		cfg.Update.DownloadTimeout = 10 * time.Minute
+	}
+	if signingPublicKey := k.String("update.signing.public.key"); signingPublicKey != "" {
+		cfg.Update.SigningPublicKey = signingPublicKey
+	}
+	if signingPublicKeyFile := k.String("update.signing.public.key.file"); signingPublicKeyFile != "" {
+		cfg.Update.SigningPublicKeyFile = signingPublicKeyFile
+	}
+	// 这两个名称含有连续语义词，直接读取环境变量避免 koanf 将 key/file 继续拆分后丢失优先级。
+	if signingPublicKey, ok := os.LookupEnv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY"); ok {
+		cfg.Update.SigningPublicKey = signingPublicKey
+	}
+	if signingPublicKeyFile, ok := os.LookupEnv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE"); ok {
+		cfg.Update.SigningPublicKeyFile = signingPublicKeyFile
 	}
 	if cfg.Files.RootDir == "" {
 		cfg.Files.RootDir = "static/uploads"

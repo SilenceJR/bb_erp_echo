@@ -1,6 +1,9 @@
 import {fetch as tauriFetch} from '@tauri-apps/plugin-http'
 import {getVersion} from '@tauri-apps/api/app'
+import {invoke} from '@tauri-apps/api/core'
+import {listen} from '@tauri-apps/api/event'
 import type {DesktopHttpBridge} from '../../web/src/api/transport'
+import type {DesktopUpdateApplyResult, DesktopUpdatePlan, DesktopUpdateProgress} from '../../web/src/types'
 
 const serverUrlKey = 'bb_erp_server_url'
 const defaultServerUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
@@ -95,6 +98,7 @@ const desktopHttpBridge: DesktopHttpBridge = {
   setServerUrl(value) {
     currentServerUrl = normalizeServerUrl(value)
     localStorage.setItem(serverUrlKey, currentServerUrl)
+    window.dispatchEvent(new CustomEvent('bb-erp-server-changed'))
     return currentServerUrl
   },
   async testServerUrl(value) {
@@ -107,6 +111,18 @@ const desktopHttpBridge: DesktopHttpBridge = {
   },
   appVersion() {
     return getVersion()
+  },
+  checkClientUpdate() {
+    return invoke<DesktopUpdatePlan | null>('client_update_check', {serverUrl: currentServerUrl})
+  },
+  applyClientUpdate(plan) {
+    return invoke<DesktopUpdateApplyResult>('client_update_apply', {plan})
+  },
+  clientUpdateStatus() {
+    return invoke<DesktopUpdateProgress>('client_update_status')
+  },
+  async onClientUpdateProgress(handler) {
+    return await listen<DesktopUpdateProgress>('client-update-progress', (event) => handler(event.payload))
   },
 }
 

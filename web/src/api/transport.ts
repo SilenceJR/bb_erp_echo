@@ -1,3 +1,5 @@
+import type {DesktopUpdateApplyResult, DesktopUpdatePlan, DesktopUpdateProgress} from '../types'
+
 // HttpTransport 隔离业务请求与运行平台的网络实现。
 // Web 使用浏览器同源 fetch；Tauri 在启动时注入 Rust HTTP 插件实现。
 export interface HttpTransport {
@@ -9,6 +11,10 @@ export interface DesktopHttpBridge extends HttpTransport {
   setServerUrl(value: string): string
   testServerUrl(value: string): Promise<void>
   appVersion(): Promise<string>
+  checkClientUpdate(): Promise<DesktopUpdatePlan | null>
+  applyClientUpdate(plan: DesktopUpdatePlan): Promise<DesktopUpdateApplyResult>
+  clientUpdateStatus(): Promise<DesktopUpdateProgress>
+  onClientUpdateProgress(handler: (progress: DesktopUpdateProgress) => void): Promise<() => void>
 }
 
 declare global {

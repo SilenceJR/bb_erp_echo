@@ -41,8 +41,18 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": false,
     "category": "Business",
     "shortDescription": "博邦 ERP 桌面客户端",
     "longDescription": "博邦 ERP 管理系统桌面客户端，复用 Web 管理端并连接 Go 后端 API。"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "dangerousInsecureTransportProtocol": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

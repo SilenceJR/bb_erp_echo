@@ -35,6 +35,8 @@ Secrets：
 
 - `GITEE_TOKEN`：公开发布仓库的标签、Release、附件和 `main/update-manifest.json` 写入凭据。
 - `GITEE_SOURCE_TOKEN`：可选，私有源码仓库的只读凭据，仅用于核对标签提交。未配置时暂用 `GITEE_TOKEN`；生产环境建议拆分。
+- `TAURI_SIGNING_PRIVATE_KEY`：密码保护的 Tauri updater 私钥内容，只用于正式标签签名。
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：上述私钥的密码。
 
 Repository/Environment Variables：
 
@@ -42,8 +44,9 @@ Repository/Environment Variables：
 - `GITEE_SOURCE_REPO`
 - `GITEE_RELEASE_OWNER`
 - `GITEE_RELEASE_REPO`
+- `TAURI_UPDATER_PUBLIC_KEY`：`tauri signer generate` 生成的整个 `.pub` 文件内容（官方 Base64 envelope），同时注入客户端并写入服务端发布包；不要手工解包或只复制内部第二行。
 
-`GITEE_TOKEN` 不应出现在仓库文件、构建包、manifest 或日志中。若 Gitee 的令牌模型不能按单仓库授权，使用专门的发布机器人账号，并只把该账号加入上述两个仓库。
+Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 或日志中。若 Gitee 的令牌模型不能按单仓库授权，使用专门的发布机器人账号，并只把该账号加入上述两个仓库。签名私钥必须另存一份加密离线备份；确认私钥和密码都可恢复前不得发布首个 v2 基线标签。
 
 ## 触发与发布顺序
 
@@ -61,8 +64,8 @@ Repository/Environment Variables：
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于 GitHub Actions 的 `GITHUB_SHA`。
 2. 在公开发布仓库创建标签和 Release。
-3. 上传 server、client、all-in-one 和 updater ZIP。
-4. 匿名下载全部附件，复验大小、SHA-256 和 updater 内容。
+3. 上传 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分。
+4. 动态读取 manifest 资源集合，匿名下载全部附件，复验大小、SHA-256 和签名字段。
 5. 仅在全部复验成功后更新公开仓库 `main/update-manifest.json`。
 6. 再次匿名读取稳定 manifest 并确认内容一致。
 
@@ -89,7 +92,9 @@ git tag v0.1.0-rc.1
 git push origin v0.1.0-rc.1
 ```
 
-验收以下结果：Gitee 标签同步到 GitHub；Actions 三项验证和 Windows 构建成功；Gitee Release 四个附件可匿名下载；稳定 manifest 中版本、URL、大小和 SHA-256 一致；国内内网服务电脑可访问稳定地址并由管理员立即检查、缓存客户端包。真实网络耗时和错误记录在发布验收单中。
+增量升级首次发布固定分两步：先发布 `v0.1.0-rc.4` 作为 v2 全量基线（没有可用的上一份 v2 manifest，因此不得生成差分）；完成 Windows 10/11 的 `rc.3 → rc.4` 全量安装、重启和配置保留验证后，再发布仅含无害版本变化的 `v0.1.0-rc.5`。`rc.5` 必须从稳定 `rc.4` 便携 EXE生成补丁、回放并逐字节等于新 EXE；补丁达到 NSIS 大小 80% 时按设计只发布全量。
+
+验收以下结果：Gitee 标签同步到 GitHub；Actions 三项验证和 Windows 构建成功；Gitee Release 中 manifest 声明的全部附件可匿名下载；稳定 manifest 中版本、URL、大小、SHA-256 和签名一致；`rc.4 → rc.5` 精确版本/哈希选择差分，`rc.3 → rc.5` 选择全量；国内内网服务电脑可访问稳定地址并由管理员立即检查、缓存客户端包。真实网络耗时、差分节省比例、断网/损坏/不可写/回滚结果记录在发布验收单中。
 
 首次闭环已于 2026-08-26 16:35 CST 完成：
 

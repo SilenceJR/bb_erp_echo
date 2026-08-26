@@ -3,6 +3,7 @@ package update
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"bb_erp_echo/internal/config"
 
@@ -40,6 +41,9 @@ func (h *Handler) RegisterPublicRoutes(v1 *echo.Group) {
 	updates := v1.Group("/updates/client")
 	updates.GET("/status", h.ClientStatus)
 	updates.GET("/download", h.DownloadClientPackage)
+	updates.GET("/plan", h.ClientPlan)
+	updates.GET("/tauri/:target/:arch/:current_version", h.TauriClientUpdate)
+	updates.GET("/artifacts/:sha256", h.DownloadClientArtifact)
 }
 
 // RegisterSystemRoutes 注册管理员触发的远端检查接口。
@@ -89,6 +93,97 @@ func (h *Handler) DownloadClientPackage(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的客户端升级包")
 	}
 	return c.Attachment(path, clientPackageName)
+}
+
+// ClientPlan 返回桌面端应采用的增量或完整更新策略。
+// @Summary 规划 Windows 客户端自动更新
+// @Tags updates
+// @Produce json
+// @Param current_version query string true "当前客户端 SemVer"
+// @Param current_sha256 query string true "当前客户端 EXE SHA-256"
+// @Param target query string true "目标平台，固定 windows-x86_64"
+// @Param install_mode query string true "安装模式：nsis 或 portable"
+// @Success 200 {object} ClientUpdatePlan
+// @Success 204
+// @Failure 400 {object} map[string]any
+// @Router /api/v1/updates/client/plan [get]
+func (h *Handler) ClientPlan(c *echo.Context) error {
+	plan, available, err := h.Service.ClientUpdatePlan(ClientUpdatePlanRequest{
+		CurrentVersion: c.QueryParam("current_version"),
+		CurrentSHA256:  c.QueryParam("current_sha256"),
+		Target:         c.QueryParam("target"),
+		InstallMode:    c.QueryParam("install_mode"),
+	})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if !available {
+		return c.NoContent(http.StatusNoContent)
+	}
+	return c.JSON(http.StatusOK, plan)
+}
+
+// TauriClientUpdate 返回 tauri-plugin-updater 所需的完整 NSIS 更新信息。
+// @Summary 查询 Tauri 完整客户端更新
+// @Tags updates
+// @Produce json
+// @Param target path string true "Tauri target，固定 windows"
+// @Param arch path string true "CPU 架构，固定 x86_64"
+// @Param current_version path string true "当前客户端 SemVer"
+// @Success 200 {object} TauriUpdateResponse
+// @Success 204
+// @Failure 400 {object} map[string]any
+// @Router /api/v1/updates/client/tauri/{target}/{arch}/{current_version} [get]
+func (h *Handler) TauriClientUpdate(c *echo.Context) error {
+	target := strings.ToLower(strings.TrimSpace(c.Param("target"))) + "-" + strings.ToLower(strings.TrimSpace(c.Param("arch")))
+	update, available, err := h.Service.TauriClientUpdate(target, c.Param("current_version"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if !available {
+		return c.NoContent(http.StatusNoContent)
+	}
+	// tauri-plugin-updater requires an absolute artifact URL. The service keeps
+	// artifact references origin-relative so the same signed manifest works on
+	// every LAN deployment; bind it to the server address used by this request.
+	if strings.HasPrefix(update.URL, "/") {
+		scheme := "http"
+		if c.Request().TLS != nil {
+			scheme = "https"
+		}
+		update.URL = scheme + "://" + c.Request().Host + update.URL
+	}
+	return c.JSON(http.StatusOK, update)
+}
+
+// DownloadClientArtifact 从当前已验签 manifest 的内容寻址缓存分发资源，支持 ETag 和 Range。
+// @Summary 下载已验签客户端更新资源
+// @Tags updates
+// @Produce application/octet-stream
+// @Param sha256 path string true "当前 manifest 资源 SHA-256"
+// @Success 200 {file} binary
+// @Success 206 {file} binary
+// @Failure 404 {object} map[string]any
+// @Router /api/v1/updates/client/artifacts/{sha256} [get]
+func (h *Handler) DownloadClientArtifact(c *echo.Context) error {
+	path, artifact, ok := h.Service.ClientArtifact(c.Param("sha256"))
+	if !ok {
+		return echo.NewHTTPError(http.StatusNotFound, "客户端更新资源不存在")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "客户端更新资源不存在")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		return echo.NewHTTPError(http.StatusNotFound, "客户端更新资源不存在")
+	}
+	response := c.Response()
+	response.Header().Set(http.CanonicalHeaderKey("ETag"), `"`+strings.ToLower(artifact.SHA256)+`"`)
+	response.Header().Set(echo.HeaderContentType, "application/octet-stream")
+	http.ServeContent(response, c.Request(), artifact.Kind, info.ModTime(), file)
+	return nil
 }
 
 // CheckRemoteUpdates 由管理员触发服务端检查 GitHub、Gitee 或内网 manifest。

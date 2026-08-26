@@ -49,6 +49,8 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_UPDATE_CHECK_INTERVAL", "30m")
 	t.Setenv("BB_ERP_UPDATE_MANIFEST_TIMEOUT", "9s")
 	t.Setenv("BB_ERP_UPDATE_DOWNLOAD_TIMEOUT", "2m")
+	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "direct-test-key")
+	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE", "test-update-public.key")
 
 	cfg, err := Load()
 	if err != nil {
@@ -75,5 +77,8 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Update.CheckInterval != 30*time.Minute || cfg.Update.ManifestTimeout != 9*time.Second || cfg.Update.DownloadTimeout != 2*time.Minute {
 		t.Fatalf("update env durations: %+v", cfg.Update)
+	}
+	if cfg.Update.SigningPublicKey != "direct-test-key" || cfg.Update.SigningPublicKeyFile != "test-update-public.key" {
+		t.Fatalf("update signing public key config: %+v", cfg.Update)
 	}
 }

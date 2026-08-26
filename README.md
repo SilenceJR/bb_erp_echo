@@ -104,15 +104,20 @@ BB_ERP_UPDATE_CACHE_DIR=updates
 BB_ERP_UPDATE_CHECK_INTERVAL=6h
 BB_ERP_UPDATE_MANIFEST_TIMEOUT=20s
 BB_ERP_UPDATE_DOWNLOAD_TIMEOUT=10m
+# `tauri signer generate` 生成的整个 .pub 文件内容，或改用下方文件配置
+BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=
+BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
 ```
 
-更新检查在服务启动后异步执行，失败不会阻止 ERP 启动，之后默认每 6 小时检查一次。客户端包通过大小、SHA-256 和 ZIP 格式校验后原子写入缓存；服务端新版本只报告和提供下载，不会自动覆盖正在运行的服务。
+更新检查在服务启动后异步执行，失败不会阻止 ERP 启动，之后默认每 6 小时检查一次。旧版客户端 ZIP 保持兼容；v2 客户端资源还会验证签名 payload、文件 Minisign 签名、大小和 SHA-256，再按哈希原子写入缓存。服务端新版本只报告和提供下载，不会自动覆盖正在运行的服务。
+
+Windows 10/11 x86_64 桌面端支持“上一版 → 最新版”的 zstd EXE 增量更新。来源版本、当前 EXE 哈希或布局不匹配时直接使用完整包；增量下载、校验或应用失败时自动切换签名 NSIS/便携 EXE，不要求用户再次确认。浏览器端不执行桌面安装，完整 ZIP 仅作为管理员故障恢复入口。`v0.1.0-rc.4` 是首次全量基线，`v0.1.0-rc.5` 用于验证首个真实差分；`rc.3` 及更旧客户端必须先完整安装 `rc.4`。
 
 ## 分支、CI 与发布
 
 Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标签的 Push 镜像并运行 Actions。功能开发采用 `codex/<主题>` 分支，通过 Go、Web、Tauri 和相关发布配置验证后再合并主分支。
 
-任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。只有符合 `vMAJOR.MINOR.PATCH[-prerelease]` 的 Gitee 标签经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库。发布任务先匿名复验全部附件，最后才更新稳定 manifest。
+任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。只有符合 `vMAJOR.MINOR.PATCH[-prerelease]` 的 Gitee 标签经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库。正式标签同时生成签名 NSIS、便携 EXE及满足阈值时的 zstd 差分；发布任务先匿名复验 manifest 声明的全部附件，最后才更新稳定 manifest。
 
 仓库拓扑、remote 切换、Secrets/Variables、最小权限和首次预发布验收见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。当前 Gitee 源码主仓库为 `SilenceJR/bb_erp_echo`，公开发布仓库为 `SilenceJR/bb_erp_releases`。
 
@@ -142,7 +147,7 @@ cd src-tauri && cargo check --locked
 
 ## 验证状态
 
-2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移及 Gitee 更新闭环代码，并通过干净副本 `go mod tidy` 差异检查、`go vet ./...`、`go test ./...`、Web 与 Tauri 前端生产构建、`cargo check --locked`、发布脚本语法和 Workflow YAML 校验。更新测试覆盖 302、超时、无效 JSON/ZIP、大小与 SHA-256、缓存复用、并发合并、启动与周期调度、失败状态保留及 SemVer 预发布比较。真实浏览器已验证登录、权限导航、仓库物品新增、详情抽屉、四类出入库入口、图片上传、Bearer Blob 预览、替换、删除确认保护，以及桌面/移动响应式切换。Gitee 镜像、正式 Release 和国内网络更新闭环需要在仓库地址与凭据配置后用预发布标签复验；远端 CI 在下一次镜像推送成功前标记为“待复验”。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
+2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移，`v0.1.0-rc.3` 已跑通 Gitee 主仓库、GitHub Windows 构建和 Gitee Release。Windows 增量升级分支已通过 `go mod tidy`、`go vet ./...`、`go test ./...`、Web/Client 生产构建、Rust 11 项测试、`cargo check --locked`、真实 Tauri 格式签名 smoke、发布脚本语法和 Workflow YAML 校验；独立 UI 审查结果为 P0/P1/P2 均为 0。`rc.4`/`rc.5` 尚需在签名私钥离线备份确认后发布，并在 Windows 10/11 真机完成 NSIS/便携安装、断网、磁盘不足、不可写目录、崩溃与 90 秒回滚验收。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
 
 ## 已知限制与路线图
 
