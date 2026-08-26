@@ -99,7 +99,7 @@ BB_ERP_JWT_SECRET=change-me-in-production
 BB_ERP_ADMIN_USERNAME=admin
 BB_ERP_ADMIN_PASSWORD=change-me-in-production
 BB_ERP_UPDATE_ENABLED=false
-BB_ERP_UPDATE_MANIFEST_URL=https://gitee.com/<发布空间>/<发布仓库>/raw/main/update-manifest.json
+BB_ERP_UPDATE_MANIFEST_URL=https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json
 BB_ERP_UPDATE_CACHE_DIR=updates
 BB_ERP_UPDATE_CHECK_INTERVAL=6h
 BB_ERP_UPDATE_MANIFEST_TIMEOUT=20s
@@ -114,7 +114,7 @@ Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标�
 
 任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。只有符合 `vMAJOR.MINOR.PATCH[-prerelease]` 的 Gitee 标签经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库。发布任务先匿名复验全部附件，最后才更新稳定 manifest。
 
-仓库拓扑、remote 切换、Secrets/Variables、最小权限和首次预发布验收见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。在实际 Gitee 地址尚未配置前，本地 `origin` 不应写入占位地址。
+仓库拓扑、remote 切换、Secrets/Variables、最小权限和首次预发布验收见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。当前 Gitee 源码主仓库为 `SilenceJR/bb_erp_echo`，公开发布仓库为 `SilenceJR/bb_erp_releases`。
 
 ## 权限与仓库原则
 

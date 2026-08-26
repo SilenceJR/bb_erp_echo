@@ -83,7 +83,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            web/package-lock.json
+            client/package-lock.json
+
+      - name: Install shared web dependencies
+        working-directory: web
+        run: npm ci
 
       - name: Install Tauri client dependencies
         working-directory: client

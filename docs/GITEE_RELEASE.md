@@ -69,13 +69,13 @@ Repository/Environment Variables：
 稳定地址为：
 
 ```text
-https://gitee.com/<发布空间>/<发布仓库>/raw/main/update-manifest.json
+https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json
 ```
 
 附件地址为：
 
 ```text
-https://gitee.com/<发布空间>/<发布仓库>/releases/download/<标签>/<文件名>
+https://gitee.com/SilenceJR/bb_erp_releases/releases/download/<标签>/<文件名>
 ```
 
 任一上传或复验失败时，稳定 manifest 不会被更新。已存在的同版本 Release 不会自动覆盖，避免重跑时静默替换已发布二进制；需要修复时应发布新的预发布或补丁版本标签。
