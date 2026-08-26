@@ -57,8 +57,13 @@ if [[ "$source_sha" != "$expected_sha" ]]; then
 fi
 
 release_url="$api_base/repos/$release_owner/$release_repo/releases/tags/$tag"
-if curl --fail --silent --location "${auth[@]}" "${json[@]}" "$release_url" >/dev/null 2>&1; then
+release_lookup="$(curl --fail --silent --show-error --location "${auth[@]}" "${json[@]}" "$release_url")"
+if jq -e 'type == "object" and .id != null' <<<"$release_lookup" >/dev/null; then
   echo "Release $tag already exists in the Gitee distribution repository; refusing to overwrite it." >&2
+  exit 1
+fi
+if ! jq -e '. == null' <<<"$release_lookup" >/dev/null; then
+  echo "Unexpected response while checking Release $tag; refusing to publish." >&2
   exit 1
 fi
 
