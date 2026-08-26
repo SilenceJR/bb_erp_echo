@@ -4,6 +4,7 @@ package mold
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
@@ -160,6 +161,10 @@ func (h *Handler) ReturnMold(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
+	req.Location = strings.TrimSpace(req.Location)
+	if req.Location == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "归还位置不能为空")
+	}
 	return h.changeStatus(c, statusInStock, eventReturn, req.Location, "", req.HandlerName, req.Reason, "模具归还")
 }
 
@@ -226,6 +231,15 @@ func (h *Handler) changeStatus(c *echo.Context, nextStatus string, eventType str
 func moldHTTPError(err error) error {
 	if errors.Is(err, ErrMoldNotFound) {
 		return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
+	}
+	if errors.Is(err, ErrMoldStatusConflict) {
+		return echo.NewHTTPError(http.StatusConflict, "模具当前状态不允许执行该操作，请刷新后重试")
+	}
+	if errors.Is(err, ErrMoldReturnLocationRequired) {
+		return echo.NewHTTPError(http.StatusBadRequest, "归还位置不能为空")
+	}
+	if errors.Is(err, ErrMoldMaintenanceCycleRequired) {
+		return echo.NewHTTPError(http.StatusBadRequest, "完成保养前请填写保养周期")
 	}
 	return err
 }

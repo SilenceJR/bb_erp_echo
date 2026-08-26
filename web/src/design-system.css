@@ -23,6 +23,7 @@
 
   /* Neutral and semantic surfaces. */
   --bb-text-primary: #172b3d;
+  --bb-text-on-brand: #ffffff;
   --bb-text-regular: #3e5566;
   --bb-text-secondary: #687d8d;
   --bb-text-placeholder: #91a2af;

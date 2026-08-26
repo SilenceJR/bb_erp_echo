@@ -2,30 +2,57 @@
   <el-config-provider :locale="zhCn">
   <main class="app-shell" :class="{ 'is-login': !token }">
     <section v-if="!token" class="login-screen" aria-label="博邦光电登录">
-      <div class="login-panel">
-        <img class="login-logo" src="/bobang-logo-hd.png" alt="博邦光电"/>
-        <el-form class="login-form" label-position="top" @submit.prevent="login">
-          <el-form-item label="账号">
-            <el-input v-model.trim="loginForm.username" autocomplete="username" clearable/>
-          </el-form-item>
-          <el-form-item label="密码">
-            <el-input v-model="loginForm.password" type="password" autocomplete="current-password" show-password @keyup.enter="login"/>
-          </el-form-item>
-          <el-button class="login-submit" type="primary" :loading="loading" native-type="submit">登录</el-button>
-          <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon/>
-          <div v-if="desktopClient" class="server-settings login-server-settings">
+      <div class="login-layout">
+        <aside class="login-welcome" aria-labelledby="login-welcome-title">
+          <img class="login-logo" src="/bobang-logo-hd.png" alt="博邦光电"/>
+          <div class="login-welcome__copy">
+            <span class="login-eyebrow">博邦 ERP · 业务协同平台</span>
+            <h1 id="login-welcome-title">让库存、任务与模具状态清晰可见</h1>
+            <p>面向办公室与部门终端的统一工作台，帮助团队快速完成日常业务办理与进度核对。</p>
+          </div>
+          <ul class="login-capabilities" aria-label="平台能力">
+            <li><strong>统一入口</strong><span>按账号权限呈现可用业务</span></li>
+            <li><strong>状态明确</strong><span>集中查看库存预警与任务进度</span></li>
+            <li><strong>内网友好</strong><span>桌面端可连接企业内网服务</span></li>
+          </ul>
+        </aside>
+
+        <div class="login-panel">
+          <header class="login-panel__heading">
+            <span class="login-eyebrow">账号登录</span>
+            <h2>登录业务工作台</h2>
+            <p>{{ desktopClient ? '使用当前服务器中的账号继续。' : '请输入由管理员分配的账号和密码。' }}</p>
+          </header>
+          <el-form class="login-form" label-position="top" aria-label="账号登录表单" :aria-busy="loading" @submit.prevent="login">
+            <el-form-item label="账号">
+              <el-input ref="loginUsernameInput" v-model.trim="loginForm.username" autocomplete="username" autofocus clearable :disabled="loading || serverTesting" placeholder="请输入账号"/>
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input v-model="loginForm.password" type="password" autocomplete="current-password" show-password :disabled="loading || serverTesting" placeholder="请输入密码"/>
+            </el-form-item>
+            <el-button class="login-submit" type="primary" :loading="loading" :disabled="loading || serverTesting" native-type="submit">
+              {{ loading ? '正在登录' : '登录' }}
+            </el-button>
+            <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon/>
+          </el-form>
+
+          <section v-if="desktopClient" class="server-settings login-server-settings" aria-labelledby="login-server-title">
             <div class="server-settings-heading">
-              <span>服务器</span>
-              <small>填写运行 Go 服务的内网电脑地址</small>
+              <div>
+                <span id="login-server-title">桌面端服务器</span>
+                <small>连接运行 Go 服务的内网电脑</small>
+              </div>
+              <StatusTag label="仅桌面端" tone="info"/>
             </div>
-            <el-input v-model.trim="serverUrlInput" placeholder="例如 http://192.168.1.20:8080" clearable/>
+            <el-input v-model.trim="serverUrlInput" aria-label="Go 服务地址" placeholder="例如 http://192.168.1.20:8080" clearable :disabled="loading || serverTesting"/>
             <div class="server-actions">
-              <el-button :loading="serverTesting" @click="testServerSetting">测试连接</el-button>
-              <el-button type="primary" plain @click="saveServerSetting">保存地址</el-button>
+              <el-button :loading="serverTesting" :disabled="loading || serverTesting" @click="testServerSetting">测试连接</el-button>
+              <el-button type="primary" plain :disabled="loading || serverTesting" @click="saveServerSetting">保存地址</el-button>
             </div>
             <el-alert v-if="serverMessage" :title="serverMessage" :type="serverMessageType" :closable="false" show-icon/>
-          </div>
-        </el-form>
+          </section>
+          <p v-else class="login-web-note">Web 版会连接当前站点所配置的服务地址；如无法登录，请联系系统管理员。</p>
+        </div>
       </div>
     </section>
 
@@ -108,14 +135,60 @@
               <h1>{{ currentUser?.name || currentUser?.username }}，今天要处理什么？</h1>
               <p>从常用功能开始，快速完成手头的工作。</p>
             </div>
-            <div class="service-status" :class="{ warning: healthStatus !== '正常' }">
-              <span></span> 服务{{ healthStatus === '正常' ? '正常' : '暂不可用' }}
+            <div class="service-status" :class="`is-${healthStatus}`" role="status" aria-live="polite">
+              <span></span> {{ healthStatusLabel }}
             </div>
             <div v-if="desktopClient && clientUpdate.available && clientUpdate.cached" class="client-update">
               <span>客户端 {{ clientUpdate.latest_version || '新版本' }}</span>
               <el-button link type="primary" @click="downloadClientUpdate">下载更新</el-button>
             </div>
           </div>
+
+          <section class="home-section dashboard-overview" aria-labelledby="dashboard-overview-title">
+            <div class="home-section-title">
+              <div>
+                <h2 id="dashboard-overview-title">工作概览</h2>
+                <p>先确认服务与当前账号可用范围，再进入业务办理</p>
+              </div>
+            </div>
+            <div class="dashboard-metrics">
+              <MetricCard
+                v-for="card in dashboardMetricCards"
+                :key="card.label"
+                :label="card.label"
+                :value="card.value"
+                :caption="card.caption"
+                :tone="card.tone"
+                :status-label="card.statusLabel"
+                :status-tone="card.statusTone"
+              />
+            </div>
+          </section>
+
+          <section v-if="dashboardFocusItems.length" class="home-section" aria-labelledby="dashboard-focus-title">
+            <div class="home-section-title">
+              <div>
+                <h2 id="dashboard-focus-title">今日关注</h2>
+                <p>按高频 ERP 场景快速核对异常、进度和保养事项</p>
+              </div>
+            </div>
+            <div class="dashboard-focus-grid">
+              <button
+                v-for="item in dashboardFocusItems"
+                :key="item.key"
+                class="dashboard-focus-card"
+                type="button"
+                @click="switchModule(item.key)"
+              >
+                <span class="dashboard-focus-card__heading">
+                  <StatusTag :label="item.label" :tone="item.tone" />
+                  <span aria-hidden="true">→</span>
+                </span>
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.description }}</small>
+              </button>
+            </div>
+          </section>
 
           <section v-if="quickActions.length" class="home-section">
             <div class="home-section-title">
@@ -210,7 +283,8 @@
               <strong>{{ editingSupplier ? '编辑供应商' : `新增${createEntityTitle}` }}</strong>
               <span>请填写以下信息，带 * 为常用必填项</span>
             </div>
-            <el-form-item v-for="field in formSchema" :key="field.key" :label="field.label">
+            <el-alert v-if="formError" class="form-error" :title="formError" type="error" :closable="false" show-icon/>
+            <el-form-item v-for="field in formSchema" :key="field.key" :label="field.label" :required="field.required">
               <el-select v-if="field.kind === 'select'" v-model="formState[field.key]" placeholder="请选择" clearable>
                 <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
               </el-select>
@@ -238,26 +312,34 @@
               <p class="assignment-tip">
                 {{ assignmentConfig?.tip }}
               </p>
-              <el-checkbox-group v-model="selectedAssignmentIDs" class="assignment-options">
-                <el-checkbox
-                  v-for="option in assignmentOptions"
-                  :key="option.id"
-                  :value="option.id"
-                  :disabled="isAssignmentOptionDisabled(option)"
-                  class="check-option"
-                >
-                  <span class="check-option-copy">
-                    <strong>{{ option.name || option.code }}</strong>
-                    <small>{{ option.description || option.code }}</small>
-                  </span>
-                </el-checkbox>
+              <el-alert v-if="assignmentSaveError" :title="assignmentSaveError" type="error" :closable="false" show-icon/>
+              <PageState v-if="assignmentOptionsLoading" kind="loading" title="正在加载完整配置项" />
+              <PageState v-else-if="assignmentOptionsError" kind="error" title="配置项加载失败" :description="assignmentOptionsError" action-label="重新加载" @action="retryAssignmentOptions" />
+              <el-checkbox-group v-else v-model="selectedAssignmentIDs" class="assignment-option-groups">
+                <section v-for="group in assignmentOptionGroups" :key="group.key" class="assignment-option-group">
+                  <div class="assignment-option-group__heading"><strong>{{ group.label }}</strong><small>{{ group.items.length }} 项</small></div>
+                  <div class="assignment-options">
+                    <el-checkbox
+                      v-for="option in group.items"
+                      :key="option.id"
+                      :value="option.id"
+                      :disabled="isAssignmentOptionDisabled(option)"
+                      class="check-option"
+                    >
+                      <span class="check-option-copy">
+                        <strong>{{ option.name || option.code }}</strong>
+                        <small>{{ option.description || option.code }}</small>
+                      </span>
+                    </el-checkbox>
+                  </div>
+                </section>
               </el-checkbox-group>
-              <span v-if="!assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
+              <span v-if="assignmentOptionsReady && !assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
             </div>
             <template #footer>
               <div class="assignment-actions">
               <el-button @click="closeAssignment">取消</el-button>
-              <el-button type="primary" :loading="loading" @click="saveAssignment">保存配置</el-button>
+              <el-button type="primary" :loading="assignmentSaving" :disabled="!assignmentOptionsReady || assignmentSaving" @click="saveAssignment">保存配置</el-button>
               </div>
             </template>
           </el-dialog>
@@ -292,6 +374,21 @@
             </template>
           </FilterBar>
 
+          <section
+            v-if="operationalSummaryCards.length && !loading && rows.length"
+            class="operational-summary-grid"
+            :aria-label="`${activeModule?.title || '业务'}当前页摘要`"
+          >
+            <MetricCard
+              v-for="card in operationalSummaryCards"
+              :key="card.label"
+              :label="card.label"
+              :value="card.value"
+              :caption="card.caption"
+              :tone="card.tone"
+            />
+          </section>
+
           <PageState
             v-if="skeletonResult"
             kind="readonly"
@@ -315,55 +412,77 @@
           />
 
           <section v-else-if="activeKey === 'statistics'" v-loading="loading" class="statistics-page">
+            <el-alert v-if="listError && statisticsData" :title="listError" type="error" :closable="false" show-icon />
+            <PageState v-if="loading && !statisticsData" kind="loading" title="正在生成统计报表" />
+            <template v-else>
+            <div class="report-overview-heading">
+              <div>
+                <h2>经营概览</h2>
+                <p>更新时间：{{ formatDate(statisticsData?.generated_at) }}</p>
+              </div>
+              <StatusTag
+                :label="statisticsData?.can_view_cost ? '可查看成本金额' : '成本金额已隐藏'"
+                :tone="statisticsData?.can_view_cost ? 'success' : 'info'"
+              />
+            </div>
             <div class="stats-grid">
-              <article v-for="card in statisticsCards" :key="card.label" class="stat-card">
-                <span>{{ card.label }}</span>
-                <strong>{{ card.value }}</strong>
-                <small>{{ card.caption }}</small>
-              </article>
+              <MetricCard
+                v-for="card in statisticsCards"
+                :key="card.label"
+                :label="card.label"
+                :value="card.value"
+                :caption="card.caption"
+                :tone="card.tone"
+                :status-label="card.statusLabel"
+                :status-tone="card.statusTone"
+              />
             </div>
 
             <div class="report-grid">
               <section class="report-panel">
                 <div class="drawer-section-title"><h3>库存分类</h3><small>{{ statisticsData?.can_view_cost ? '含库存金额' : '金额已按权限隐藏' }}</small></div>
-                <div class="metric-list">
+                <div v-if="statisticsData?.inventory?.by_item_type?.length" class="metric-list">
                   <article v-for="item in statisticsData?.inventory?.by_item_type || []" :key="String(item.name)">
                     <span>{{ inventoryItemTypeLabel(item.name) }}</span>
                     <strong>{{ formatQuantity(item.value) }}</strong>
                     <small v-if="statisticsData?.can_view_cost">{{ formatMoney(item.amount) }}</small>
                   </article>
                 </div>
+                <p v-else class="report-empty">暂无库存分类数据</p>
               </section>
 
               <section class="report-panel">
                 <div class="drawer-section-title"><h3>任务状态</h3><small>主任务</small></div>
-                <div class="metric-list">
+                <div v-if="statisticsData?.workorders?.by_status?.length" class="metric-list">
                   <article v-for="item in statisticsData?.workorders?.by_status || []" :key="String(item.name)">
                     <span>{{ workorderStatusLabel(item.name) }}</span>
                     <strong>{{ item.value }}</strong>
                   </article>
                 </div>
+                <p v-else class="report-empty">暂无任务状态数据</p>
               </section>
 
               <section class="report-panel">
                 <div class="drawer-section-title"><h3>部门处理</h3><small>子任务</small></div>
-                <div class="department-stat-list">
+                <div v-if="statisticsData?.workorders?.by_department?.length" class="department-stat-list">
                   <article v-for="item in statisticsData?.workorders?.by_department || []" :key="Number(item.department_id)">
                     <div><strong>{{ item.name || departmentName(item.department_id) }}</strong><small>共 {{ item.total }} 项</small></div>
                     <el-progress :percentage="departmentCompletionRate(item)" :stroke-width="8"/>
                     <small>完成 {{ item.completed }} · 处理中 {{ item.processing }} · 部分完成 {{ item.partial }} · 已收到 {{ item.received }}</small>
                   </article>
                 </div>
+                <p v-else class="report-empty">暂无部门处理数据</p>
               </section>
 
               <section class="report-panel">
                 <div class="drawer-section-title"><h3>模具状态</h3><small>台账</small></div>
-                <div class="metric-list">
+                <div v-if="statisticsData?.molds?.by_status?.length" class="metric-list">
                   <article v-for="item in statisticsData?.molds?.by_status || []" :key="String(item.name)">
                     <span>{{ moldStatusLabel(item.name) }}</span>
                     <strong>{{ item.value }}</strong>
                   </article>
                 </div>
+                <p v-else class="report-empty">暂无模具状态数据</p>
               </section>
             </div>
 
@@ -373,7 +492,10 @@
                 <div v-if="statisticsData?.inventory?.low_stock?.length" class="report-table">
                   <article v-for="item in statisticsData.inventory.low_stock" :key="`${item.item_type}-${item.item_id}`">
                     <div><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.category }}</small></div>
-                    <span>{{ formatQuantity(item.quantity) }} / {{ formatQuantity(item.safety_stock) }}</span>
+                    <div class="report-table__status">
+                      <StatusTag :label="stockState(item).label" :tone="stockState(item).tone"/>
+                      <small>{{ formatQuantity(item.quantity) }} / {{ formatQuantity(item.safety_stock) }}</small>
+                    </div>
                   </article>
                 </div>
                 <p v-else class="drawer-empty">暂无低库存预警</p>
@@ -384,7 +506,10 @@
                 <div v-if="statisticsData?.molds?.need_care?.length" class="report-table">
                   <article v-for="item in statisticsData.molds.need_care" :key="Number(item.id)">
                     <div><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.current_location || '-' }}</small></div>
-                    <span>{{ moldStatusLabel(item.status) }}</span>
+                    <div class="report-table__status">
+                      <StatusTag :label="moldStatusLabel(item.status)" :tone="moldStatusTone(item.status)"/>
+                      <small>{{ moldMaintenanceState(item).label }}</small>
+                    </div>
                   </article>
                 </div>
                 <p v-else class="drawer-empty">暂无需要关注的模具</p>
@@ -403,14 +528,16 @@
 
               <section class="report-panel">
                 <div class="drawer-section-title"><h3>近 14 天趋势</h3><small>库存流水和任务创建</small></div>
-                <div class="trend-list">
+                <div v-if="compactTrendItems.length" class="trend-list">
                   <article v-for="item in compactTrendItems" :key="`${item.date}-${item.name}-${item.value}`">
-                    <span>{{ item.date }} · {{ trendNameLabel(item.name) }}</span>
-                    <strong>{{ item.quantity ? formatQuantity(item.quantity) : item.value }}</strong>
+                    <div><span>{{ item.date }} · {{ trendNameLabel(item.name) }}</span><strong>{{ item.quantity ? formatQuantity(item.quantity) : item.value }}</strong></div>
+                    <div class="trend-bar" aria-hidden="true"><span :style="{width: `${trendBarPercentage(item)}%`}"></span></div>
                   </article>
                 </div>
+                <p v-else class="report-empty">暂无可展示的趋势数据</p>
               </section>
             </div>
+            </template>
           </section>
 
           <DataTableShell
@@ -513,13 +640,19 @@
             </el-table-column>
             <el-table-column label="部门进度" min-width="220">
               <template #default="{row}">
-                <div class="workorder-task-tags">
-                  <StatusTag v-for="task in departmentTasks(row)" :key="task.id" :label="`${departmentName(task.department_id)} · ${departmentTaskStatusLabel(task.status)}`" :tone="departmentTaskStatusTone(task.status)"/>
+                <div class="department-progress-cell">
+                  <div><span>{{ departmentProgressSummary(row) }}</span><strong>{{ departmentProgressMetrics(row).percentage }}%</strong></div>
+                  <el-progress :percentage="departmentProgressMetrics(row).percentage" :show-text="false" :stroke-width="8"/>
                 </div>
               </template>
             </el-table-column>
             <el-table-column label="交期" width="130">
-              <template #default="{row}">{{ formatDate(row.due_at) }}</template>
+              <template #default="{row}">
+                <div class="due-state-cell">
+                  <span>{{ formatDate(row.due_at) }}</span>
+                  <StatusTag v-if="workorderDueState(row).overdue" :label="workorderDueState(row).label" tone="danger"/>
+                </div>
+              </template>
             </el-table-column>
             <el-table-column label="操作" width="100" fixed="right">
               <template #default="{row}"><el-button link type="primary" @click="openWorkOrder(row)">详情</el-button></template>
@@ -536,24 +669,67 @@
               <div class="responsive-card-tags"><StatusTag :label="row.priority === 'urgent' ? '加急' : '普通'" :tone="row.priority === 'urgent' ? 'danger' : 'info'"/></div>
               <dl>
                 <div><dt>产品/数量</dt><dd>{{ row.product_name || '-' }} · {{ formatQuantity(row.planned_quantity) }} {{ row.unit || '' }}</dd></div>
-                <div><dt>交期</dt><dd>{{ formatDate(row.due_at) }}</dd></div>
+                <div><dt>交期</dt><dd class="due-state-cell"><span>{{ formatDate(row.due_at) }}</span><StatusTag v-if="workorderDueState(row).overdue" :label="workorderDueState(row).label" tone="danger"/></dd></div>
                 <div><dt>部门进度</dt><dd>{{ departmentProgressSummary(row) }}</dd></div>
               </dl>
+              <el-progress :percentage="departmentProgressMetrics(row).percentage" :stroke-width="8"/>
               <el-button type="primary" plain @click="openWorkOrder(row)">查看任务详情</el-button>
             </article>
           </div>
           </DataTableShell>
 
-          <el-table v-else-if="activeKey === 'molds'" v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
-            <el-table-column label="模具" min-width="190">
-              <template #default="{row}"><span class="item-name">{{ row.name }}</span><small class="item-code">{{ row.code }}</small></template>
-            </el-table-column>
-            <el-table-column label="状态" width="120"><template #default="{row}"><StatusTag :label="moldStatusLabel(row.status)" :tone="moldStatusTone(row.status)"/></template></el-table-column>
-            <el-table-column prop="current_location" label="当前位置" min-width="150"><template #default="{row}">{{ formatCell(row.current_location) }}</template></el-table-column>
-            <el-table-column prop="next_maintenance_at" label="下次保养" width="140"><template #default="{row}">{{ formatDate(row.next_maintenance_at) }}</template></el-table-column>
-            <el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openMold(row)">详情</el-button></template></el-table-column>
-            <template #empty><el-empty :description="filteredEmptyTitle"/></template>
-          </el-table>
+          <DataTableShell
+            v-else-if="activeKey === 'molds'"
+            :loading="loading"
+            :error="listError"
+            :rows-count="rows.length"
+            :total="pageTotal"
+            :page="page"
+            :page-size="pageSize"
+            aria-label="模具台账列表"
+            :empty-title="filteredEmptyTitle"
+            :empty-description="filteredEmptyDescription"
+            @retry="loadActiveModule"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          >
+            <div class="responsive-table-desktop">
+              <el-table :data="rows" row-key="id" stripe class="data-table">
+                <el-table-column label="模具" min-width="190">
+                  <template #default="{row}"><span class="item-name">{{ row.name }}</span><small class="item-code">{{ row.code }}</small></template>
+                </el-table-column>
+                <el-table-column label="状态" width="120"><template #default="{row}"><StatusTag :label="moldStatusLabel(row.status)" :tone="moldStatusTone(row.status)"/></template></el-table-column>
+                <el-table-column prop="current_location" label="当前位置" min-width="150"><template #default="{row}">{{ formatCell(row.current_location) }}</template></el-table-column>
+                <el-table-column prop="storage_location" label="存放位置" min-width="150"><template #default="{row}">{{ formatCell(row.storage_location) }}</template></el-table-column>
+                <el-table-column label="保养计划" min-width="190">
+                  <template #default="{row}">
+                    <div class="maintenance-state-cell">
+                      <StatusTag :label="moldMaintenanceState(row).label" :tone="moldMaintenanceState(row).tone"/>
+                      <small>{{ formatDate(row.next_maintenance_at) }}</small>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openMold(row)">详情</el-button></template></el-table-column>
+              </el-table>
+            </div>
+            <div class="responsive-card-list" role="list">
+              <article v-for="row in rows" :key="row.id" class="mold-list-card" role="listitem">
+                <div class="responsive-card-heading">
+                  <div><strong>{{ row.name }}</strong><small>{{ row.code }}</small></div>
+                  <StatusTag :label="moldStatusLabel(row.status)" :tone="moldStatusTone(row.status)"/>
+                </div>
+                <div class="responsive-card-tags">
+                  <StatusTag :label="moldMaintenanceState(row).label" :tone="moldMaintenanceState(row).tone"/>
+                </div>
+                <dl>
+                  <div><dt>当前位置</dt><dd>{{ formatCell(row.current_location) }}</dd></div>
+                  <div><dt>存放位置</dt><dd>{{ formatCell(row.storage_location) }}</dd></div>
+                  <div><dt>下次保养</dt><dd>{{ formatDate(row.next_maintenance_at) }}</dd></div>
+                </dl>
+                <el-button type="primary" plain @click="openMold(row)">查看模具详情</el-button>
+              </article>
+            </div>
+          </DataTableShell>
 
           <DataTableShell
             v-else-if="isMasterDataValidationPage"
@@ -620,34 +796,65 @@
             </div>
           </DataTableShell>
 
-          <el-table v-else v-loading="loading" :data="rows" row-key="id" stripe class="data-table">
-            <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
-              <template #default="{row}">{{ formatCell(row[column]) }}</template>
-            </el-table-column>
-            <el-table-column v-if="hasAssignmentAction" label="权限操作" width="130" fixed="right">
-              <template #default="{row}">
-                <el-button link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
-              </template>
-            </el-table-column>
-            <el-table-column v-if="activeKey === 'suppliers' && canWriteActive" label="操作" width="90" fixed="right">
-              <template #default="{row}"><el-button link type="primary" @click="editSupplier(row)">编辑</el-button></template>
-            </el-table-column>
-            <template #empty><el-empty :description="filteredEmptyTitle"/></template>
-          </el-table>
-
-          <div v-if="!skeletonResult && activeKey !== 'updates' && !isMasterDataValidationPage && !['warehouses', 'workorder'].includes(activeKey)" class="pagination-bar">
-            <span>共 {{ pageTotal }} 条记录</span>
-            <el-pagination
-                v-model:current-page="page"
-                v-model:page-size="pageSize"
-                :page-sizes="[10, 20, 50, 100]"
-                :total="pageTotal"
-                background
-                layout="sizes, prev, pager, next, jumper"
-                @current-change="handlePageChange"
-                @size-change="handlePageSizeChange"
-            />
-          </div>
+          <DataTableShell
+            v-else
+            :loading="loading"
+            :error="listError"
+            :rows-count="rows.length"
+            :total="pageTotal"
+            :page="page"
+            :page-size="pageSize"
+            :aria-label="`${activeModule?.title || '数据'}列表`"
+            :empty-title="filteredEmptyTitle"
+            :empty-description="filteredEmptyDescription"
+            @retry="loadActiveModule"
+            @update:page="handlePageChange"
+            @update:page-size="handlePageSizeChange"
+          >
+            <div class="generic-list-desktop">
+              <el-table :data="rows" row-key="id" stripe class="data-table generic-data-table">
+                <el-table-column v-for="column in columns" :key="column" :label="columnLabel(column)" min-width="130">
+                  <template #default="{row}">
+                    <StatusTag
+                      v-if="isGenericStatusColumn(column)"
+                      :label="genericStatusLabel(row[column])"
+                      :tone="genericStatusTone(row[column])"
+                    />
+                    <span v-else>{{ formatGenericCell(column, row[column]) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column v-if="hasAssignmentAction" label="配置操作" width="130" fixed="right">
+                  <template #default="{row}">
+                    <el-button link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <div class="generic-list-mobile" role="list">
+              <article v-for="row in rows" :key="row.id" class="generic-list-card" role="listitem">
+                <div class="generic-list-card__heading">
+                  <div>
+                    <strong>{{ genericRowTitle(row) }}</strong>
+                    <small>{{ genericRowSubtitle(row) }}</small>
+                  </div>
+                  <StatusTag
+                    v-if="genericStatusColumn"
+                    :label="genericStatusLabel(row[genericStatusColumn])"
+                    :tone="genericStatusTone(row[genericStatusColumn])"
+                  />
+                </div>
+                <dl>
+                  <div v-for="column in genericCardColumns" :key="column">
+                    <dt>{{ columnLabel(column) }}</dt>
+                    <dd>{{ formatGenericCell(column, row[column]) }}</dd>
+                  </div>
+                </dl>
+                <el-button v-if="hasAssignmentAction" type="primary" plain @click="openAssignment(row)">
+                  {{ assignmentConfigs[activeKey]?.buttonLabel }}
+                </el-button>
+              </article>
+            </div>
+          </DataTableShell>
         </div>
       </section>
 
@@ -679,17 +886,37 @@
             <el-button circle aria-label="关闭物品详情" @click="closeWarehouseItem">×</el-button>
           </div>
 
+          <PageState v-if="warehouseDetailLoading" kind="loading" title="正在加载库存详情" />
+          <PageState
+            v-else-if="warehouseDetailError"
+            kind="error"
+            title="库存详情加载失败"
+            :description="warehouseDetailError"
+            action-label="重新加载"
+            @action="loadWarehouseItemDetail"
+          />
+          <template v-else-if="warehouseDetail">
+          <el-alert
+            class="drawer-status-alert"
+            :title="warehouseQuantityAvailable ? selectedWarehouseStockState.label : '库存数量未返回'"
+            :description="!warehouseQuantityAvailable ? '当前详情缺少可核对的库存数量，已暂停依赖库存的办理操作。' : selectedWarehouseStockState.tone === 'success' ? '当前库存高于安全库存，可以按权限继续办理。' : '请先核对现有库存和本次办理数量，避免造成负库存。'"
+            :type="warehouseQuantityAvailable ? selectedWarehouseAlertType : 'info'"
+            :closable="false"
+            show-icon
+          />
+
           <div class="stock-summary">
-            <div><span>当前库存</span><strong>{{ formatQuantity(warehouseDetail?.quantity) }} {{ selectedWarehouseItem.unit }}</strong></div>
+            <div><span>当前库存</span><strong>{{ warehouseQuantityAvailable ? `${formatQuantity(warehouseDetail.quantity)} ${selectedWarehouseItem.unit}` : '—' }}</strong></div>
             <div><span>安全库存</span><strong>{{ formatQuantity(selectedWarehouseItem.safety_stock) }} {{ selectedWarehouseItem.unit }}</strong></div>
-            <div v-if="hasPermission('cost:view')"><span>库存金额</span><strong>{{ formatMoney(warehouseDetail?.amount) }}</strong></div>
+            <div v-if="hasPermission('cost:view')"><span>库存金额</span><strong>{{ warehouseDetail.amount === null || warehouseDetail.amount === undefined ? '—' : formatMoney(warehouseDetail.amount) }}</strong></div>
           </div>
           <ImageGallery v-if="activeWarehouseTab === 'product'" owner-type="product" :owner-id="selectedWarehouseItem.id" :token="token" :can-write="hasPermission('warehouse:write')" category="product"/>
           <p v-if="panelMessage" class="drawer-message">{{ panelMessage }}</p>
 
           <section class="movement-section">
             <h3>办理出入库</h3>
-            <div v-if="hasPermission('inventory:documents:write')" class="movement-actions">
+            <el-alert v-if="!warehouseQuantityAvailable" title="库存数量未返回，暂不能办理出入库。" type="warning" :closable="false" show-icon/>
+            <div v-else-if="hasPermission('inventory:documents:write')" class="movement-actions">
               <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" :disabled="movementSubmitting" @click="startMovement(definition.key)">
                 {{ definition.title }}
               </el-button>
@@ -768,8 +995,17 @@
           </el-form>
 
           <section v-if="hasPermission('inventory:documents:read')" class="movement-history">
-            <div class="drawer-section-title"><h3>最近出入库记录</h3><el-button link type="primary" @click="loadAllItemMovements">查看全部</el-button></div>
-            <div v-if="itemMovements.length" class="movement-list">
+            <div class="drawer-section-title"><h3>最近出入库记录</h3><el-button link type="primary" :loading="itemMovementsLoading" :disabled="itemMovementsLoading" @click="loadAllItemMovements">查看全部</el-button></div>
+            <PageState v-if="itemMovementsLoading" kind="loading" title="正在加载出入库记录" />
+            <PageState
+              v-else-if="itemMovementsError"
+              kind="error"
+              title="出入库记录加载失败"
+              :description="itemMovementsError"
+              action-label="重新加载"
+              @action="loadItemMovements"
+            />
+            <div v-else-if="itemMovements.length" class="movement-list">
               <article v-for="item in displayedItemMovements" :key="item.id">
                 <span class="movement-kind">{{ businessTypeLabel(item.business_type) }}</span>
                 <div><strong>{{ movementQuantity(item) }}</strong><small>{{ item.code }} · {{ formatDate(item.posted_at) }}</small></div>
@@ -778,15 +1014,33 @@
             <p v-else class="drawer-empty">暂无出入库记录</p>
           </section>
           <el-alert v-else title="出入库记录需要库存单据查看权限。" type="info" :closable="false" show-icon/>
+          </template>
         </div>
       </el-drawer>
 
-      <el-drawer v-model="moldDetailDrawerVisible" size="min(720px, 100%)" title="模具详情" :with-header="false" destroy-on-close @closed="resetMold">
-        <div v-if="selectedMoldDetail" class="item-drawer mold-drawer" aria-label="模具详情">
+      <el-drawer v-model="moldDetailDrawerVisible" size="min(720px, 100%)" title="模具详情" :with-header="false" :before-close="handleMoldBeforeClose" destroy-on-close @closed="resetMold">
+        <PageState v-if="moldDetailLoading" kind="loading" title="正在加载模具详情" />
+        <PageState
+          v-else-if="moldDetailError"
+          kind="error"
+          title="模具详情加载失败"
+          :description="moldDetailError"
+          action-label="重新加载"
+          @action="loadMoldDetail"
+        />
+        <div v-else-if="selectedMoldDetail" class="item-drawer mold-drawer" aria-label="模具详情">
           <div class="drawer-heading">
             <div><small>{{ selectedMoldDetail.code }}</small><h2>{{ selectedMoldDetail.name }}</h2><span>{{ moldStatusLabel(selectedMoldDetail.status) }} · {{ selectedMoldDetail.current_location || '暂无位置' }}</span></div>
-            <el-button circle aria-label="关闭模具详情" @click="moldDetailDrawerVisible = false">×</el-button>
+            <el-button circle aria-label="关闭模具详情" :disabled="moldActionSubmitting" @click="closeMold">×</el-button>
           </div>
+          <el-alert
+            class="drawer-status-alert"
+            :title="selectedMoldMaintenanceState.label"
+            :description="selectedMoldMaintenanceState.description"
+            :type="selectedMoldAlertType"
+            :closable="false"
+            show-icon
+          />
           <div class="stock-summary mold-summary">
             <div><span>穴数</span><strong>{{ formatCell(selectedMoldDetail.cavity_count) }}</strong></div>
             <div><span>成型材料</span><strong>{{ formatCell(selectedMoldDetail.mold_material) }}</strong></div>
@@ -795,6 +1049,19 @@
             <div><span>保养周期</span><strong>{{ formatCell(selectedMoldDetail.maintenance_cycle_days) }} 天</strong></div>
             <div><span>下次保养</span><strong>{{ formatDate(selectedMoldDetail.next_maintenance_at) }}</strong></div>
           </div>
+          <section v-if="hasPermission('mold:write')" class="movement-section mold-lifecycle-section" aria-labelledby="mold-lifecycle-title">
+            <h3 id="mold-lifecycle-title">模具状态操作</h3>
+            <el-alert v-if="moldActionError" :title="moldActionError" type="error" :closable="false" show-icon />
+            <div class="movement-actions">
+              <el-button v-if="selectedMoldDetail.status === 'in_stock'" type="primary" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="loanMold">借出模具</el-button>
+              <el-button v-if="selectedMoldDetail.status === 'loaned'" type="primary" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="returnMold">归还入库</el-button>
+              <el-button v-if="selectedMoldDetail.status === 'in_stock'" type="warning" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="repairMold(false)">开始维修</el-button>
+              <el-button v-if="selectedMoldDetail.status === 'repairing'" type="success" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="repairMold(true)">完成维修</el-button>
+              <el-button v-if="selectedMoldDetail.status === 'in_stock'" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="maintainMold(false)">开始保养</el-button>
+              <el-button v-if="selectedMoldDetail.status === 'maintenance'" type="success" plain :loading="moldActionSubmitting" :disabled="moldActionSubmitting" @click="maintainMold(true)">完成保养</el-button>
+            </div>
+            <p v-if="selectedMoldDetail.status === 'scrapped'" class="permission-hint">已报废模具没有可执行的生命周期操作。</p>
+          </section>
           <ImageGallery owner-type="mold" :owner-id="selectedMoldDetail.id" :token="token" :can-write="hasPermission('mold:write')" category="mold"/>
           <section class="movement-history">
             <div class="drawer-section-title"><h3>模具履历</h3></div>
@@ -806,7 +1073,7 @@
         </div>
       </el-drawer>
 
-      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" title="任务单详情" :with-header="false" destroy-on-close @closed="resetWorkOrder">
+      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" title="任务单详情" :with-header="false" :before-close="handleWorkOrderBeforeClose" destroy-on-close @closed="resetWorkOrder">
         <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
           <div class="drawer-heading">
             <div>
@@ -820,13 +1087,22 @@
           <div class="stock-summary">
             <div><span>计划数量</span><strong>{{ formatQuantity(selectedWorkOrder.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</strong></div>
             <div><span>优先级</span><strong>{{ selectedWorkOrder.priority === 'urgent' ? '加急' : '普通' }}</strong></div>
-            <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong></div>
+            <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong><StatusTag v-if="workorderDueState(selectedWorkOrder).overdue" :label="workorderDueState(selectedWorkOrder).label" tone="danger"/></div>
           </div>
           <p v-if="selectedWorkOrder.description" class="drawer-message">{{ selectedWorkOrder.description }}</p>
           <section class="workorder-stage-card" aria-label="任务当前阶段">
-            <span>当前阶段</span>
-            <StatusTag :label="workorderStatusLabel(selectedWorkOrder.status)" :tone="workorderStatusTone(selectedWorkOrder.status)"/>
+            <div class="workorder-stage-card__heading">
+              <span>当前阶段</span>
+              <div>
+                <StatusTag :label="selectedWorkOrder.priority === 'urgent' ? '加急' : '普通'" :tone="selectedWorkOrder.priority === 'urgent' ? 'danger' : 'info'"/>
+                <StatusTag :label="workorderStatusLabel(selectedWorkOrder.status)" :tone="workorderStatusTone(selectedWorkOrder.status)"/>
+              </div>
+            </div>
             <strong>下一步：{{ workorderNextAction(selectedWorkOrder) }}</strong>
+            <div class="workorder-stage-card__progress">
+              <span>{{ departmentProgressSummary(selectedWorkOrder) }}</span>
+              <el-progress :percentage="departmentProgressMetrics(selectedWorkOrder).percentage" :stroke-width="8"/>
+            </div>
           </section>
           <ImageGallery owner-type="workorder" :owner-id="selectedWorkOrder.id" :token="token" :can-write="hasPermission('workorder:write')" category="workorder"/>
 
@@ -866,8 +1142,17 @@
           </section>
 
           <section class="movement-history">
-            <div class="drawer-section-title"><h3>流转日志</h3><el-button link type="primary" @click="loadWorkOrderLogs">刷新</el-button></div>
-            <div v-if="workorderLogs.length" class="movement-list">
+            <div class="drawer-section-title"><h3>流转日志</h3><el-button link type="primary" :loading="workorderLogsLoading" :disabled="workorderLogsLoading" @click="loadWorkOrderLogs">刷新</el-button></div>
+            <PageState v-if="workorderLogsLoading" kind="loading" title="正在加载任务日志" />
+            <PageState
+              v-else-if="workorderLogsError"
+              kind="error"
+              title="任务日志加载失败"
+              :description="workorderLogsError"
+              action-label="重新加载"
+              @action="loadWorkOrderLogs"
+            />
+            <div v-else-if="workorderLogs.length" class="movement-list">
               <article v-for="item in workorderLogs" :key="item.id">
                 <span class="movement-kind">{{ workorderActionLabel(item.action) }}</span>
                 <div><strong>{{ item.actor_username || '系统' }}</strong><small>{{ item.remark || item.reason || `${item.status_before || '-'} → ${item.status_after || '-'}` }} · {{ formatDate(item.created_at) }}</small></div>
@@ -883,15 +1168,17 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref} from 'vue'
+import {computed, nextTick, onMounted, reactive, ref, watch} from 'vue'
 import {ElMessage, ElMessageBox} from 'element-plus'
+import type {InputInstance} from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import {apiBaseUrl, desktopAppVersion, downloadApiFile, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
+import {ApiError, apiBaseUrl, desktopAppVersion, downloadApiFile, isDesktopClient, request, saveDesktopServerUrl, testDesktopServerUrl} from './api/http'
 import ImageGallery from './components/ImageGallery.vue'
 import UpdateCenter from './components/UpdateCenter.vue'
 import AppNavigation from './components/ui/AppNavigation.vue'
 import DataTableShell from './components/ui/DataTableShell.vue'
 import FilterBar from './components/ui/FilterBar.vue'
+import MetricCard, {type MetricTone} from './components/ui/MetricCard.vue'
 import PageHeader from './components/ui/PageHeader.vue'
 import PageState from './components/ui/PageState.vue'
 import StatusTag, {type StatusTone} from './components/ui/StatusTag.vue'
@@ -903,6 +1190,7 @@ type FormField = {
   label: string
   kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date'
   options?: Array<{ label: string; value: string | number }>
+  required?: boolean
 }
 
 type MovementDefinition = {
@@ -925,6 +1213,8 @@ type AssignmentConfig = {
 }
 
 type StatisticNameValue = { name: string; value: number; amount?: number }
+type MetricCardItem = {label: string; value: string; caption: string; tone: MetricTone; statusLabel?: string; statusTone?: StatusTone}
+type HealthState = 'checking' | 'healthy' | 'error'
 type StatisticTrendItem = { date: string; name?: string; value: number; quantity?: number; amount?: number }
 type DepartmentStatistic = { department_id: number; name: string; total: number; completed: number; processing: number; partial: number; received: number }
 type StockStatisticItem = { item_type: string; item_id: number; name: string; code: string; category: string; quantity: number; safety_stock: number; amount?: number }
@@ -969,6 +1259,7 @@ const assignmentConfigs: Partial<Record<string, AssignmentConfig>> = {
 // 本地存储键：只保存 access token，不保存密码。
 const tokenKey = 'bb_erp_access_token'
 const desktopClient = isDesktopClient()
+let authRequestGeneration = 0
 
 const token = ref(localStorage.getItem(tokenKey) || '')
 const currentUser = ref<CurrentUser | null>(null)
@@ -989,10 +1280,19 @@ const listError = ref('')
 const assignmentTarget = ref<BasicItem | null>(null)
 const assignmentModuleKey = ref('')
 const selectedAssignmentIDs = ref<number[]>([])
+const assignmentOptionsCache = reactive<Record<string, BasicItem[]>>({})
+const assignmentOptionsLoading = ref(false)
+const assignmentOptionsError = ref('')
+const assignmentSaving = ref(false)
+const assignmentSaveError = ref('')
 const selectedWarehouseItem = ref<BasicItem | null>(null)
 const warehouseDrawerVisible = ref(false)
 const warehouseDetail = ref<Record<string, unknown> | null>(null)
+const warehouseDetailLoading = ref(false)
+const warehouseDetailError = ref('')
 const itemMovements = ref<BasicItem[]>([])
+const itemMovementsLoading = ref(false)
+const itemMovementsError = ref('')
 const showAllItemMovements = ref(false)
 const movementMode = ref<string>('')
 const showQuickSupplier = ref(false)
@@ -1000,7 +1300,7 @@ const movementSubmitting = ref(false)
 const movementFormError = ref('')
 const quickSupplierSubmitting = ref(false)
 const quickSupplierError = ref('')
-const healthStatus = ref('检查中')
+const healthStatus = ref<HealthState>('checking')
 const mobileNavOpen = ref(false)
 const serverDialogVisible = ref(false)
 const serverTesting = ref(false)
@@ -1016,6 +1316,8 @@ const loginForm = reactive({
   username: 'admin',
   password: '',
 })
+const loginUsernameInput = ref<InputInstance>()
+const formError = ref('')
 
 const formState = reactive<Record<string, any>>({})
 const movementForm = reactive<Record<string, any>>({})
@@ -1027,9 +1329,26 @@ const workorderPriorityFilter = ref('')
 const selectedWorkOrder = ref<BasicItem | null>(null)
 const workorderDrawerVisible = ref(false)
 const workorderLogs = ref<BasicItem[]>([])
+const workorderLogsLoading = ref(false)
+const workorderLogsError = ref('')
 const moldDetailDrawerVisible = ref(false)
 const selectedMoldDetail = ref<BasicItem | null>(null)
+const selectedMoldID = ref<number | null>(null)
+const moldDetailLoading = ref(false)
+const moldDetailError = ref('')
+const moldActionSubmitting = ref(false)
+const moldActionError = ref('')
 const statisticsData = ref<StatisticsDashboard | null>(null)
+watch(() => formState.department_id, (departmentID) => {
+  if (activeKey.value !== 'users' || !formState.terminal_id) return
+  const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(formState.terminal_id))
+  if (!terminal || Number(terminal.department_id) !== Number(departmentID)) delete formState.terminal_id
+})
+const selectedMoldMaintenanceState = computed(() => moldMaintenanceState(selectedMoldDetail.value || {}))
+const selectedMoldAlertType = computed<'success' | 'warning' | 'error' | 'info'>(() => {
+  if (selectedMoldMaintenanceState.value.tone === 'danger') return 'error'
+  return selectedMoldMaintenanceState.value.tone
+})
 const warehouseTabs = [
   {key: 'product', title: '产品'},
   {key: 'production_material', title: '生产物资'},
@@ -1073,7 +1392,7 @@ const activePageReadonly = computed(() => {
   if (activeKey.value === 'warehouses') {
     return !hasPermission('warehouse:write') && !hasPermission('inventory:documents:write')
   }
-  return Boolean(activeModule.value?.writePermission && !canWriteActive.value)
+  return !activeModule.value?.writePermission || !canWriteActive.value
 })
 const hasActiveFilters = computed(() => Boolean(
   searchKeyword.value || workorderStatusFilter.value || workorderTypeFilter.value || workorderPriorityFilter.value,
@@ -1081,7 +1400,11 @@ const hasActiveFilters = computed(() => Boolean(
 const filteredEmptyTitle = computed(() => hasActiveFilters.value ? '没有符合当前条件的结果' : `还没有${activeModule.value?.title || '业务'}记录`)
 const filteredEmptyDescription = computed(() => hasActiveFilters.value
   ? '请调整筛选条件或点击重置查看全部记录。'
-  : '当前分类尚未创建可显示的记录。')
+  : canWriteActive.value && formSchema.value.length
+    ? '可以使用页面右上角的新增操作创建第一条记录。'
+    : activePageReadonly.value
+      ? '当前账号仅可查看，暂无可显示的记录；如需新增，请联系具备编辑权限的人员。'
+      : '当前暂无可显示的记录。')
 const isMasterDataValidationPage = computed(() => ['customers', 'suppliers'].includes(activeKey.value))
 const hasRenderableData = computed(() => activeKey.value === 'statistics'
   ? Boolean(statisticsData.value)
@@ -1099,13 +1422,53 @@ const masterDataEmptyDescription = computed(() => searchKeyword.value
   : canWriteActive.value
     ? '可以使用页面右上角的新增操作创建第一条记录。'
     : '当前账号仅可查看，暂无可显示的记录；如需新增，请联系具备编辑权限的人员。')
+const genericIdentityColumns = computed(() => {
+  const preferred: Record<string, [string, string]> = {
+    users: ['username', 'name'],
+    departments: ['name', 'code'],
+    terminals: ['name', 'code'],
+    roles: ['name', 'code'],
+    permissions: ['name', 'code'],
+    audits: ['actor_username', 'action'],
+    contacts: ['name', 'phone'],
+  }
+  const configured = preferred[activeKey.value] || [columns.value[0] || 'id', columns.value[1] || '']
+  const primary = columns.value.includes(configured[0]) ? configured[0] : (columns.value[0] || 'id')
+  const secondary = columns.value.includes(configured[1]) ? configured[1] : (columns.value.find((column) => column !== primary) || '')
+  return {primary, secondary}
+})
+const genericStatusColumn = computed(() => columns.value.find(isGenericStatusColumn) || '')
+const genericCardColumns = computed(() => columns.value.filter((column) => ![
+  genericIdentityColumns.value.primary,
+  genericIdentityColumns.value.secondary,
+  genericStatusColumn.value,
+].includes(column)))
 const hasAssignmentAction = computed(() => {
   const config = assignmentConfigs[activeKey.value]
   return Boolean(config?.requiredPermissions.every(hasPermission))
 })
 const assignmentConfig = computed(() => assignmentConfigs[assignmentModuleKey.value])
 const assignmentOptions = computed(() => {
-  return assignmentConfig.value ? rowsFor(assignmentConfig.value.optionKey) : []
+  return assignmentConfig.value ? assignmentOptionsCache[assignmentConfig.value.optionKey] || [] : []
+})
+const assignmentOptionsReady = computed(() => Boolean(
+  assignmentConfig.value
+  && Object.prototype.hasOwnProperty.call(assignmentOptionsCache, assignmentConfig.value.optionKey)
+  && !assignmentOptionsLoading.value
+  && !assignmentOptionsError.value,
+))
+const assignmentOptionGroups = computed(() => {
+  if (assignmentConfig.value?.optionKey !== 'permissions') {
+    return [{key: 'roles', label: '可分配角色', items: assignmentOptions.value}]
+  }
+  const groups = new Map<string, BasicItem[]>()
+  for (const option of assignmentOptions.value) {
+    const key = permissionDomainKey(option)
+    const items = groups.get(key) || []
+    items.push(option)
+    groups.set(key, items)
+  }
+  return [...groups.entries()].map(([key, items]) => ({key, label: permissionDomainLabel(key), items}))
 })
 const userInitial = computed(() => (currentUser.value?.name || currentUser.value?.username || '用户').slice(0, 1))
 const greeting = computed(() => {
@@ -1156,6 +1519,48 @@ const accountTypeText = computed(() => {
   if (!currentUser.value) return '未登录'
   return currentUser.value.account_type === 'department_terminal' ? '部门终端账号' : '个人账号'
 })
+const healthStatusLabel = computed(() => ({
+  checking: '正在检查服务',
+  healthy: '服务正常',
+  error: '服务暂不可用',
+})[healthStatus.value])
+const dashboardMetricCards = computed<MetricCardItem[]>(() => [
+  {
+    label: '可用业务',
+    value: `${businessItems.value.length} 项`,
+    caption: '已按当前账号权限显示',
+    tone: 'info',
+  },
+  {
+    label: '常用入口',
+    value: `${quickActions.value.length} 个`,
+    caption: '按账号类型排序',
+    tone: 'neutral',
+  },
+  {
+    label: '业务服务',
+    value: healthStatus.value === 'checking' ? '检查中' : healthStatus.value === 'healthy' ? '运行正常' : '暂不可用',
+    caption: healthStatus.value === 'checking' ? '正在确认服务连接' : healthStatus.value === 'healthy' ? '可以继续办理业务' : '请检查服务连接后重试',
+    tone: healthStatus.value === 'checking' ? 'info' : healthStatus.value === 'healthy' ? 'success' : 'danger',
+    statusLabel: healthStatus.value === 'checking' ? '检查中' : healthStatus.value === 'healthy' ? '在线' : '异常',
+    statusTone: healthStatus.value === 'checking' ? 'info' : healthStatus.value === 'healthy' ? 'success' : 'danger',
+  },
+  {
+    label: '当前账号',
+    value: accountTypeText.value,
+    caption: '字段与操作继续按权限控制',
+    tone: 'neutral',
+  },
+])
+const dashboardFocusItems = computed(() => [
+  {key: 'warehouses', label: '库存核对', title: '核对安全库存', description: '查看缺货与低于安全库存的物品。', tone: 'info' as StatusTone},
+  {key: 'workorder', label: '任务进度', title: '跟进交期与部门进度', description: '优先处理加急、暂停和待确认任务。', tone: 'info' as StatusTone},
+  {key: 'molds', label: '模具台账', title: '检查位置与保养日期', description: '关注维修、保养中与即将到期的模具。', tone: 'info' as StatusTone},
+  {key: 'statistics', label: '经营概览', title: '查看汇总与趋势', description: '从统计报表复核异常和近期变化。', tone: 'info' as StatusTone},
+].filter((focus) => {
+  const item = modules.find((candidate) => candidate.key === focus.key)
+  return !!item && canReadModule(item)
+}))
 const availableMovementDefinitions = computed(() => movementDefinitions.filter((definition) => {
   const allAllowed = (definition.requiredAll || []).every(hasPermission)
   const anyAllowed = !definition.requiredAny?.length || definition.requiredAny.some(hasPermission)
@@ -1177,6 +1582,20 @@ const expectedStockQuantity = computed(() => {
   const delta = decimalToScaled(movementForm.quantity)
   return movementIsOutbound.value ? current - delta : current + delta
 })
+const warehouseQuantityAvailable = computed(() => Boolean(
+  warehouseDetail.value
+  && Object.prototype.hasOwnProperty.call(warehouseDetail.value, 'quantity')
+  && warehouseDetail.value.quantity !== null
+  && warehouseDetail.value.quantity !== undefined,
+))
+const selectedWarehouseStockState = computed(() => stockState({
+  ...(selectedWarehouseItem.value || {}),
+  ...(warehouseDetail.value || {}),
+}))
+const selectedWarehouseAlertType = computed<'success' | 'warning' | 'error' | 'info'>(() => {
+  if (selectedWarehouseStockState.value.tone === 'danger') return 'error'
+  return selectedWarehouseStockState.value.tone
+})
 const movementQuantityError = computed(() => {
   if (movementForm.quantity === undefined || movementForm.quantity === null || movementForm.quantity === '') return ''
   if (decimalToScaled(movementForm.quantity) <= 0) return '数量必须大于 0。'
@@ -1194,6 +1613,7 @@ const formatMovementInputQuantity = computed(() => {
   return Number.isFinite(quantity) && quantity > 0 ? quantity.toLocaleString('zh-CN', {maximumFractionDigits: 4}) : '0'
 })
 const movementCanSubmit = computed(() => {
+  if (!warehouseDetail.value || !warehouseQuantityAvailable.value || warehouseDetailLoading.value || warehouseDetailError.value) return false
   if (movementSubmitting.value || decimalToScaled(movementForm.quantity) <= 0) return false
   if (movementIsOutbound.value && expectedStockQuantity.value < 0) return false
   if (movementMode.value === 'purchase_inbound') return Boolean(movementForm.supplier_id)
@@ -1216,21 +1636,72 @@ const eligibleOriginalDocuments = computed(() => itemMovements.value.filter((ite
   if (movementForm.source_type === 'department') return Number(item.department_id) === Number(movementForm.department_id)
   return false
 }))
-const statisticsCards = computed(() => {
-  const summary = statisticsData.value?.summary || {}
+const warehouseSummaryCards = computed<MetricCardItem[]>(() => {
+  const states = rows.value.map(stockState)
+  const danger = states.filter((state) => state.tone === 'danger').length
+  const warning = states.filter((state) => state.tone === 'warning').length
   return [
-    {label: '库存总量', value: formatQuantity(summary.inventory_quantity), caption: statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏'},
-    {label: '低库存', value: String(summary.low_stock_items || 0), caption: '低于或等于安全库存'},
-    {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${summary.urgent_workorders || 0} · 待确认 ${summary.pending_close_orders || 0}`},
-    {label: '模具关注', value: String(summary.molds_need_care || 0), caption: `模具总数 ${summary.molds || 0}`},
-    {label: '客户/联系人', value: `${summary.customers || 0}/${summary.contacts || 0}`, caption: '客户档案 / 联系人'},
-    {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案'},
+    {label: '当前页物品', value: String(rows.value.length), caption: `共 ${pageTotal.value} 条记录`, tone: 'neutral'},
+    {label: '库存正常', value: String(states.filter((state) => state.tone === 'success').length), caption: '高于安全库存', tone: 'success'},
+    {label: '低库存', value: String(warning), caption: '低于或等于安全库存', tone: warning ? 'warning' : 'success'},
+    {label: '缺货', value: String(danger), caption: '当前库存小于或等于零', tone: danger ? 'danger' : 'success'},
+  ]
+})
+const workorderSummaryCards = computed<MetricCardItem[]>(() => {
+  const urgent = rows.value.filter((row) => row.priority === 'urgent').length
+  const pendingClose = rows.value.filter((row) => row.status === 'pending_close').length
+  const paused = rows.value.filter((row) => row.status === 'paused').length
+  return [
+    {label: '当前页任务', value: String(rows.value.length), caption: `共 ${pageTotal.value} 条记录`, tone: 'neutral'},
+    {label: '加急任务', value: String(urgent), caption: '需要优先跟进', tone: urgent ? 'danger' : 'success'},
+    {label: '待办公室确认', value: String(pendingClose), caption: '等待核对并关闭', tone: pendingClose ? 'warning' : 'success'},
+    {label: '暂停任务', value: String(paused), caption: '需确认后恢复', tone: paused ? 'info' : 'success'},
+  ]
+})
+const moldSummaryCards = computed<MetricCardItem[]>(() => {
+  const maintenanceStates = rows.value.map(moldMaintenanceState)
+  const needsFollowUp = rows.value.filter((row, index) => maintenanceStates[index]?.tone === 'warning' || ['repairing', 'maintenance'].includes(String(row.status))).length
+  const needsAttention = rows.value.filter((row, index) => maintenanceStates[index]?.tone === 'danger' || row.status === 'scrapped').length
+  return [
+    {label: '当前页模具', value: String(rows.value.length), caption: `共 ${pageTotal.value} 条记录`, tone: 'neutral'},
+    {label: '在库', value: String(rows.value.filter((row) => row.status === 'in_stock').length), caption: '当前可用台账状态', tone: 'success'},
+    {label: '待跟进', value: String(needsFollowUp), caption: '7 天内到期、维修或保养中', tone: needsFollowUp ? 'warning' : 'success'},
+    {label: '需立即关注', value: String(needsAttention), caption: '保养已逾期或模具已报废', tone: needsAttention ? 'danger' : 'success'},
+  ]
+})
+const operationalSummaryCards = computed<MetricCardItem[]>(() => {
+  if (activeKey.value === 'warehouses') return warehouseSummaryCards.value
+  if (activeKey.value === 'workorder') return workorderSummaryCards.value
+  if (activeKey.value === 'molds') return moldSummaryCards.value
+  return []
+})
+const statisticsCards = computed<MetricCardItem[]>(() => {
+  const summary = statisticsData.value?.summary || {}
+  const lowStock = Number(summary.low_stock_items || 0)
+  const urgent = Number(summary.urgent_workorders || 0)
+  const pendingClose = Number(summary.pending_close_orders || 0)
+  const moldsNeedCare = Number(summary.molds_need_care || 0)
+  return [
+    {label: '库存总量', value: formatQuantity(summary.inventory_quantity), caption: statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏', tone: 'info'},
+    {label: '低库存', value: String(lowStock), caption: '低于或等于安全库存', tone: lowStock ? 'danger' : 'success', statusLabel: lowStock ? '需处理' : '正常', statusTone: lowStock ? 'danger' : 'success'},
+    {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${urgent} · 待确认 ${pendingClose}`, tone: urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
+    {label: '模具关注', value: String(moldsNeedCare), caption: `模具总数 ${summary.molds || 0}`, tone: moldsNeedCare ? 'warning' : 'success'},
+    {label: '客户/联系人', value: `${summary.customers || 0}/${summary.contacts || 0}`, caption: '客户档案 / 联系人', tone: 'neutral'},
+    {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
   ]
 })
 const compactTrendItems = computed(() => {
   const inventory = statisticsData.value?.inventory?.trend || []
   const workorders = statisticsData.value?.workorders?.trend || []
-  return [...inventory.slice(-8), ...workorders.slice(-8)].slice(-12)
+  const sorted = [...inventory, ...workorders]
+    .sort((left, right) => {
+      const leftTime = new Date(String(left.date)).getTime()
+      const rightTime = new Date(String(right.date)).getTime()
+      if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime - rightTime
+      return String(left.date).localeCompare(String(right.date), 'zh-CN')
+    })
+  const recentDates = new Set([...new Set(sorted.map((item) => String(item.date)))].slice(-14))
+  return sorted.filter((item) => recentDates.has(String(item.date)))
 })
 
 // formSchema 根据当前模块返回轻量新增表单，和后端已实现能力保持一致。
@@ -1239,44 +1710,48 @@ const formSchema = computed<FormField[]>(() => {
     label: item.name || item.code || `#${item.id}`,
     value: item.id
   }))
-  const terminalOptions = rowsFor('terminals').map((item) => ({
+  const selectedDepartmentID = Number(formState.department_id || 0)
+  const terminalOptions = rowsFor('terminals').filter((item) => (
+    selectedDepartmentID > 0 && Number(item.department_id) === selectedDepartmentID
+  )).map((item) => ({
     label: item.name || item.code || `#${item.id}`,
     value: item.id
   }))
   switch (activeKey.value) {
     case 'departments':
       return [
-        {key: 'name', label: '部门名称'},
-        {key: 'code', label: '部门编码'},
+        {key: 'name', label: '部门名称', required: true},
+        {key: 'code', label: '部门编码', required: true},
       ]
     case 'terminals':
       return [
-        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions},
-        {key: 'code', label: '终端编码'},
-        {key: 'name', label: '终端名称'},
+        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions, required: true},
+        {key: 'code', label: '终端编码', required: true},
+        {key: 'name', label: '终端名称', required: true},
         {key: 'location', label: '位置说明'},
       ]
     case 'users':
       return [
-        {key: 'username', label: '账号'},
-        {key: 'password', label: '密码', kind: 'password'},
+        {key: 'username', label: '账号', required: true},
+        {key: 'password', label: '密码', kind: 'password', required: true},
         {
           key: 'account_type',
           label: '账号类型',
           kind: 'select',
+          required: true,
           options: [
             {label: '个人账号', value: 'personal'},
             {label: '部门终端账号', value: 'department_terminal'},
           ],
         },
-        {key: 'name', label: '姓名/终端名'},
-        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions},
-        {key: 'terminal_id', label: '所属终端', kind: 'select', options: terminalOptions},
+        {key: 'name', label: '姓名/终端名', required: true},
+        {key: 'department_id', label: '所属部门', kind: 'select', options: departmentOptions, required: formState.account_type === 'department_terminal'},
+        {key: 'terminal_id', label: '所属终端', kind: 'select', options: terminalOptions, required: formState.account_type === 'department_terminal'},
       ]
     case 'roles':
       return [
-        {key: 'name', label: '角色名称'},
-        {key: 'code', label: '角色编码'},
+        {key: 'name', label: '角色名称', required: true},
+        {key: 'code', label: '角色编码', required: true},
         {key: 'description', label: '说明'},
       ]
     case 'customers':
@@ -1448,30 +1923,72 @@ function resetFilters() {
   applySearch()
 }
 
+let assignmentOptionsRequestToken = 0
+
 async function openAssignment(row: any) {
   const config = assignmentConfigs[activeKey.value]
   if (!config) return
   assignmentTarget.value = row
   assignmentModuleKey.value = activeKey.value
+  assignmentOptionsError.value = ''
+  assignmentSaveError.value = ''
   selectedAssignmentIDs.value = Array.isArray(row[config.selectedKey])
     ? (row[config.selectedKey] as unknown[]).map(Number)
     : []
-  if (!rowsFor(config.optionKey).length) {
-    loading.value = true
-    try {
-      await loadList(config.optionKey, false)
-    } catch (error) {
-      panelMessage.value = error instanceof Error ? error.message : '配置项加载失败'
-    } finally {
-      loading.value = false
-    }
-  }
+  if (!Object.prototype.hasOwnProperty.call(assignmentOptionsCache, config.optionKey)) await loadAssignmentOptions()
 }
 
 function closeAssignment() {
+  assignmentOptionsRequestToken += 1
   assignmentTarget.value = null
   assignmentModuleKey.value = ''
   selectedAssignmentIDs.value = []
+  assignmentOptionsLoading.value = false
+  assignmentOptionsError.value = ''
+  assignmentSaveError.value = ''
+}
+
+async function loadAssignmentOptions(force = false) {
+  const config = assignmentConfig.value
+  const targetModule = assignmentModuleKey.value
+  if (!config || !assignmentTarget.value) return
+  if (!force && Object.prototype.hasOwnProperty.call(assignmentOptionsCache, config.optionKey)) return
+  const requestToken = ++assignmentOptionsRequestToken
+  assignmentOptionsLoading.value = true
+  assignmentOptionsError.value = ''
+  try {
+    const moduleItem = modules.find((item) => item.key === config.optionKey)
+    if (!moduleItem?.path) throw new Error('未找到配置项接口')
+    const allItems: BasicItem[] = []
+    let currentPage = 1
+    let total = Number.POSITIVE_INFINITY
+    while (allItems.length < total && currentPage <= 100) {
+      const data = await request<BasicItem[] | PaginatedResponse<BasicItem>>(
+        appendQuery(moduleItem.path, {page: currentPage, page_size: 200}), {}, token.value,
+      )
+      if (requestToken !== assignmentOptionsRequestToken || assignmentModuleKey.value !== targetModule) return
+      if (Array.isArray(data)) {
+        allItems.push(...data)
+        total = allItems.length
+        break
+      }
+      allItems.push(...data.items)
+      total = data.total
+      if (!data.items.length) break
+      currentPage += 1
+    }
+    if (allItems.length < total) throw new Error('配置项数量超过安全加载上限，请联系管理员缩小数据范围')
+    assignmentOptionsCache[config.optionKey] = allItems
+  } catch (error) {
+    if (requestToken !== assignmentOptionsRequestToken || assignmentModuleKey.value !== targetModule) return
+    assignmentOptionsError.value = error instanceof Error ? error.message : '配置项加载失败'
+  } finally {
+    if (requestToken === assignmentOptionsRequestToken && assignmentModuleKey.value === targetModule) assignmentOptionsLoading.value = false
+  }
+}
+
+function retryAssignmentOptions() {
+  void loadAssignmentOptions(true)
 }
 
 function isAssignmentOptionDisabled(option: BasicItem): boolean {
@@ -1484,9 +2001,9 @@ function isAssignmentOptionDisabled(option: BasicItem): boolean {
 
 async function saveAssignment() {
   const config = assignmentConfig.value
-  if (!assignmentTarget.value || !config) return
-  loading.value = true
-  panelMessage.value = ''
+  if (!assignmentTarget.value || !config || !assignmentOptionsReady.value || assignmentSaving.value) return
+  assignmentSaving.value = true
+  assignmentSaveError.value = ''
   try {
     await request(config.endpoint(assignmentTarget.value.id), {
       method: 'POST',
@@ -1497,9 +2014,9 @@ async function saveAssignment() {
     panelMessage.value = '权限配置已保存'
     ElMessage.success('权限配置已保存')
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '权限配置保存失败'
+    assignmentSaveError.value = error instanceof Error ? error.message : '权限配置保存失败'
   } finally {
-    loading.value = false
+    assignmentSaving.value = false
   }
 }
 
@@ -1536,28 +2053,45 @@ function handlePageSizeChange(value: number) {
 }
 
 async function login() {
+  if (loading.value || serverTesting.value) return
+  const requestGeneration = ++authRequestGeneration
+  const requestServerAddress = apiBaseUrl()
   loading.value = true
   errorMessage.value = ''
+  let loginFailed = false
   try {
     const data = await request<{ access_token: string; user: CurrentUser }>('/api/v1/auth/login', {
       method: 'POST',
       body: loginForm,
     })
+    if (requestGeneration !== authRequestGeneration || requestServerAddress !== apiBaseUrl()) {
+      throw new Error('服务器地址已变化，本次登录结果已失效，请重新登录')
+    }
     token.value = data.access_token
     currentUser.value = data.user
     localStorage.setItem(tokenKey, data.access_token)
-    await bootstrap()
+    await bootstrap(requestGeneration, requestServerAddress)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败'
+    loginFailed = true
   } finally {
     loading.value = false
+    if (loginFailed) {
+      await nextTick()
+      loginUsernameInput.value?.focus()
+    }
   }
 }
 
-function logout() {
+function clearAuthSession() {
   token.value = ''
   currentUser.value = null
   localStorage.removeItem(tokenKey)
+}
+
+function logout() {
+  authRequestGeneration += 1
+  clearAuthSession()
 }
 
 function openServerSettings() {
@@ -1567,6 +2101,7 @@ function openServerSettings() {
 }
 
 async function testServerSetting() {
+  if (serverTesting.value || (!token.value && loading.value)) return
   serverTesting.value = true
   serverMessage.value = ''
   try {
@@ -1582,6 +2117,7 @@ async function testServerSetting() {
 }
 
 function saveServerSetting() {
+  if (serverTesting.value || (!token.value && loading.value)) return
   try {
     const previous = apiBaseUrl()
     const saved = saveDesktopServerUrl(serverUrlInput.value)
@@ -1589,9 +2125,12 @@ function saveServerSetting() {
     serverMessageType.value = 'success'
     serverMessage.value = '服务器地址已保存'
     serverDialogVisible.value = false
-    if (previous !== saved && token.value) {
-      logout()
-      errorMessage.value = '服务器已切换，请使用新服务器的账号重新登录'
+    if (previous !== saved) {
+      authRequestGeneration += 1
+      if (token.value) {
+        clearAuthSession()
+        errorMessage.value = '服务器已切换，请使用新服务器的账号重新登录'
+      }
     }
     void loadHealth()
     ElMessage.success('服务器地址已保存')
@@ -1601,19 +2140,38 @@ function saveServerSetting() {
   }
 }
 
-async function bootstrap() {
-  const startupTasks: Promise<unknown>[] = [loadHealth(), loadMe(), preloadBaseData()]
+async function bootstrap(expectedGeneration = authRequestGeneration, expectedServerAddress = apiBaseUrl()) {
+  const sessionToken = token.value
+  try {
+    await loadMe()
+  } catch (error) {
+    if (expectedGeneration === authRequestGeneration) {
+      logout()
+      errorMessage.value = error instanceof Error ? `登录身份校验失败：${error.message}` : '登录身份校验失败，请重新登录'
+    }
+    throw error
+  }
+  if (expectedGeneration !== authRequestGeneration || expectedServerAddress !== apiBaseUrl() || !token.value || !currentUser.value) {
+    if (token.value === sessionToken) clearAuthSession()
+    throw new Error('登录会话已失效，请重新登录')
+  }
+  const startupTasks: Promise<unknown>[] = [loadHealth(), preloadBaseData()]
   if (desktopClient) startupTasks.push(loadClientUpdate())
   await Promise.allSettled(startupTasks)
+  if (expectedGeneration !== authRequestGeneration || expectedServerAddress !== apiBaseUrl()) {
+    if (token.value === sessionToken) clearAuthSession()
+    throw new Error('登录会话已失效，请重新登录')
+  }
   await loadActiveModule()
 }
 
 async function loadHealth() {
+  healthStatus.value = 'checking'
   try {
     await request('/health')
-    healthStatus.value = '正常'
+    healthStatus.value = 'healthy'
   } catch {
-    healthStatus.value = '异常'
+    healthStatus.value = 'error'
   }
 }
 
@@ -1763,6 +2321,8 @@ async function createItem() {
     showCreateForm.value = false
     return
   }
+  formError.value = validateActiveForm()
+  if (formError.value) return
   loading.value = true
   panelMessage.value = ''
   try {
@@ -1772,6 +2332,7 @@ async function createItem() {
       method: isSupplierEdit ? 'PATCH' : 'POST',
       body: normalizedForm(),
     }, token.value)
+    if (['roles', 'permissions'].includes(item.key)) delete assignmentOptionsCache[item.key]
     clearForm()
     await preloadBaseData()
     await loadActiveModule()
@@ -1781,7 +2342,8 @@ async function createItem() {
     editingSupplier.value = null
     showCreateForm.value = false
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '保存失败'
+    formError.value = error instanceof Error ? error.message : '保存失败'
+    panelMessage.value = formError.value
   } finally {
     loading.value = false
   }
@@ -1790,7 +2352,7 @@ async function createItem() {
 function normalizedForm(): Record<string, unknown> {
   const body: Record<string, unknown> = {}
   if (activeKey.value === 'users') {
-    body.organization_id = 1
+    body.organization_id = currentUser.value?.organization_id
   }
   if (activeKey.value === 'warehouses') {
     body.tab = activeWarehouseTab.value
@@ -1819,12 +2381,33 @@ function normalizedForm(): Record<string, unknown> {
   return body
 }
 
+function validateActiveForm(): string {
+  const missing = formSchema.value.filter((field) => field.required && (
+    formState[field.key] === undefined
+    || formState[field.key] === null
+    || (typeof formState[field.key] === 'string' && !formState[field.key].trim())
+  ))
+  if (missing.length) return `请填写必填项：${missing.map((field) => field.label).join('、')}`
+  if (activeKey.value === 'users') {
+    if (!currentUser.value?.organization_id) return '当前登录身份缺少组织信息，请重新登录后再试。'
+    if (String(formState.password || '').length < 8) return '密码至少需要 8 个字符。'
+    if (formState.account_type === 'department_terminal') {
+      const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(formState.terminal_id))
+      if (!terminal || Number(terminal.department_id) !== Number(formState.department_id)) {
+        return '所选终端不属于当前部门，请重新选择部门和终端。'
+      }
+    }
+  }
+  return ''
+}
+
 const numericKeys = new Set(['quantity', 'unit_cost', 'default_cost', 'safety_stock', 'customer_id', 'product_id', 'cavity_count', 'weight_gram', 'maintenance_cycle_days'])
 
 function clearForm() {
   for (const key of Object.keys(formState)) {
     delete formState[key]
   }
+  formError.value = ''
 }
 
 function toggleCreateForm() {
@@ -1857,7 +2440,7 @@ function inferColumns(data: BasicItem[], item: ModuleItem): string[] {
     products: ['id', 'name', 'code', 'unit', 'spec', 'safety_stock', 'status'],
     molds: ['id', 'code', 'name', 'status', 'current_location', 'storage_location', 'cavity_count', 'mold_material', 'steel', 'maintenance_cycle_days', 'next_maintenance_at'],
     permissions: ['id', 'name', 'code', 'object', 'action'],
-    audits: ['id', 'actor_username', 'actor_account_type', 'person_name', 'department_id', 'terminal_id', 'action', 'object', 'result'],
+    audits: ['id', 'actor_username', 'account_type', 'person_name', 'department_id', 'terminal_id', 'action', 'object', 'result', 'created_at'],
   }
   const inferred = preferred[item.key] || Object.keys(data[0] || {})
   if (!hasPermission('cost:view')) {
@@ -1878,9 +2461,15 @@ function genericStatusLabel(value: unknown): string {
     active: '正常',
     enabled: '正常',
     normal: '正常',
+    success: '成功',
+    succeeded: '成功',
     inactive: '停用',
     disabled: '停用',
     stopped: '停用',
+    failed: '失败',
+    failure: '失败',
+    error: '失败',
+    denied: '拒绝',
     unknown: '未设置',
   }
   return labels[status] || formatCell(value)
@@ -1888,7 +2477,81 @@ function genericStatusLabel(value: unknown): string {
 
 function genericStatusTone(value: unknown): StatusTone {
   const status = String(value || 'unknown').toLowerCase()
-  return ['active', 'enabled', 'normal'].includes(status) ? 'success' : 'info'
+  if (['active', 'enabled', 'normal', 'success', 'succeeded'].includes(status)) return 'success'
+  if (['failed', 'failure', 'error', 'denied'].includes(status)) return 'danger'
+  return 'info'
+}
+
+function isGenericStatusColumn(column: string): boolean {
+  return column === 'status' || column === 'result'
+}
+
+function formatGenericCell(column: string, value: unknown): string {
+  if (column === 'account_type') {
+    if (value === 'personal') return '个人账号'
+    if (value === 'department_terminal') return '部门终端账号'
+  }
+  if (column === 'department_id' && value) {
+    const department = rowsFor('departments').find((item) => Number(item.id) === Number(value))
+    return department ? `${department.name || department.code}（#${value}）` : `#${value}`
+  }
+  if (column === 'terminal_id' && value) {
+    const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(value))
+    return terminal ? `${terminal.name || terminal.code}（#${value}）` : `#${value}`
+  }
+  if (column === 'organization_id' && value) return `#${value}`
+  if (column === 'created_at' && value) {
+    const date = new Date(String(value))
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', {hour12: false})
+  }
+  if (column.endsWith('_at') && value) return formatDate(value)
+  return formatCell(value)
+}
+
+function permissionDomainKey(option: BasicItem): string {
+  const codePrefix = String(option.code || '').split(':')[0].trim().toLowerCase()
+  const objectPath = String(option.object || '').toLowerCase()
+  const candidates = [codePrefix, objectPath.replace(/^\/api\/v1\//, '').split('/')[0]]
+  const aliases: Record<string, string> = {
+    system: 'system', users: 'system', roles: 'system', permissions: 'system', audits: 'system', updates: 'system', departments: 'system', terminals: 'system',
+    warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'warehouse', products: 'warehouse',
+    workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers', contacts: 'customers',
+    supplier: 'suppliers', suppliers: 'suppliers', statistics: 'statistics', cost: 'cost',
+  }
+  for (const candidate of candidates) {
+    if (aliases[candidate]) return aliases[candidate]
+  }
+  const fallback = codePrefix || objectPath.replace(/^\/api\/v1\//, '').replaceAll('/', ' · ') || '未分类'
+  return `other:${fallback}`
+}
+
+function permissionDomainLabel(value: string): string {
+  const labels: Record<string, string> = {
+    system: '系统管理',
+    warehouse: '仓库',
+    inventory: '库存单据',
+    workorder: '任务单',
+    mold: '模具台账',
+    customers: '客户',
+    suppliers: '供应商',
+    statistics: '统计报表',
+    cost: '成本数据',
+  }
+  if (labels[value]) return labels[value]
+  const fallback = value.startsWith('other:') ? value.slice(6) : value
+  return `其他业务域 · ${fallback}`
+}
+
+function genericRowTitle(row: BasicItem): string {
+  const value = formatGenericCell(genericIdentityColumns.value.primary, row[genericIdentityColumns.value.primary])
+  return value === '-' ? `${activeModule.value?.title || '记录'} #${row.id}` : value
+}
+
+function genericRowSubtitle(row: BasicItem): string {
+  const column = genericIdentityColumns.value.secondary
+  if (!column) return `编号 ${row.id}`
+  const value = formatGenericCell(column, row[column])
+  return value === '-' ? `编号 ${row.id}` : `${columnLabel(column)}：${value}`
 }
 
 function stockState(row: unknown): {label: string; tone: StatusTone} {
@@ -1910,18 +2573,50 @@ const columnLabels: Record<string, string> = {
   balance_qty: '结存数量', current_location: '当前位置', storage_location: '存放位置',
   cavity_count: '穴数', mold_material: '成型材料', steel: '钢材', maintenance_cycle_days: '保养周期',
   next_maintenance_at: '下次保养', object: '对象', action: '操作', actor_username: '操作账号',
-  actor_account_type: '账号类型', person_name: '操作人', result: '结果',
+  actor_account_type: '账号类型', person_name: '操作人', result: '结果', created_at: '操作时间',
 }
 
 function columnLabel(column: string): string {
   return columnLabels[column] || column
 }
 
+let warehouseDetailRequestToken = 0
+let itemMovementsRequestToken = 0
+let moldDetailRequestToken = 0
+let workorderLogsRequestToken = 0
+let warehouseDetailAbortController: AbortController | null = null
+let itemMovementsAbortController: AbortController | null = null
+let moldDetailAbortController: AbortController | null = null
+let workorderLogsAbortController: AbortController | null = null
+
+function invalidateWarehouseRequests() {
+  warehouseDetailAbortController?.abort()
+  itemMovementsAbortController?.abort()
+  warehouseDetailAbortController = null
+  itemMovementsAbortController = null
+  warehouseDetailRequestToken += 1
+  itemMovementsRequestToken += 1
+  warehouseDetailLoading.value = false
+  itemMovementsLoading.value = false
+}
+
+function isCurrentWarehouseRequest(requestToken: number, itemType: string, itemID: number, kind: 'detail' | 'movements'): boolean {
+  const activeToken = kind === 'detail' ? warehouseDetailRequestToken : itemMovementsRequestToken
+  return requestToken === activeToken
+    && warehouseDrawerVisible.value
+    && String(selectedWarehouseItem.value?.item_type || '') === itemType
+    && Number(selectedWarehouseItem.value?.id) === itemID
+}
+
 async function openWarehouseItem(item: any) {
   selectedWarehouseItem.value = item
+  warehouseDetail.value = null
+  warehouseDetailError.value = ''
   warehouseDrawerVisible.value = true
   movementMode.value = ''
   showAllItemMovements.value = false
+  itemMovements.value = []
+  itemMovementsError.value = ''
   panelMessage.value = ''
   await Promise.allSettled([loadWarehouseItemDetail(), loadItemMovements()])
 }
@@ -1934,6 +2629,7 @@ async function closeWarehouseItem() {
 }
 
 function performWarehouseClose() {
+  invalidateWarehouseRequests()
   warehouseCloseBypass = true
   warehouseDrawerVisible.value = false
   window.setTimeout(() => { warehouseCloseBypass = false }, 0)
@@ -1960,19 +2656,28 @@ async function requestWarehouseClose(): Promise<boolean> {
 function handleWarehouseBeforeClose(done: () => void) {
   if (warehouseCloseBypass) {
     warehouseCloseBypass = false
+    invalidateWarehouseRequests()
     done()
     return
   }
   void requestWarehouseClose().then((canClose) => {
-    if (canClose) done()
+    if (canClose) {
+      invalidateWarehouseRequests()
+      done()
+    }
   })
 }
 
 function resetWarehouseItem() {
+  invalidateWarehouseRequests()
   warehouseCloseBypass = false
   selectedWarehouseItem.value = null
   warehouseDetail.value = null
+  warehouseDetailLoading.value = false
+  warehouseDetailError.value = ''
   itemMovements.value = []
+  itemMovementsLoading.value = false
+  itemMovementsError.value = ''
   movementMode.value = ''
   showQuickSupplier.value = false
   movementFormError.value = ''
@@ -1980,44 +2685,243 @@ function resetWarehouseItem() {
   clearMovementForm()
 }
 
-async function openMold(item: any) {
+function invalidateMoldDetailRequest() {
+  moldDetailAbortController?.abort()
+  moldDetailAbortController = null
+  moldDetailRequestToken += 1
+  moldDetailLoading.value = false
+}
+
+function isCurrentMoldDetailRequest(requestToken: number, moldID: number): boolean {
+  return requestToken === moldDetailRequestToken
+    && moldDetailDrawerVisible.value
+    && selectedMoldID.value === moldID
+}
+
+function openMold(item: any) {
+  selectedMoldID.value = Number(item.id)
   selectedMoldDetail.value = null
+  moldDetailError.value = ''
   moldDetailDrawerVisible.value = true
+  void loadMoldDetail()
+}
+
+async function loadMoldDetail() {
+  const moldID = selectedMoldID.value
+  if (!moldID) return
+  moldDetailAbortController?.abort()
+  const abortController = new AbortController()
+  moldDetailAbortController = abortController
+  const requestToken = ++moldDetailRequestToken
+  moldDetailLoading.value = true
+  moldDetailError.value = ''
   try {
-    selectedMoldDetail.value = await request<BasicItem>(`/api/v1/molds/${item.id}`, {}, token.value)
+    const data = await request<BasicItem>(`/api/v1/molds/${moldID}`, {signal: abortController.signal}, token.value)
+    if (!isCurrentMoldDetailRequest(requestToken, moldID)) return
+    selectedMoldDetail.value = data
   } catch (error) {
-    panelMessage.value = error instanceof Error ? error.message : '模具详情加载失败'
-    ElMessage.error(panelMessage.value)
+    if (!isCurrentMoldDetailRequest(requestToken, moldID)) return
+    selectedMoldDetail.value = null
+    moldDetailError.value = error instanceof Error ? error.message : '模具详情加载失败'
+  } finally {
+    if (moldDetailAbortController === abortController) moldDetailAbortController = null
+    if (isCurrentMoldDetailRequest(requestToken, moldID)) moldDetailLoading.value = false
   }
 }
 
 function closeMold() {
+  if (moldActionSubmitting.value) return
+  invalidateMoldDetailRequest()
   moldDetailDrawerVisible.value = false
 }
 
+function handleMoldBeforeClose(done: () => void) {
+  if (moldActionSubmitting.value) {
+    ElMessage.warning('模具状态正在提交，请稍候。')
+    return
+  }
+  invalidateMoldDetailRequest()
+  done()
+}
+
 function resetMold() {
+  invalidateMoldDetailRequest()
   selectedMoldDetail.value = null
+  selectedMoldID.value = null
+  moldDetailLoading.value = false
+  moldDetailError.value = ''
+  moldActionSubmitting.value = false
+  moldActionError.value = ''
+}
+
+async function loanMold() {
+  if (selectedMoldDetail.value?.status !== 'in_stock') return
+  const location = await promptText('借出位置', '请输入模具借出后的具体位置')
+  if (!location) return
+  const counterparty = await promptText('借用方', '请输入借用部门或单位')
+  if (!counterparty) return
+  try {
+    await ElMessageBox.confirm(`确认将“${selectedMoldDetail.value.name}”借出至 ${location}？`, '确认借出', {
+      type: 'warning', confirmButtonText: '确认借出', cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  await runMoldAction('loan', {
+    location,
+    counterparty,
+    handler_name: currentUser.value?.name || currentUser.value?.username || '',
+    reason: '模具借出',
+  }, '模具已借出')
+}
+
+async function returnMold() {
+  if (selectedMoldDetail.value?.status !== 'loaned') return
+  const defaultLocation = String(selectedMoldDetail.value.storage_location || '').trim()
+  const location = (await promptTextWithDefault('归还位置', '请确认或修改模具归还后的具体位置', defaultLocation)).trim()
+  if (!location) return
+  try {
+    await ElMessageBox.confirm(
+      `确认将“${selectedMoldDetail.value.name}”归还至 ${location}？`,
+      '确认归还',
+      {type: 'warning', confirmButtonText: '确认归还', cancelButtonText: '取消'},
+    )
+  } catch {
+    return
+  }
+  await runMoldAction('return', {
+    location,
+    handler_name: currentUser.value?.name || currentUser.value?.username || '',
+    reason: '模具归还',
+  }, '模具已归还入库')
+}
+
+async function repairMold(completed: boolean) {
+  const expectedStatus = completed ? 'repairing' : 'in_stock'
+  if (selectedMoldDetail.value?.status !== expectedStatus) return
+  const reason = await promptText(completed ? '完成维修' : '开始维修', completed ? '请输入本次维修完成说明' : '请输入维修原因')
+  if (!reason) return
+  try {
+    await ElMessageBox.confirm(
+      completed ? '确认维修已经完成并将模具恢复为在库状态？' : '确认将模具状态变更为维修中？',
+      completed ? '确认完成维修' : '确认开始维修',
+      {type: completed ? 'success' : 'warning', confirmButtonText: completed ? '完成维修' : '开始维修', cancelButtonText: '取消'},
+    )
+  } catch {
+    return
+  }
+  await runMoldAction('repair', {
+    reason,
+    description: reason,
+    handler_name: currentUser.value?.name || currentUser.value?.username || '',
+    completed,
+  }, completed ? '模具维修已完成' : '模具已进入维修状态')
+}
+
+async function maintainMold(completed: boolean) {
+  const expectedStatus = completed ? 'maintenance' : 'in_stock'
+  if (selectedMoldDetail.value?.status !== expectedStatus) return
+  let maintenanceCycleDays = Number(selectedMoldDetail.value.maintenance_cycle_days || 0)
+  if (completed && (!Number.isInteger(maintenanceCycleDays) || maintenanceCycleDays <= 0)) {
+    const enteredCycle = await promptPositiveInteger('补充保养周期', '当前模具未设置有效保养周期，请填写完成保养后的周期天数')
+    if (enteredCycle === null) return
+    maintenanceCycleDays = enteredCycle
+  }
+  try {
+    await ElMessageBox.confirm(
+      completed ? `确认保养已经完成？系统将按 ${maintenanceCycleDays} 天周期计算下次保养日期。` : '确认将模具状态变更为保养中？',
+      completed ? '确认完成保养' : '确认开始保养',
+      {type: completed ? 'success' : 'warning', confirmButtonText: completed ? '完成保养' : '开始保养', cancelButtonText: '取消'},
+    )
+  } catch {
+    return
+  }
+  await runMoldAction('maintenance', {
+    description: completed ? '模具保养完成' : '开始模具保养',
+    handler_name: currentUser.value?.name || currentUser.value?.username || '',
+    completed,
+    ...(completed ? {maintenance_cycle_days: maintenanceCycleDays} : {}),
+  }, completed ? '模具保养已完成' : '模具已进入保养状态')
+}
+
+async function runMoldAction(action: 'loan' | 'return' | 'repair' | 'maintenance', body: Record<string, unknown>, successMessage: string) {
+  if (!selectedMoldDetail.value || !hasPermission('mold:write') || moldActionSubmitting.value) return
+  moldActionSubmitting.value = true
+  moldActionError.value = ''
+  try {
+    await request<BasicItem>(`/api/v1/molds/${selectedMoldDetail.value.id}/${action}`, {method: 'POST', body}, token.value)
+    await Promise.all([loadActiveModule(), loadMoldDetail()])
+    ElMessage.success(successMessage)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      moldActionError.value = '模具状态已发生变化，已刷新最新详情和列表，请按当前状态重新操作。'
+      ElMessage.warning(moldActionError.value)
+      await Promise.all([loadActiveModule(), loadMoldDetail()])
+      return
+    }
+    moldActionError.value = error instanceof Error ? error.message : '模具状态操作失败'
+    ElMessage.error(moldActionError.value)
+  } finally {
+    moldActionSubmitting.value = false
+  }
 }
 
 async function loadWarehouseItemDetail() {
   const item = selectedWarehouseItem.value
   if (!item) return
-  warehouseDetail.value = await request<Record<string, unknown>>(
-    `/api/v1/warehouse/items/${item.item_type}/${item.id}`,
-    {},
-    token.value,
-  )
+  const itemType = String(item.item_type || '')
+  const itemID = Number(item.id)
+  warehouseDetailAbortController?.abort()
+  const abortController = new AbortController()
+  warehouseDetailAbortController = abortController
+  const requestToken = ++warehouseDetailRequestToken
+  warehouseDetailLoading.value = true
+  warehouseDetailError.value = ''
+  warehouseDetail.value = null
+  try {
+    const data = await request<Record<string, unknown>>(
+      `/api/v1/warehouse/items/${itemType}/${itemID}`,
+      {signal: abortController.signal},
+      token.value,
+    )
+    if (!isCurrentWarehouseRequest(requestToken, itemType, itemID, 'detail')) return
+    warehouseDetail.value = data
+  } catch (error) {
+    if (!isCurrentWarehouseRequest(requestToken, itemType, itemID, 'detail')) return
+    warehouseDetailError.value = error instanceof Error ? error.message : '库存详情加载失败'
+  } finally {
+    if (warehouseDetailAbortController === abortController) warehouseDetailAbortController = null
+    if (isCurrentWarehouseRequest(requestToken, itemType, itemID, 'detail')) warehouseDetailLoading.value = false
+  }
 }
 
 async function loadItemMovements() {
   const item = selectedWarehouseItem.value
   if (!item || !hasPermission('inventory:documents:read')) return
-  const data = await request<{items: BasicItem[]}>(
-    `/api/v1/warehouse/items/${item.item_type}/${item.id}/movements?page_size=100`,
-    {},
-    token.value,
-  )
-  itemMovements.value = data.items
+  const itemType = String(item.item_type || '')
+  const itemID = Number(item.id)
+  itemMovementsAbortController?.abort()
+  const abortController = new AbortController()
+  itemMovementsAbortController = abortController
+  const requestToken = ++itemMovementsRequestToken
+  itemMovementsLoading.value = true
+  itemMovementsError.value = ''
+  try {
+    const data = await request<{items: BasicItem[]}>(
+      `/api/v1/warehouse/items/${itemType}/${itemID}/movements?page_size=100`,
+      {signal: abortController.signal},
+      token.value,
+    )
+    if (!isCurrentWarehouseRequest(requestToken, itemType, itemID, 'movements')) return
+    itemMovements.value = data.items
+  } catch (error) {
+    if (!isCurrentWarehouseRequest(requestToken, itemType, itemID, 'movements')) return
+    itemMovements.value = []
+    itemMovementsError.value = error instanceof Error ? error.message : '出入库记录加载失败'
+  } finally {
+    if (itemMovementsAbortController === abortController) itemMovementsAbortController = null
+    if (isCurrentWarehouseRequest(requestToken, itemType, itemID, 'movements')) itemMovementsLoading.value = false
+  }
 }
 
 async function loadAllItemMovements() {
@@ -2028,7 +2932,7 @@ async function loadAllItemMovements() {
 }
 
 function startMovement(mode: string) {
-  if (movementSubmitting.value) return
+  if (movementSubmitting.value || !warehouseDetail.value || !warehouseQuantityAvailable.value || warehouseDetailLoading.value || warehouseDetailError.value) return
   movementMode.value = mode
   showQuickSupplier.value = false
   clearMovementForm()
@@ -2181,22 +3085,64 @@ function movementQuantity(document: BasicItem): string {
 
 function openWorkOrder(item: any) {
   selectedWorkOrder.value = item
+  workorderLogs.value = []
+  workorderLogsError.value = ''
   workorderDrawerVisible.value = true
   void loadWorkOrderLogs()
 }
 
+function invalidateWorkOrderLogsRequest() {
+  workorderLogsAbortController?.abort()
+  workorderLogsAbortController = null
+  workorderLogsRequestToken += 1
+  workorderLogsLoading.value = false
+}
+
+function isCurrentWorkOrderLogsRequest(requestToken: number, workorderID: number): boolean {
+  return requestToken === workorderLogsRequestToken
+    && workorderDrawerVisible.value
+    && Number(selectedWorkOrder.value?.id) === workorderID
+}
+
 function closeWorkOrder() {
+  invalidateWorkOrderLogsRequest()
   workorderDrawerVisible.value = false
 }
 
+function handleWorkOrderBeforeClose(done: () => void) {
+  invalidateWorkOrderLogsRequest()
+  done()
+}
+
 function resetWorkOrder() {
+  invalidateWorkOrderLogsRequest()
   selectedWorkOrder.value = null
   workorderLogs.value = []
+  workorderLogsLoading.value = false
+  workorderLogsError.value = ''
 }
 
 async function loadWorkOrderLogs() {
-  if (!selectedWorkOrder.value) return
-  workorderLogs.value = await request<BasicItem[]>(`/api/v1/workorder/${selectedWorkOrder.value.id}/logs`, {}, token.value)
+  const workorderID = Number(selectedWorkOrder.value?.id)
+  if (!workorderID) return
+  workorderLogsAbortController?.abort()
+  const abortController = new AbortController()
+  workorderLogsAbortController = abortController
+  const requestToken = ++workorderLogsRequestToken
+  workorderLogsLoading.value = true
+  workorderLogsError.value = ''
+  try {
+    const data = await request<BasicItem[]>(`/api/v1/workorder/${workorderID}/logs`, {signal: abortController.signal}, token.value)
+    if (!isCurrentWorkOrderLogsRequest(requestToken, workorderID)) return
+    workorderLogs.value = data
+  } catch (error) {
+    if (!isCurrentWorkOrderLogsRequest(requestToken, workorderID)) return
+    workorderLogs.value = []
+    workorderLogsError.value = error instanceof Error ? error.message : '任务日志加载失败'
+  } finally {
+    if (workorderLogsAbortController === abortController) workorderLogsAbortController = null
+    if (isCurrentWorkOrderLogsRequest(requestToken, workorderID)) workorderLogsLoading.value = false
+  }
 }
 
 async function dispatchWorkOrder() {
@@ -2283,13 +3229,47 @@ async function promptText(title: string, message: string, required = true): Prom
   }
 }
 
+async function promptTextWithDefault(title: string, message: string, inputValue: string): Promise<string> {
+  try {
+    const result = await ElMessageBox.prompt(message, title, {
+      inputValue,
+      inputValidator: (value) => Boolean(String(value || '').trim()),
+      inputErrorMessage: '请填写具体位置',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消',
+    })
+    return String(result.value || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+async function promptPositiveInteger(title: string, message: string): Promise<number | null> {
+  try {
+    const result = await ElMessageBox.prompt(message, title, {
+      inputType: 'number',
+      inputValidator: (value) => {
+        const number = Number(String(value || '').trim())
+        return Number.isInteger(number) && number > 0
+      },
+      inputErrorMessage: '请输入大于 0 的整数天数',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消',
+    })
+    const number = Number(String(result.value || '').trim())
+    return Number.isInteger(number) && number > 0 ? number : null
+  } catch {
+    return null
+  }
+}
+
 function departmentTasks(row: any): BasicItem[] {
   return Array.isArray(row.department_tasks) ? row.department_tasks as BasicItem[] : []
 }
 
-function departmentProgressSummary(row: BasicItem): string {
+function departmentProgressMetrics(row: unknown): {percentage: number; completed: number; total: number} {
   const tasks = departmentTasks(row)
-  if (!tasks.length) return '0% · 尚未分配部门'
+  if (!tasks.length) return {percentage: 0, completed: 0, total: 0}
   const completed = tasks.filter((task) => task.status === 'completed').length
   const totalProgress = tasks.reduce((sum, task) => {
     const explicit = Number(task.progress)
@@ -2299,7 +3279,13 @@ function departmentProgressSummary(row: BasicItem): string {
     return sum + (planned > 0 ? Math.min(100, Math.max(0, finished * 100 / planned)) : 0)
   }, 0)
   const percentage = Math.round(totalProgress / tasks.length)
-  return `${percentage}% · ${completed}/${tasks.length} 个部门已完成`
+  return {percentage, completed, total: tasks.length}
+}
+
+function departmentProgressSummary(row: unknown): string {
+  const progress = departmentProgressMetrics(row)
+  if (!progress.total) return '0% · 尚未分配部门'
+  return `${progress.percentage}% · ${progress.completed}/${progress.total} 个部门已完成`
 }
 
 function departmentName(id: unknown): string {
@@ -2355,6 +3341,25 @@ function moldStatusTone(value: unknown): StatusTone {
   return 'info'
 }
 
+function moldMaintenanceState(row: unknown): {label: string; tone: StatusTone; description: string} {
+  const item = row as Record<string, unknown>
+  if (!item.next_maintenance_at) return {label: '未设置计划', tone: 'info', description: '建议补充下次保养日期'}
+  const rawDate = String(item.next_maintenance_at)
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate)
+  const maintenanceDate = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(rawDate)
+  if (!Number.isFinite(maintenanceDate.getTime())) return {label: '日期异常', tone: 'warning', description: '请核对保养日期'}
+  const now = new Date()
+  const localDaySerial = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000
+  const dayDifference = localDaySerial(maintenanceDate) - localDaySerial(now)
+  if (dayDifference < 0) {
+    return {label: `逾期 ${Math.abs(dayDifference)} 天`, tone: 'danger', description: '请尽快安排保养'}
+  }
+  if (dayDifference <= 7) return {label: dayDifference === 0 ? '今天到期' : `${dayDifference} 天内到期`, tone: 'warning', description: '请提前安排保养'}
+  return {label: '保养计划正常', tone: 'success', description: `距下次保养 ${dayDifference} 天`}
+}
+
 function departmentCompletionRate(item: DepartmentStatistic): number {
   if (!item.total) return 0
   return Math.round((Number(item.completed || 0) * 100) / Number(item.total))
@@ -2374,6 +3379,15 @@ function trendNameLabel(value: unknown): string {
   return labels[String(value)] || String(value || '趋势')
 }
 
+function trendBarPercentage(item: StatisticTrendItem): number {
+  const usesQuantity = item.quantity !== undefined
+  const peers = compactTrendItems.value.filter((candidate) => (candidate.quantity !== undefined) === usesQuantity)
+  const values = peers.map((candidate) => Math.abs(Number(usesQuantity ? candidate.quantity : candidate.value) || 0))
+  const maximum = Math.max(...values, 0)
+  if (!maximum) return 0
+  return Math.max(4, Math.round(Math.abs(Number(usesQuantity ? item.quantity : item.value) || 0) * 100 / maximum))
+}
+
 function departmentTaskStatusLabel(value: unknown): string {
   const labels: Record<string, string> = {
     draft: '待派发',
@@ -2390,6 +3404,22 @@ function workorderStatusTone(value: unknown): StatusTone {
   if (value === 'completed_forced' || value === 'cancelled') return 'danger'
   if (value === 'pending_close') return 'warning'
   return 'info'
+}
+
+function workorderDueState(row: unknown): {overdue: boolean; label: string} {
+  const item = row as Record<string, unknown>
+  const status = String(item.status || '')
+  if (status.startsWith('completed') || status === 'cancelled' || !item.due_at) {
+    return {overdue: false, label: ''}
+  }
+  const dueDay = new Date(String(item.due_at))
+  if (!Number.isFinite(dueDay.getTime())) return {overdue: false, label: ''}
+  dueDay.setHours(0, 0, 0, 0)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (dueDay.getTime() >= today.getTime()) return {overdue: false, label: ''}
+  const days = Math.max(1, Math.round((today.getTime() - dueDay.getTime()) / 86_400_000))
+  return {overdue: true, label: `逾期 ${days} 天`}
 }
 
 function departmentTaskStatusTone(value: unknown): StatusTone {
@@ -2428,7 +3458,11 @@ function workorderActionLabel(value: unknown): string {
 
 onMounted(() => {
   if (token.value) {
-    void bootstrap()
+    const requestGeneration = ++authRequestGeneration
+    const requestServerAddress = apiBaseUrl()
+    void bootstrap(requestGeneration, requestServerAddress).catch((error) => {
+      if (!token.value) errorMessage.value = error instanceof Error ? `登录已失效：${error.message}` : '登录已失效，请重新登录'
+    })
   } else {
     void loadHealth()
     void loadClientUpdate()

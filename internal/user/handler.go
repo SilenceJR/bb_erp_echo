@@ -98,6 +98,9 @@ func (h *Handler) CreateUser(c *echo.Context) error {
 	if req.AccountType == model.AccountTypeDepartmentTerminal && (req.DepartmentID == nil || req.TerminalID == nil) {
 		return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号必须绑定部门和终端")
 	}
+	if err := h.validateAffiliations(req.OrganizationID, req.DepartmentID, req.TerminalID); err != nil {
+		return err
+	}
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
@@ -192,4 +195,41 @@ func (h *Handler) AssignUserRoles(c *echo.Context) error {
 func (h *Handler) canAccessOrg(c *echo.Context, orgID uint) bool {
 	current := auth.GetCurrentUser(c)
 	return current == nil || current.OrganizationID == orgID
+}
+
+// validateAffiliations 校验用户填写的部门和终端归属。
+//
+// 部门通过 OrganizationID 直接关联组织，终端则通过所属部门间接关联组织。
+// 因此不能只验证两个 ID 存在：必须同时保证它们属于目标组织；当两者都填写
+// 时，还必须保证终端正是该部门的终端。所有校验在创建前完成，避免非法关联
+// 留下半成品用户数据。
+func (h *Handler) validateAffiliations(organizationID uint, departmentID, terminalID *uint) error {
+	if departmentID != nil {
+		var department model.Department
+		if err := h.DB.Where("id = ? AND organization_id = ?", *departmentID, organizationID).First(&department).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return echo.NewHTTPError(http.StatusBadRequest, "部门不属于目标组织")
+			}
+			return err
+		}
+	}
+
+	if terminalID == nil {
+		return nil
+	}
+
+	var terminal model.Terminal
+	terminalQuery := h.DB.Model(&model.Terminal{}).
+		Joins("JOIN departments ON departments.id = terminals.department_id").
+		Where("terminals.id = ? AND departments.organization_id = ?", *terminalID, organizationID)
+	if err := terminalQuery.First(&terminal).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusBadRequest, "终端不属于目标组织")
+		}
+		return err
+	}
+	if departmentID != nil && terminal.DepartmentID != *departmentID {
+		return echo.NewHTTPError(http.StatusBadRequest, "终端不属于所选部门")
+	}
+	return nil
 }

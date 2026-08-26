@@ -13,7 +13,7 @@
         <div class="update-card-heading">
           <div>
             <span class="update-kicker">更新源</span>
-            <h2>{{ status?.enabled === false ? '更新检查已停用' : connectivityText }}</h2>
+            <h2>{{ connectivityText }}</h2>
           </div>
           <el-tag :type="connectivityType" effect="light" round>{{ connectivityTag }}</el-tag>
         </div>
@@ -32,9 +32,10 @@
           show-icon
         />
         <div class="update-actions">
-          <el-button :loading="loading" @click="loadStatus">刷新状态</el-button>
-          <el-button v-if="canCheck" type="primary" :loading="checking" @click="checkNow">立即检查</el-button>
-          <small v-else>你的账号只有查看权限</small>
+          <el-button :loading="loading" :disabled="requestBusy" @click="loadStatus">刷新状态</el-button>
+          <el-button v-if="canCheck" type="primary" :loading="checking" :disabled="requestBusy || status?.enabled === false" @click="checkNow">立即检查</el-button>
+          <small v-if="status?.enabled === false">需由服务端开启更新检查后才能手动检查</small>
+          <small v-else-if="!canCheck">你的账号只有查看权限</small>
         </div>
       </article>
     </div>
@@ -44,12 +45,14 @@
         title="Go 服务端"
         description="只报告和下载新版本，不会自动替换正在运行的服务。"
         :item="serverStatus"
+        :known="statusKnown"
         @download="openDownload"
       />
       <PackageCard
         title="桌面客户端"
         description="安装包由服务端校验并缓存；Web 用户无需安装客户端升级包。"
         :item="clientStatus"
+        :known="statusKnown"
         @download="openDownload"
       />
     </div>
@@ -71,25 +74,41 @@ const status = ref<SystemUpdateStatus | null>(null)
 const loading = ref(false)
 const checking = ref(false)
 const loadError = ref('')
+let statusRequestGeneration = 0
+const requestBusy = computed(() => loading.value || checking.value)
 const manifestUrl = computed(() => String(status.value?.manifest_url || status.value?.source || ''))
 const statusError = computed(() => String(status.value?.last_error || status.value?.error || ''))
+const statusKnown = computed(() => Boolean(
+  status.value
+  && !loadError.value
+  && !statusError.value
+  && !requestBusy.value
+  && status.value.enabled !== false
+  && status.value.reachable !== false
+  && !status.value.checking,
+))
 const serverStatus = computed(() => status.value?.server || status.value?.server_update || {})
 const clientStatus = computed(() => status.value?.client || status.value?.client_update || {})
 const connectivityText = computed(() => {
+  if (!status.value || loadError.value) return '更新状态未知'
+  if (requestBusy.value) return '正在获取更新状态'
+  if (status.value.enabled === false) return '更新检查已停用'
+  if (statusError.value || status.value.reachable === false) return '更新状态未知'
   if (status.value?.checking) return '正在检查更新'
-  if (statusError.value) return '更新源暂时不可用'
   if (status.value?.last_success_at || status.value?.reachable === true) return '更新源连接正常'
   return '等待首次检查'
 })
 const connectivityTag = computed(() => {
+  if (!status.value || loadError.value) return '状态未知'
+  if (requestBusy.value) return '状态未知'
   if (status.value?.enabled === false) return '已停用'
+  if (statusError.value || status.value.reachable === false) return '状态未知'
   if (status.value?.checking) return '检查中'
-  if (statusError.value || status.value?.reachable === false) return '连接异常'
   if (status.value?.last_success_at || status.value?.reachable === true) return '正常'
   return '待检查'
 })
 const connectivityType = computed<'success' | 'warning' | 'info'>(() => {
-  if (statusError.value || status.value?.reachable === false) return 'warning'
+  if (!status.value || loadError.value || statusError.value || status.value.reachable === false || requestBusy.value || status.value.enabled === false || status.value.checking) return 'info'
   if (status.value?.last_success_at || status.value?.reachable === true) return 'success'
   return 'info'
 })
@@ -116,28 +135,35 @@ async function openDownload(item: UpdatePackageStatus) {
 }
 
 async function loadStatus() {
+  if (requestBusy.value) return
+  const requestGeneration = ++statusRequestGeneration
   loading.value = true
   loadError.value = ''
   try {
-    status.value = await request<SystemUpdateStatus>('/api/v1/system/updates/status', {}, props.token)
+    const data = await request<SystemUpdateStatus>('/api/v1/system/updates/status', {}, props.token)
+    if (requestGeneration === statusRequestGeneration) status.value = data
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '更新状态加载失败'
+    if (requestGeneration === statusRequestGeneration) loadError.value = error instanceof Error ? error.message : '更新状态加载失败'
   } finally {
-    loading.value = false
+    if (requestGeneration === statusRequestGeneration) loading.value = false
   }
 }
 
 async function checkNow() {
+  if (requestBusy.value || status.value?.enabled === false) return
+  const requestGeneration = ++statusRequestGeneration
   checking.value = true
   loadError.value = ''
   try {
-    status.value = await request<SystemUpdateStatus>('/api/v1/system/updates/check', {method: 'POST'}, props.token)
+    const data = await request<SystemUpdateStatus>('/api/v1/system/updates/check', {method: 'POST'}, props.token)
+    if (requestGeneration !== statusRequestGeneration) return
+    status.value = data
     if (statusError.value) ElMessage.warning('检查已完成，但更新源返回了错误')
     else ElMessage.success('更新检查完成')
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '立即检查失败'
+    if (requestGeneration === statusRequestGeneration) loadError.value = error instanceof Error ? error.message : '立即检查失败'
   } finally {
-    checking.value = false
+    if (requestGeneration === statusRequestGeneration) checking.value = false
   }
 }
 
@@ -146,6 +172,7 @@ const PackageCard = defineComponent({
     title: {type: String, required: true},
     description: {type: String, required: true},
     item: {type: Object as () => UpdatePackageStatus, required: true},
+    known: {type: Boolean, required: true},
   },
   emits: ['download'],
   setup(cardProps, {emit}) {
@@ -159,10 +186,17 @@ const PackageCard = defineComponent({
       return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
     }
     const canDownload = () => Boolean(cardProps.item.download_url || cardProps.item.download_path)
+    const hasVersionData = () => Boolean(cardProps.item.current_version && cardProps.item.latest_version)
+    const packageState = () => {
+      if (!cardProps.known) return {type: 'info' as const, label: '状态未知'}
+      if (cardProps.item.available === true) return {type: 'warning' as const, label: '发现新版本'}
+      if (cardProps.item.available === false && hasVersionData()) return {type: 'success' as const, label: '已是最新'}
+      return {type: 'info' as const, label: '状态未知'}
+    }
     return () => h('article', {class: 'update-package-card'}, [
       h('div', {class: 'update-card-heading'}, [
         h('div', [h('span', {class: 'update-kicker'}, '安装包'), h('h2', cardProps.title)]),
-        h(ElTag, {type: cardProps.item.available ? 'warning' : 'success', effect: 'light'}, () => cardProps.item.available ? '发现新版本' : '已是最新'),
+        h(ElTag, {type: packageState().type, effect: 'light'}, () => packageState().label),
       ]),
       h('p', {class: 'update-package-description'}, cardProps.description),
       h('dl', {class: 'update-version-list'}, [

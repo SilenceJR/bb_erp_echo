@@ -48,6 +48,7 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     FilterBar: typeof import('./src/components/ui/FilterBar.vue')['default']
     ImageGallery: typeof import('./src/components/ImageGallery.vue')['default']
+    MetricCard: typeof import('./src/components/ui/MetricCard.vue')['default']
     PageHeader: typeof import('./src/components/ui/PageHeader.vue')['default']
     PageState: typeof import('./src/components/ui/PageState.vue')['default']
     StatusTag: typeof import('./src/components/ui/StatusTag.vue')['default']

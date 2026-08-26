@@ -2,6 +2,7 @@ package mold
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"bb_erp_echo/internal/model"
@@ -24,7 +25,12 @@ const (
 	eventMaintenance = "maintenance"
 )
 
-var ErrMoldNotFound = errors.New("mold not found")
+var (
+	ErrMoldNotFound                 = errors.New("mold not found")
+	ErrMoldStatusConflict           = errors.New("mold status conflict")
+	ErrMoldReturnLocationRequired   = errors.New("mold return location required")
+	ErrMoldMaintenanceCycleRequired = errors.New("mold maintenance cycle required")
+)
 
 type Transition struct {
 	Status       string
@@ -122,9 +128,19 @@ func (s *gormService) Delete(id uint) error {
 }
 
 func (s *gormService) Transition(id uint, command Transition) (model.Mold, error) {
+	if command.EventType == eventReturn {
+		command.Location = strings.TrimSpace(command.Location)
+		if command.Location == "" {
+			return model.Mold{}, ErrMoldReturnLocationRequired
+		}
+	}
 	var item model.Mold
 	if err := s.db.First(&item, id).Error; err != nil {
 		return item, mapMoldError(err)
+	}
+	expectedStatus, ok := transitionSourceStatus(command.EventType, command.Status)
+	if !ok || item.Status != expectedStatus {
+		return item, ErrMoldStatusConflict
 	}
 	beforeStatus := item.Status
 	item.Status = command.Status
@@ -136,8 +152,19 @@ func (s *gormService) Transition(id uint, command Transition) (model.Mold, error
 		item.LastRepairAt = &now
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
-			return err
+		updates := map[string]any{"status": item.Status}
+		if command.Location != "" {
+			updates["current_location"] = item.CurrentLocation
+		}
+		if item.LastRepairAt != nil {
+			updates["last_repair_at"] = item.LastRepairAt
+		}
+		result := tx.Model(&model.Mold{}).Where("id = ? AND status = ?", item.ID, beforeStatus).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrMoldStatusConflict
 		}
 		return s.createEvent(tx, item, command.EventType, beforeStatus, item.Status, item.CurrentLocation, command.Counterparty, command.HandlerName, command.Reason, command.Description)
 	})
@@ -148,6 +175,16 @@ func (s *gormService) Maintain(id uint, command MaintenanceCommand) (model.Mold,
 	var item model.Mold
 	if err := s.db.First(&item, id).Error; err != nil {
 		return item, mapMoldError(err)
+	}
+	expectedStatus := statusInStock
+	if command.Completed {
+		expectedStatus = statusMaintenance
+	}
+	if item.Status != expectedStatus {
+		return item, ErrMoldStatusConflict
+	}
+	if command.Completed && command.MaintenanceCycleDays <= 0 && item.MaintenanceCycleDays <= 0 {
+		return item, ErrMoldMaintenanceCycleRequired
 	}
 	beforeStatus := item.Status
 	item.Status = statusMaintenance
@@ -169,12 +206,46 @@ func (s *gormService) Maintain(id uint, command MaintenanceCommand) (model.Mold,
 		}
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
-			return err
+		updates := map[string]any{"status": item.Status}
+		if command.Location != "" {
+			updates["current_location"] = item.CurrentLocation
+		}
+		if command.MaintenanceCycleDays > 0 {
+			updates["maintenance_cycle_days"] = item.MaintenanceCycleDays
+		}
+		if item.LastMaintenanceAt != nil {
+			updates["last_maintenance_at"] = item.LastMaintenanceAt
+		}
+		if item.NextMaintenanceAt != nil {
+			updates["next_maintenance_at"] = item.NextMaintenanceAt
+		}
+		result := tx.Model(&model.Mold{}).Where("id = ? AND status = ?", item.ID, beforeStatus).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrMoldStatusConflict
 		}
 		return s.createEvent(tx, item, eventMaintenance, beforeStatus, item.Status, item.CurrentLocation, "", command.HandlerName, "模具保养", command.Description)
 	})
 	return item, err
+}
+
+func transitionSourceStatus(eventType, nextStatus string) (string, bool) {
+	switch eventType {
+	case eventLoan:
+		return statusInStock, nextStatus == statusLoaned
+	case eventReturn:
+		return statusLoaned, nextStatus == statusInStock
+	case eventRepair:
+		switch nextStatus {
+		case statusRepairing:
+			return statusInStock, true
+		case statusInStock:
+			return statusRepairing, true
+		}
+	}
+	return "", false
 }
 
 func (s *gormService) createEvent(tx *gorm.DB, item model.Mold, eventType string, before string, after string, location string, counterparty string, handlerName string, reason string, description string) error {
