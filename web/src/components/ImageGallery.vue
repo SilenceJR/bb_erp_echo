@@ -59,8 +59,9 @@
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ElMessage, ElMessageBox} from 'element-plus'
+import {ElMessage} from 'element-plus'
 import {request, requestBlob} from '../api/http'
+import {appMessageBox} from '../composables/useAppMessageBox'
 import type {ImageFile} from '../types'
 
 const props = defineProps<{
@@ -211,7 +212,7 @@ async function saveFile(file: File, target?: ImageFile) {
 async function deleteImage(item: ImageFile) {
   if (!props.canWrite) return
   try {
-    await ElMessageBox.confirm(`确定删除“${item.original_name}”吗？`, '删除图片', {
+    await appMessageBox.confirm(`确定删除“${item.original_name}”吗？`, '删除图片', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',

@@ -12,8 +12,11 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppNavigation: typeof import('./src/components/ui/AppNavigation.vue')['default']
+    AppWorkspace: typeof import('./src/components/app/AppWorkspace.vue')['default']
+    DashboardPage: typeof import('./src/components/pages/DashboardPage.vue')['default']
     DataTableShell: typeof import('./src/components/ui/DataTableShell.vue')['default']
     DesktopUpdatePanel: typeof import('./src/components/DesktopUpdatePanel.vue')['default']
+    DetailPanels: typeof import('./src/components/pages/DetailPanels.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
@@ -51,11 +54,17 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     FilterBar: typeof import('./src/components/ui/FilterBar.vue')['default']
     ImageGallery: typeof import('./src/components/ImageGallery.vue')['default']
+    LoginScreen: typeof import('./src/components/app/LoginScreen.vue')['default']
     MetricCard: typeof import('./src/components/ui/MetricCard.vue')['default']
+    ModulePage: typeof import('./src/components/pages/ModulePage.vue')['default']
+    MoldDrawer: typeof import('./src/components/pages/MoldDrawer.vue')['default']
     PageHeader: typeof import('./src/components/ui/PageHeader.vue')['default']
     PageState: typeof import('./src/components/ui/PageState.vue')['default']
+    ServerSettingsDialog: typeof import('./src/components/pages/ServerSettingsDialog.vue')['default']
     StatusTag: typeof import('./src/components/ui/StatusTag.vue')['default']
     UpdateCenter: typeof import('./src/components/UpdateCenter.vue')['default']
+    WarehouseDrawer: typeof import('./src/components/pages/WarehouseDrawer.vue')['default']
+    WorkorderDrawer: typeof import('./src/components/pages/WorkorderDrawer.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
