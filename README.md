@@ -2,7 +2,7 @@
 
 博邦 ERP 是面向工厂内网使用的单组织、单仓库 ERP。后端采用 Go 1.27、Echo v5.3.1、GORM、SQLite WAL、Casbin 和标准库 `log/slog`；Web 端采用 Vue 3、TypeScript、Vite 与 Element Plus；桌面端通过 Tauri 复用同一套 Vue 界面和业务 API。
 
-首版部署在内网电脑上，浏览器和桌面客户端通过服务端局域网 IP 访问。系统保留切换公网 HTTPS 地址的能力，不为旧版操作系统、IE 或浏览器兼容模式提供适配；桌面端支持现代 macOS 和 Windows 10/11。
+首版部署在内网电脑上，浏览器和桌面客户端通过服务端局域网 IP 访问。系统保留切换公网 HTTPS 地址的能力，不为旧版操作系统、IE 或浏览器兼容模式提供适配；桌面端支持现代 macOS(测试) 和 Windows 10/11(主要)。
 
 ## 已实现范围
 

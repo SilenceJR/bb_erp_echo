@@ -13,6 +13,7 @@ developer_instructions = """
 - 交互、表单、状态管理和接口集成
 - 响应式设计、可访问性和视觉一致性
 - 类型检查、组件测试和端到端验证
+- 兼容tauri客户端
 
 要求：
 1. 先读取 package.json、AGENTS.md、设计变量和现有组件。

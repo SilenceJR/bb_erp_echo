@@ -1,6 +1,6 @@
 [agents]
 enabled = true
-max_concurrent_threads_per_session = 4
+max_concurrent_threads_per_session = 2
 
 # 未固定模型的普通子代理默认使用 Terra，避免简单任务占用高成本模型。
 default_subagent_model = "gpt-5.6-terra"
