@@ -84,7 +84,7 @@ npm ci
 npm run desktop:dev
 ```
 
-默认管理员为 `admin` / `admin123456`。正式测试或部署前必须覆盖管理员密码和 JWT 密钥。
+默认管理员为 `admin` / `admin123456`。首次进入管理系统后，应在“系统 / 用户”中将管理员密码修改为正式密码；JWT 密钥由系统内部使用，无需额外配置。
 
 ## 内网部署与网络方案
 
@@ -103,9 +103,7 @@ BB_ERP_LOG_DIR=logs
 BB_ERP_FILES_ROOT_DIR=static/uploads
 BB_ERP_WEB_ENABLED=true
 BB_ERP_WEB_DIST_DIR=web/dist
-BB_ERP_JWT_SECRET=change-me-in-production
 BB_ERP_ADMIN_USERNAME=admin
-BB_ERP_ADMIN_PASSWORD=change-me-in-production
 BB_ERP_UPDATE_ENABLED=false
 BB_ERP_UPDATE_MANIFEST_URL=https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json
 BB_ERP_UPDATE_CACHE_DIR=updates
@@ -155,7 +153,7 @@ cd src-tauri && cargo check --locked
 
 ## 验证状态
 
-2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移，`v0.1.0-rc.3` 已跑通 Gitee 主仓库、GitHub Windows 构建和 Gitee Release。Windows 增量升级分支已通过 `go mod tidy`、`go vet ./...`、`go test ./...`、Web/Client 生产构建、Rust 11 项测试、`cargo check --locked`、真实 Tauri 格式签名 smoke、发布脚本语法和 Workflow YAML 校验；独立 UI 审查结果为 P0/P1/P2 均为 0。`rc.4`/`rc.5` 尚需在签名私钥离线备份确认后发布，并在 Windows 10/11 真机完成 NSIS/便携安装、断网、磁盘不足、不可写目录、崩溃与 90 秒回滚验收。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
+2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移，`v0.1.0-rc.3` 已跑通 Gitee 主仓库、GitHub Windows 构建和 Gitee Release。Windows 增量升级分支已通过 `go mod tidy`、`go vet ./...`、`go test ./...`、Web/Client 生产构建、Rust 11 项测试、`cargo check --locked`、真实 Tauri 格式签名 smoke、发布脚本语法和 Workflow YAML 校验；独立 UI 审查结果为 P0/P1/P2 均为 0。签名私钥已完成离线备份；JWT 使用系统内部密钥，管理员首次登录后修改默认密码；`rc.4`/`rc.5` 仍需在 Windows 10/11 真机完成 NSIS/便携安装、断网、磁盘不足、不可写目录、崩溃与 90 秒回滚验收，并完成更新配置、目录权限和备份恢复演练。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
 
 ## 已知限制与路线图
 

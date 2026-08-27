@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppNavigation: typeof import('./src/components/ui/AppNavigation.vue')['default']
     AppWorkspace: typeof import('./src/components/app/AppWorkspace.vue')['default']
+    ChangePasswordDialog: typeof import('./src/components/app/ChangePasswordDialog.vue')['default']
     DashboardPage: typeof import('./src/components/pages/DashboardPage.vue')['default']
     DataTableShell: typeof import('./src/components/ui/DataTableShell.vue')['default']
     DesktopUpdatePanel: typeof import('./src/components/DesktopUpdatePanel.vue')['default']

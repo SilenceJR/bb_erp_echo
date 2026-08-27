@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-26
+更新时间：2026-08-27
 
 ## 文档入口
 
@@ -90,6 +90,21 @@ q=关键字
   }
 }
 ```
+
+### POST /api/v1/auth/change-password
+
+修改当前登录账号密码。请求必须携带当前有效的 Bearer Token；成功后旧 JWT 立即失效，需要重新登录。
+
+请求：
+
+```json
+{
+  "current_password": "admin123456",
+  "new_password": "newAdmin123456"
+}
+```
+
+成功返回 `204 No Content`。当前密码错误返回 `401`，新密码不符合长度要求或与旧密码相同返回 `400`。
 
 ### GET /api/v1/auth/me
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"bb_erp_echo/internal/auth"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -119,6 +121,89 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 	}
 }
 
+// TestResetUserPasswordEnforcesOrganizationAndSelfRestrictions 验证管理员重置密码
+// 只能作用于同组织的其他账号，并且会递增目标账号的密码版本。
+func TestResetUserPasswordEnforcesOrganizationAndSelfRestrictions(t *testing.T) {
+	db := openUserTestDB(t)
+	handler := NewHandler(db, testRoleService{})
+
+	organizationA := createUserTestOrganization(t, db, "组织 A", "RESET-ORG-A")
+	organizationB := createUserTestOrganization(t, db, "组织 B", "RESET-ORG-B")
+	adminHash, err := auth.HashPassword("admin123456")
+	if err != nil {
+		t.Fatalf("hash admin password: %v", err)
+	}
+	targetHash, err := auth.HashPassword("target123456")
+	if err != nil {
+		t.Fatalf("hash target password: %v", err)
+	}
+	foreignHash, err := auth.HashPassword("foreign123456")
+	if err != nil {
+		t.Fatalf("hash foreign password: %v", err)
+	}
+	admin := model.User{
+		Username:       "reset-admin",
+		AccountType:    model.AccountTypePersonal,
+		Name:           "重置管理员",
+		OrganizationID: organizationA.ID,
+		Status:         model.StatusActive,
+		PasswordHash:   adminHash,
+	}
+	target := model.User{
+		Username:       "reset-target",
+		AccountType:    model.AccountTypePersonal,
+		Name:           "目标用户",
+		OrganizationID: organizationA.ID,
+		Status:         model.StatusActive,
+		PasswordHash:   targetHash,
+	}
+	foreign := model.User{
+		Username:       "reset-foreign",
+		AccountType:    model.AccountTypePersonal,
+		Name:           "其他组织用户",
+		OrganizationID: organizationB.ID,
+		Status:         model.StatusActive,
+		PasswordHash:   foreignHash,
+	}
+	for _, item := range []*model.User{&admin, &target, &foreign} {
+		if err := db.Create(item).Error; err != nil {
+			t.Fatalf("create user %s: %v", item.Username, err)
+		}
+	}
+	current := &auth.CurrentUser{ID: admin.ID, OrganizationID: organizationA.ID}
+
+	rec := performUserJSONAtPath(t, handler.ResetUserPassword, target.ID, current, map[string]any{
+		"password": "resetTarget123",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("same-org reset status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	var updated model.User
+	if err := db.First(&updated, target.ID).Error; err != nil {
+		t.Fatalf("find reset target: %v", err)
+	}
+	if updated.PasswordVersion != 2 {
+		t.Fatalf("target password_version = %d, want 2", updated.PasswordVersion)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(updated.PasswordHash), []byte("resetTarget123")); err != nil {
+		t.Fatalf("target password was not reset: %v", err)
+	}
+
+	rec = performUserJSONAtPath(t, handler.ResetUserPassword, admin.ID, current, map[string]any{
+		"password": "resetAdmin123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("self reset status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+
+	rec = performUserJSONAtPath(t, handler.ResetUserPassword, foreign.ID, current, map[string]any{
+		"password": "resetForeign123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-org reset status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
 func openUserTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -165,6 +250,10 @@ func createUserTestTerminal(t *testing.T, db *gorm.DB, departmentID uint, code s
 }
 
 func performUserJSON(t *testing.T, handler echo.HandlerFunc, current *auth.CurrentUser, body any) *httptest.ResponseRecorder {
+	return performUserJSONAtPath(t, handler, 0, current, body)
+}
+
+func performUserJSONAtPath(t *testing.T, handler echo.HandlerFunc, id uint, current *auth.CurrentUser, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -173,15 +262,27 @@ func performUserJSON(t *testing.T, handler echo.HandlerFunc, current *auth.Curre
 
 	e := echo.New()
 	e.Validator = &userTestValidator{validate: validator.New()}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/system/users", bytes.NewReader(payload))
+	path := "/api/v1/system/users"
+	if id != 0 {
+		path = "/api/v1/system/users/" + itoa(id) + "/reset-password"
+	}
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(payload))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	if id != 0 {
+		c.SetPath("/api/v1/system/users/:id/reset-password")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: itoa(id)}})
+	}
 	c.Set(auth.ContextUserKey, current)
 	if err := handler(c); err != nil {
 		e.HTTPErrorHandler(c, err)
 	}
 	return rec
+}
+
+func itoa(value uint) string {
+	return strconv.FormatUint(uint64(value), 10)
 }
 
 type userTestValidator struct {

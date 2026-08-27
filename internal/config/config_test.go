@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -80,5 +81,41 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Update.SigningPublicKey != "direct-test-key" || cfg.Update.SigningPublicKeyFile != "test-update-public.key" {
 		t.Fatalf("update signing public key config: %+v", cfg.Update)
+	}
+}
+
+// TestLoadProductionConfigAllowsDefaultCredentials 验证生产环境允许首次使用默认管理员登录再在系统内修改密码。
+func TestLoadProductionConfigAllowsDefaultCredentials(t *testing.T) {
+	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "false")
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("default production credentials should be allowed for first login: %v", err)
+	}
+}
+
+// TestLoadProductionConfigUsesInternalCredentials 验证关闭更新时的最小生产配置可以加载。
+func TestLoadProductionConfigUsesInternalCredentials(t *testing.T) {
+	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load production config: %v", err)
+	}
+	if cfg.App.Environment != "production" || cfg.Update.Enabled {
+		t.Fatalf("unexpected production config: %+v", cfg)
+	}
+}
+
+// TestLoadProductionConfigRequiresUpdateVerifier 验证启用更新时必须配置清单和验签公钥。
+func TestLoadProductionConfigRequiresUpdateVerifier(t *testing.T) {
+	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
+	t.Setenv("BB_ERP_UPDATE_MANIFEST_URL", "https://example.com/update-manifest.json")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "signing public key") {
+		t.Fatalf("expected update signing key validation error, got %v", err)
 	}
 }

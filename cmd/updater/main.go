@@ -140,7 +140,10 @@ func backupServerFiles(installDir string, backupDir string) error {
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return fmt.Errorf("create backup dir: %w", err)
 	}
-	for _, name := range []string{"bb-erp-server.exe", "web"} {
+	// Keep the rollback snapshot self-contained. Runtime configuration is supplied
+	// through environment variables and must be backed up by the deployment system,
+	// not copied into an upgrade archive.
+	for _, name := range []string{"bb-erp-server.exe", "web", "data", "static", "updates", "logs", "update-public.key"} {
 		source := filepath.Join(installDir, name)
 		if _, err := os.Stat(source); err != nil {
 			continue

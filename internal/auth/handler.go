@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -26,6 +27,14 @@ type LoginRequest struct {
 	Username string `json:"username" validate:"required" example:"admin"`
 	// Password 是登录密码。
 	Password string `json:"password" validate:"required" example:"admin123456"`
+}
+
+// ChangePasswordRequest 是当前登录用户修改密码的请求体。
+type ChangePasswordRequest struct {
+	// CurrentPassword 是当前密码。
+	CurrentPassword string `json:"current_password" validate:"required" example:"admin123456"`
+	// NewPassword 是待设置的新密码，至少 8 个字符且不超过 bcrypt 支持的长度。
+	NewPassword string `json:"new_password" validate:"required" example:"newAdmin123456"`
 }
 
 // CurrentUserDTO 是当前登录身份响应结构。
@@ -99,6 +108,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, jwtMiddleware echo.MiddlewareFu
 	group := v1.Group("/auth")
 	group.POST("/login", h.Login)
 	group.GET("/me", h.Me, jwtMiddleware)
+	group.POST("/change-password", h.ChangePassword, jwtMiddleware)
 }
 
 // Login 处理账号密码登录并签发 JWT。
@@ -173,4 +183,75 @@ func (h *Handler) Me(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
 	}
 	return c.JSON(http.StatusOK, CurrentUserResponse(current))
+}
+
+// ChangePassword 修改当前登录用户的密码，并立即递增密码版本使旧 JWT 失效。
+//
+// @Summary 修改当前用户密码
+// @Description 校验当前密码后修改当前登录账号的密码；成功后原 JWT 立即失效，需要重新登录。
+// @Tags 登录认证
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body ChangePasswordRequest true "密码修改参数"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/auth/change-password [post]
+func (h *Handler) ChangePassword(c *echo.Context) error {
+	current := GetCurrentUser(c)
+	if current == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	}
+
+	var req ChangePasswordRequest
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	if err := ValidatePassword(req.NewPassword); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "新密码长度必须至少为 8 个字符且不超过 bcrypt 支持的 72 字节")
+	}
+
+	db := h.DB.WithContext(c.Request().Context())
+	var user model.User
+	if err := db.First(&user, current.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "账号不存在")
+		}
+		return err
+	}
+	if user.Status != model.StatusActive {
+		return echo.NewHTTPError(http.StatusForbidden, "账号已停用")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "当前密码错误")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.NewPassword)); err == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "新密码不能与当前密码相同")
+	}
+
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		return err
+	}
+
+	currentVersion := user.PasswordVersion
+	nextVersion := NormalizePasswordVersion(currentVersion) + 1
+	result := db.Model(&model.User{}).
+		Where("id = ? AND password_version = ?", user.ID, currentVersion).
+		Updates(map[string]any{
+			"password_hash":    hash,
+			"password_version": nextVersion,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return echo.NewHTTPError(http.StatusConflict, "密码已发生变化，请重新登录后重试")
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }

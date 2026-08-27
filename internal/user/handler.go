@@ -98,6 +98,9 @@ func (h *Handler) CreateUser(c *echo.Context) error {
 	if req.AccountType == model.AccountTypeDepartmentTerminal && (req.DepartmentID == nil || req.TerminalID == nil) {
 		return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号必须绑定部门和终端")
 	}
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "密码长度必须至少为 8 个字符且不超过 bcrypt 支持的 72 字节")
+	}
 	if err := h.validateAffiliations(req.OrganizationID, req.DepartmentID, req.TerminalID); err != nil {
 		return err
 	}
@@ -108,14 +111,15 @@ func (h *Handler) CreateUser(c *echo.Context) error {
 	}
 
 	item := model.User{
-		Username:       req.Username,
-		AccountType:    req.AccountType,
-		Name:           req.Name,
-		OrganizationID: req.OrganizationID,
-		DepartmentID:   req.DepartmentID,
-		TerminalID:     req.TerminalID,
-		Status:         model.StatusActive,
-		PasswordHash:   hash,
+		Username:        req.Username,
+		AccountType:     req.AccountType,
+		Name:            req.Name,
+		OrganizationID:  req.OrganizationID,
+		DepartmentID:    req.DepartmentID,
+		TerminalID:      req.TerminalID,
+		Status:          model.StatusActive,
+		PasswordHash:    hash,
+		PasswordVersion: auth.InitialPasswordVersion,
 	}
 	if err := h.DB.Create(&item).Error; err != nil {
 		return err
@@ -146,6 +150,11 @@ func (h *Handler) UpdateUserStatus(c *echo.Context) error {
 
 // ResetUserPassword 重置账号密码。
 func (h *Handler) ResetUserPassword(c *echo.Context) error {
+	current := auth.GetCurrentUser(c)
+	if current == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	}
+
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -156,12 +165,42 @@ func (h *Handler) ResetUserPassword(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "密码长度必须至少为 8 个字符且不超过 bcrypt 支持的 72 字节")
+	}
+
+	db := h.DB.WithContext(c.Request().Context())
+	var target model.User
+	if err := db.First(&target, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+		}
+		return err
+	}
+	if target.OrganizationID != current.OrganizationID {
+		return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
+	}
+	if target.ID == current.ID {
+		return echo.NewHTTPError(http.StatusForbidden, "不能通过重置密码接口修改自己的密码")
+	}
+
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}
-	if err := h.DB.Model(&model.User{}).Where("id = ?", id).Update("password_hash", hash).Error; err != nil {
-		return err
+	currentVersion := target.PasswordVersion
+	nextVersion := auth.NormalizePasswordVersion(currentVersion) + 1
+	result := db.Model(&model.User{}).
+		Where("id = ? AND organization_id = ? AND password_version = ?", id, current.OrganizationID, currentVersion).
+		Updates(map[string]any{
+			"password_hash":    hash,
+			"password_version": nextVersion,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return echo.NewHTTPError(http.StatusConflict, "密码已发生变化，请重试")
 	}
 	return c.NoContent(http.StatusNoContent)
 }

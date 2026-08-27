@@ -83,6 +83,19 @@ https://gitee.com/SilenceJR/bb_erp_releases/releases/download/<标签>/<文件�
 
 任一上传或复验失败时，稳定 manifest 不会被更新。已存在的同版本 Release 不会自动覆盖，避免重跑时静默替换已发布二进制；需要修复时应发布新的预发布或补丁版本标签。
 
+全量便携包解压后的目录约定如下：
+
+```text
+启动系统.bat
+server/bb-erp-server.exe
+server/web/dist/...
+client/bb_erp_client.exe
+client/bb-erp-portable.json
+installer/<Tauri 安装器>
+```
+
+`启动系统.bat` 从包根目录运行，启动服务端后查找 `client/*.exe`。构建流程会在压缩前校验便携客户端是否位于该路径，避免把客户端包的 `client` 子目录重复嵌套到全量包中。
+
 ## 首次实际验收
 
 外部仓库、镜像、Secrets 和 Variables 配置完成后，用预发布标签执行一次闭环，例如：

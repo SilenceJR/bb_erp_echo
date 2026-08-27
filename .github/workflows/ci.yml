@@ -340,17 +340,17 @@ jobs:
           )
           set BB_ERP_HTTP_HOST=0.0.0.0
           set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_APP_ENVIRONMENT=production
           set BB_ERP_DATABASE_PATH=data\erp.db
           set BB_ERP_LOG_DIR=logs
+          set BB_ERP_FILES_ROOT_DIR=static\uploads
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
-          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
-          set BB_ERP_ADMIN_PASSWORD=admin123456
           bb-erp-server.exe
           echo.
           echo [Info] Server exited with code %errorlevel%.
@@ -448,9 +448,13 @@ jobs:
           -service bb-erp
           '@ | Set-Content -Path (Join-Path $updaterPackageRoot "README.txt") -Encoding UTF8
 
-          New-Item -ItemType Directory -Force -Path (Join-Path $allInOneRoot "server"), (Join-Path $allInOneRoot "client"), (Join-Path $allInOneRoot "server/data"), (Join-Path $allInOneRoot "server/logs"), (Join-Path $allInOneRoot "server/updates") | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $allInOneRoot "server"), (Join-Path $allInOneRoot "client"), (Join-Path $allInOneRoot "installer"), (Join-Path $allInOneRoot "server/data"), (Join-Path $allInOneRoot "server/logs"), (Join-Path $allInOneRoot "server/updates") | Out-Null
           Copy-Item "$serverPackageRoot/*" (Join-Path $allInOneRoot "server") -Recurse -Force
-          Copy-Item "$clientPackageRoot/*" (Join-Path $allInOneRoot "client") -Recurse -Force
+          Copy-Item "$clientPackageRoot/client/*" (Join-Path $allInOneRoot "client") -Recurse -Force
+          Copy-Item "$clientPackageRoot/installer/*" (Join-Path $allInOneRoot "installer") -Recurse -Force
+          if (-not (Test-Path -LiteralPath (Join-Path $allInOneRoot "client/bb_erp_client.exe") -PathType Leaf)) {
+            throw "Portable client executable was not copied to the expected all-in-one path."
+          }
 
           @'
           @echo off
@@ -463,17 +467,17 @@ jobs:
           )
           set BB_ERP_HTTP_HOST=0.0.0.0
           set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_APP_ENVIRONMENT=production
           set BB_ERP_DATABASE_PATH=data\erp.db
           set BB_ERP_LOG_DIR=logs
+          set BB_ERP_FILES_ROOT_DIR=static\uploads
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
-          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
-          set BB_ERP_ADMIN_PASSWORD=admin123456
           bb-erp-server.exe
           echo.
           echo [Info] Server exited with code %errorlevel%.
@@ -493,17 +497,17 @@ jobs:
           )
           set BB_ERP_HTTP_HOST=0.0.0.0
           set BB_ERP_HTTP_PORT=8080
+          set BB_ERP_APP_ENVIRONMENT=production
           set BB_ERP_DATABASE_PATH=data\erp.db
           set BB_ERP_LOG_DIR=logs
+          set BB_ERP_FILES_ROOT_DIR=static\uploads
           set BB_ERP_WEB_ENABLED=true
           set BB_ERP_WEB_DIST_DIR=web\dist
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
           set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=server\update-public.key
-          set BB_ERP_JWT_SECRET=please-change-this-secret-before-production
           set BB_ERP_ADMIN_USERNAME=admin
-          set BB_ERP_ADMIN_PASSWORD=admin123456
           start "BB ERP Server" /min /d "%~dp0server" cmd /c "bb-erp-server.exe & echo. & echo [Info] Server exited. & pause"
           timeout /t 3 /nobreak >nul
           if not exist "client\*.exe" (
@@ -543,7 +547,7 @@ jobs:
 
           注意：
           - 如果 Windows 防火墙提示，请允许本机访问 8080 端口。
-          - 正式使用前请修改“启动服务端.bat”里的 BB_ERP_JWT_SECRET 和 BB_ERP_ADMIN_PASSWORD。
+          - 首次启动使用默认管理员登录后，请进入“系统 / 用户”修改管理员密码。
           - 后续备份数据时，优先备份 server/data 目录。
           '@ | Set-Content -Path (Join-Path $allInOneRoot "README.txt") -Encoding UTF8
 

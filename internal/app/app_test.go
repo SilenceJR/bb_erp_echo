@@ -8,11 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // TestInitializationHealthReadyAndSQLiteWAL 验证应用能完成初始化，并确认健康检查、
@@ -64,6 +67,79 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	}
 	if len(body["permissions"].([]any)) == 0 {
 		t.Fatalf("permissions should not be empty")
+	}
+}
+
+// TestChangePasswordInvalidatesOldToken 验证修改密码接口的认证、密码校验、
+// bcrypt 长度限制，以及密码版本递增后旧 JWT 立即失效。
+func TestChangePasswordInvalidatesOldToken(t *testing.T) {
+	erp := newTestApp(t)
+	if rec := erp.request(http.MethodPost, "/api/v1/auth/change-password", "", map[string]any{
+		"current_password": "admin123456",
+		"new_password":     "newAdmin123456",
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous change password status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	token := erp.login(t, "admin", "admin123456")
+
+	tests := []struct {
+		name       string
+		current    string
+		new        string
+		wantStatus int
+	}{
+		{name: "当前密码错误", current: "wrong-current", new: "newAdmin123456", wantStatus: http.StatusUnauthorized},
+		{name: "新密码过短", current: "admin123456", new: "short", wantStatus: http.StatusBadRequest},
+		{name: "新密码超过 bcrypt 字节限制", current: "admin123456", new: strings.Repeat("a", auth.MaxPasswordBytes+1), wantStatus: http.StatusBadRequest},
+		{name: "新密码与旧密码相同", current: "admin123456", new: "admin123456", wantStatus: http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := erp.request(http.MethodPost, "/api/v1/auth/change-password", token, map[string]any{
+				"current_password": tt.current,
+				"new_password":     tt.new,
+			})
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("change password status = %d, want %d; body=%s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+		})
+	}
+
+	rec := erp.request(http.MethodPost, "/api/v1/auth/change-password", token, map[string]any{
+		"current_password": "admin123456",
+		"new_password":     "newAdmin123456",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("change password status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("change password response body = %q, want empty", rec.Body.String())
+	}
+
+	var admin model.User
+	if err := erp.DB.Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatalf("find admin after password change: %v", err)
+	}
+	if admin.PasswordVersion != 2 {
+		t.Fatalf("password_version = %d, want 2", admin.PasswordVersion)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte("newAdmin123456")); err != nil {
+		t.Fatalf("new password hash does not match: %v", err)
+	}
+
+	rec = erp.request(http.MethodGet, "/api/v1/auth/me", token, nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old token status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
+		"username": "admin",
+		"password": "admin123456",
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old password login status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	newToken := erp.login(t, "admin", "newAdmin123456")
+	if rec = erp.request(http.MethodGet, "/api/v1/auth/me", newToken, nil); rec.Code != http.StatusOK {
+		t.Fatalf("new token status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

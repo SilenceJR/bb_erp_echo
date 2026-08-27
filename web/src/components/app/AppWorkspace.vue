@@ -23,11 +23,12 @@
             <span>{{ currentUser?.name || currentUser?.username }}</span>
             <small>{{ accountTypeText }}</small>
           </div>
-          <el-dropdown trigger="click" @command="handleUserCommand">
+          <el-dropdown trigger="click" @command="handleWorkspaceUserCommand">
             <el-button circle class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="desktopClient" command="server">服务器设置</el-dropdown-item>
+                <el-dropdown-item command="change-password">修改密码</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -70,6 +71,11 @@
         </div>
       </el-drawer>
 
+      <ChangePasswordDialog
+        v-model="passwordDialogVisible"
+        :token="token"
+        @changed="handlePasswordChanged"
+      />
 
       <section class="content">
         <slot name="page"></slot>
@@ -79,7 +85,10 @@
 </template>
 
 <script setup lang="ts">
+import {ref} from 'vue'
+import {ElMessage} from 'element-plus'
 import AppNavigation from '../ui/AppNavigation.vue'
+import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {
@@ -365,4 +374,20 @@ const {
   workorderNextAction,
   workorderActionLabel,
 } = useWorkspaceContext()
+
+const passwordDialogVisible = ref(false)
+
+function handleWorkspaceUserCommand(command: string) {
+  if (command === 'change-password') {
+    passwordDialogVisible.value = true
+    return
+  }
+  void handleUserCommand(command)
+}
+
+function handlePasswordChanged() {
+  loginForm.password = ''
+  logout()
+  ElMessage.success('密码修改成功，请使用新密码重新登录')
+}
 </script>

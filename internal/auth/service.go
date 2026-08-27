@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"bb_erp_echo/internal/config"
 	"bb_erp_echo/internal/model"
@@ -15,8 +16,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// ContextUserKey 是 Echo Context 中保存当前登录用户的键。
-const ContextUserKey = "current_user"
+const (
+	// ContextUserKey 是 Echo Context 中保存当前登录用户的键。
+	ContextUserKey = "current_user"
+
+	// InitialPasswordVersion 是新账号和旧数据库记录的起始密码版本。
+	InitialPasswordVersion = 1
+	// MinPasswordLength 是密码允许的最小字符数。
+	MinPasswordLength = 8
+	// MaxPasswordBytes 是 bcrypt 支持的密码最大字节数。
+	MaxPasswordBytes = 72
+)
 
 // CurrentUser 是从 JWT 和数据库中还原出来的当前登录身份。
 //
@@ -35,9 +45,10 @@ type CurrentUser struct {
 
 // Claims 是写入 JWT 的业务声明。
 type Claims struct {
-	UserID      uint   `json:"user_id"`
-	Username    string `json:"username"`
-	AccountType string `json:"account_type"`
+	UserID          uint   `json:"user_id"`
+	Username        string `json:"username"`
+	AccountType     string `json:"account_type"`
+	PasswordVersion int    `json:"password_version"`
 	jwt.RegisteredClaims
 }
 
@@ -70,9 +81,10 @@ func NewService(cfg *config.Config, db *gorm.DB) *Service {
 func (s *Service) IssueToken(user model.User) (string, time.Time, error) {
 	expiresAt := time.Now().Add(s.Config.JWT.ExpiresIn)
 	claims := Claims{
-		UserID:      user.ID,
-		Username:    user.Username,
-		AccountType: user.AccountType,
+		UserID:          user.ID,
+		Username:        user.Username,
+		AccountType:     user.AccountType,
+		PasswordVersion: NormalizePasswordVersion(user.PasswordVersion),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -85,6 +97,17 @@ func (s *Service) IssueToken(user model.User) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("issue jwt token: %w", err)
 	}
 	return token, expiresAt, nil
+}
+
+// NormalizePasswordVersion 将旧数据或旧 JWT 中缺失的版本视为初始版本。
+//
+// 旧数据库在自动迁移前没有 password_version，旧 JWT 也没有该声明；将零值
+// 兼容为 1 可以避免升级时无理由注销所有会话，同时密码首次修改仍会递增到 2。
+func NormalizePasswordVersion(version int) int {
+	if version < InitialPasswordVersion {
+		return InitialPasswordVersion
+	}
+	return version
 }
 
 // CurrentUserFromModel 根据用户模型组装请求上下文中的 CurrentUser。
@@ -183,4 +206,18 @@ func HashPassword(password string) (string, error) {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 	return string(bytes), nil
+}
+
+// ValidatePassword 校验密码字符数和 bcrypt 的字节长度限制。
+//
+// bcrypt 的长度限制按字节计算，而 API 的最小长度按 UTF-8 字符计算；两者
+// 分开校验，避免多字节密码绕过 bcrypt 的最大长度限制或被截断。
+func ValidatePassword(password string) error {
+	if utf8.RuneCountInString(password) < MinPasswordLength {
+		return fmt.Errorf("password must contain at least %d characters", MinPasswordLength)
+	}
+	if len([]byte(password)) > MaxPasswordBytes {
+		return fmt.Errorf("password must not exceed %d bytes", MaxPasswordBytes)
+	}
+	return nil
 }

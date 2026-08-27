@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -68,7 +69,7 @@ type DatabaseConfig struct {
 
 // JWTConfig 描述 JWT 登录令牌配置。
 type JWTConfig struct {
-	// Secret 是 JWT HMAC 签名密钥，生产环境必须通过环境变量覆盖。
+	// Secret 是 JWT HMAC 签名密钥，按当前部署策略使用系统内部配置。
 	Secret string `koanf:"secret"`
 	// ExpiresIn 是 access token 有效期，例如 24h。
 	ExpiresIn time.Duration `koanf:"expires_in"`
@@ -100,7 +101,7 @@ type WebConfig struct {
 type AdminConfig struct {
 	// Username 是默认管理员登录账号。
 	Username string `koanf:"username"`
-	// Password 是默认管理员初始密码，生产环境必须通过环境变量覆盖。
+	// Password 是默认管理员初始密码；管理员首次登录后应在系统内修改。
 	Password string `koanf:"password"`
 	// Name 是默认管理员显示名称。
 	Name string `koanf:"name"`
@@ -171,7 +172,8 @@ func Load() (*Config, error) {
 		"files.root_dir":                 "static/uploads",
 	}
 
-	// 默认配置只负责让本地开发可运行，敏感配置需要在部署时由环境变量覆盖。
+	// 默认配置保证首次部署可启动；JWT 和管理员初始密码按系统内部默认策略运行，
+	// 更新源等部署相关参数仍可通过环境变量覆盖。
 	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
 		return nil, fmt.Errorf("load default config: %w", err)
 	}
@@ -257,8 +259,57 @@ func Load() (*Config, error) {
 	if rootDir := k.String("files.root.dir"); rootDir != "" {
 		cfg.Files.RootDir = rootDir
 	}
+	if err := validateProductionConfig(cfg); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
+}
+
+// validateProductionConfig 防止生产环境使用不完整的更新配置。
+//
+// 参数说明：
+// - cfg：已完成默认值和环境变量覆盖的完整配置。
+//
+// 返回说明：
+// - development/staging 等环境不执行生产强校验；production 配置不完整时返回错误。
+func validateProductionConfig(cfg Config) error {
+	if !strings.EqualFold(strings.TrimSpace(cfg.App.Environment), "production") {
+		return nil
+	}
+
+	for name, value := range map[string]string{
+		"database path":          cfg.Database.Path,
+		"log directory":          cfg.Log.Dir,
+		"upload directory":       cfg.Files.RootDir,
+		"update cache directory": cfg.Update.CacheDir,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("production %s must be configured", name)
+		}
+	}
+
+	if !cfg.Update.Enabled {
+		return nil
+	}
+
+	manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
+	parsedURL, err := url.Parse(manifestURL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
+		return fmt.Errorf("production update manifest URL must be an HTTP(S) URL")
+	}
+
+	if strings.TrimSpace(cfg.Update.SigningPublicKey) == "" {
+		keyFile := strings.TrimSpace(cfg.Update.SigningPublicKeyFile)
+		if keyFile == "" {
+			return fmt.Errorf("production update signing public key or key file must be configured")
+		}
+		if _, err := os.Stat(keyFile); err != nil {
+			return fmt.Errorf("production update signing public key file %q is not readable: %w", keyFile, err)
+		}
+	}
+
+	return nil
 }
 
 // envKey 将环境变量名称转换成 koanf 的点号路径。

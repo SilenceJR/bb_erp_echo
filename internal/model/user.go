@@ -11,13 +11,14 @@ import (
 // - department_terminal：车间公共电脑等只能责任到部门和终端的岗位。
 type User struct {
 	BaseModel
-	Username       string     `json:"username" gorm:"size:80;not null;uniqueIndex"`
-	AccountType    string     `json:"account_type" gorm:"size:40;not null;index"`
-	Name           string     `json:"name" gorm:"size:120;not null"`
-	OrganizationID uint       `json:"organization_id" gorm:"not null;index"`
-	DepartmentID   *uint      `json:"department_id" gorm:"index"`
-	TerminalID     *uint      `json:"terminal_id" gorm:"index"`
-	Status         string     `json:"status" gorm:"size:30;not null;default:active"`
-	PasswordHash   string     `json:"-" gorm:"size:255;not null"`
-	LastLoginAt    *time.Time `json:"last_login_at"`
+	Username        string     `json:"username" gorm:"size:80;not null;uniqueIndex"`
+	AccountType     string     `json:"account_type" gorm:"size:40;not null;index"`
+	Name            string     `json:"name" gorm:"size:120;not null"`
+	OrganizationID  uint       `json:"organization_id" gorm:"not null;index"`
+	DepartmentID    *uint      `json:"department_id" gorm:"index"`
+	TerminalID      *uint      `json:"terminal_id" gorm:"index"`
+	Status          string     `json:"status" gorm:"size:30;not null;default:active"`
+	PasswordHash    string     `json:"-" gorm:"size:255;not null"`
+	PasswordVersion int        `json:"-" gorm:"not null;default:1"`
+	LastLoginAt     *time.Time `json:"last_login_at"`
 }

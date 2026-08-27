@@ -13,6 +13,7 @@
 - 服务地址只接受不带路径、参数和凭据的 `http://` 或 `https://` 源地址；每次实际请求仍只能使用站内 API 路径。
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
+- 当前账号修改密码使用 `POST /api/v1/auth/change-password`；成功后旧 JWT 失效，Web 与 Client 都回到登录页并使用新密码登录。
 - 桌面端只负责 Rust/Tauri 壳、窗口配置、平台打包配置，不维护另一套业务 API。
 - 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本；Rust 更新引擎计算当前 EXE SHA 并向 Go 请求更新计划。Vue 只触发检查/安装并展示状态，不接触本机路径、任意下载 URL或签名决策；Web 端不显示桌面自动安装按钮。
 

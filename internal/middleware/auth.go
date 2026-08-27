@@ -52,6 +52,9 @@ func JWT(service *auth.Service, db *gorm.DB) echo.MiddlewareFunc {
 			if user.Status != model.StatusActive {
 				return echo.NewHTTPError(http.StatusForbidden, "账号已停用")
 			}
+			if auth.NormalizePasswordVersion(claims.PasswordVersion) != auth.NormalizePasswordVersion(user.PasswordVersion) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "登录令牌已失效")
+			}
 
 			current, err := service.CurrentUserFromModel(user)
 			if err != nil {
