@@ -37,6 +37,8 @@ scripts/                 发布与仓库工程脚本
 ## 状态与维护文档
 
 - [Go 后端状态、进度与维护台账](docs/BACKEND_STATUS.md)：记录后端已完成、待完成、未完成、待修改、待修复、已发现问题、验证结果和后续计划。
+- [Go 后端产品架构与业务时序图](docs/BACKEND_ARCHITECTURE.md)：用中文图示说明 Go 后端模块、数据流和核心业务过程。
+- [Web 与 Tauri Client 产品架构与交互时序图](docs/WEB_CLIENT_ARCHITECTURE.md)：分别说明 Web、桌面 Client 和两者共用的页面与交互过程。
 - [Web 与 Tauri Client 端进度与维护规范](docs/WEB_STATUS.md)：记录共用前端结构、Client 复用和弹窗样式改造进度。
 - 每次代码更新必须同步受影响文档，并与代码一起提交；API 变更还必须同步 Swagger/OpenAPI 和必要的调试请求。
 

@@ -147,3 +147,10 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 5. 提交前执行与变更范围匹配的测试，并在提交说明或交接记录中分别写明代码、文档、验证和提交状态；代码与对应文档不得无理由拆成不同提交。
 
 本规则只要求同步项目范围内的相关文档，不把 .codex、个人临时文件或无关输出纳入提交。
+
+## 12. 架构与时序图
+
+- [Go 后端产品架构与业务时序图](BACKEND_ARCHITECTURE.md)
+- [Web 与 Tauri Client 产品架构与交互时序图](WEB_CLIENT_ARCHITECTURE.md)
+
+后端、Web 或 Client 的模块边界、数据流、请求传输方式和更新流程发生变化时，必须同步更新对应图示，避免文档继续描述旧结构。
