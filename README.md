@@ -34,6 +34,12 @@ client/                  Tauri 桌面壳和请求传输
 scripts/                 发布与仓库工程脚本
 ```
 
+## 状态与维护文档
+
+- [Go 后端状态、进度与维护台账](docs/BACKEND_STATUS.md)：记录后端已完成、待完成、未完成、待修改、待修复、已发现问题、验证结果和后续计划。
+- [Web 与 Tauri Client 端进度与维护规范](docs/WEB_STATUS.md)：记录共用前端结构、Client 复用和弹窗样式改造进度。
+- 每次代码更新必须同步受影响文档，并与代码一起提交；API 变更还必须同步 Swagger/OpenAPI 和必要的调试请求。
+
 ## 本地启动
 
 需要 Go 1.27、Node.js 22、npm；开发桌面端还需要 Rust 和当前平台的 Tauri 依赖。
