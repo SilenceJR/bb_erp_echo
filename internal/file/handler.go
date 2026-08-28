@@ -120,16 +120,16 @@ func (h *Handler) List(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// Create 上传一张业务图片。
+// Create 上传一张或多张业务图片。
 // @Summary 上传业务图片
 // @Tags files
 // @Accept multipart/form-data
 // @Produce json
-// @Param file formData file true "图片文件"
+// @Param file formData file true "图片文件，可重复传入"
 // @Param owner_type formData string true "product、mold、workorder 或 department_task"
 // @Param owner_id formData uint true "业务对象 ID"
 // @Param category formData string false "图片分类"
-// @Success 201 {object} ImageResponse
+// @Success 201 {array} ImageResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
@@ -138,6 +138,13 @@ func (h *Handler) List(c *echo.Context) error {
 // @Security BearerAuth
 // @Router /api/v1/files/images [post]
 func (h *Handler) Create(c *echo.Context) error {
+	form, err := parseMultipartForm(c)
+	if err != nil {
+		return err
+	}
+	if form != nil {
+		defer form.RemoveAll()
+	}
 	ownerType := strings.TrimSpace(c.FormValue("owner_type"))
 	ownerID, err := parseID(c.FormValue("owner_id"), false)
 	if err != nil || !validOwnerType(ownerType) {
@@ -152,11 +159,19 @@ func (h *Handler) Create(c *echo.Context) error {
 	if err := h.ensureDepartmentWrite(c, ownerType, ownerID); err != nil {
 		return err
 	}
-	asset, err := h.service.SaveImage(fileHeader(c), ownerType, ownerID, c.FormValue("category"), nil, auth.GetCurrentUser(c).ID)
+	var headers []*multipart.FileHeader
+	if form != nil {
+		headers = form.File["file"]
+	}
+	assets, err := h.service.SaveImages(headers, ownerType, ownerID, c.FormValue("category"), auth.GetCurrentUser(c).ID)
 	if err != nil {
 		return mapServiceError(err)
 	}
-	return c.JSON(http.StatusCreated, toResponse(asset))
+	result := make([]ImageResponse, 0, len(assets))
+	for _, asset := range assets {
+		result = append(result, toResponse(asset))
+	}
+	return c.JSON(http.StatusCreated, result)
 }
 
 // Replace 替换图片，成功后旧记录软删除并移除旧物理文件。
@@ -322,6 +337,15 @@ func parseID(value string, optional bool) (uint, error) {
 		return 0, errors.New("invalid id")
 	}
 	return uint(n), nil
+}
+func parseMultipartForm(c *echo.Context) (*multipart.Form, error) {
+	if err := c.Request().ParseMultipartForm(32 << 20); err != nil {
+		if errors.Is(err, http.ErrNotMultipart) {
+			return nil, nil
+		}
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "multipart 表单无效")
+	}
+	return c.Request().MultipartForm, nil
 }
 func fileHeader(c *echo.Context) *multipart.FileHeader {
 	header, _ := c.FormFile("file")

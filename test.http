@@ -150,10 +150,39 @@ Content-Type: image/png
 < ./web/public/bobang-logo-hd.png
 --image-boundary--
 
-> {% client.global.set("image_id", response.body.id); %}
+> {% client.global.set("image_id", response.body[0].id); %}
+
+### 一次上传多张产品图片
+POST http://127.0.0.1:8080/api/v1/files/images
+Content-Type: multipart/form-data; boundary=image-batch-boundary
+Authorization: Bearer {{token}}
+
+--image-batch-boundary
+Content-Disposition: form-data; name="owner_type"
+
+product
+--image-batch-boundary
+Content-Disposition: form-data; name="owner_id"
+
+{{product_id}}
+--image-batch-boundary
+Content-Disposition: form-data; name="category"
+
+detail
+--image-batch-boundary
+Content-Disposition: form-data; name="file"; filename="bobang-logo-hd.png"
+Content-Type: image/png
+
+< ./web/public/bobang-logo-hd.png
+--image-batch-boundary
+Content-Disposition: form-data; name="file"; filename="bobang-logo-hd-copy.png"
+Content-Type: image/png
+
+< ./web/public/bobang-logo-hd.png
+--image-batch-boundary--
 
 ### 查询产品图片列表
-GET http://127.0.0.1:8080/api/v1/files?owner_type=product&owner_id={{product_id}}&category=main
+GET http://127.0.0.1:8080/api/v1/files?owner_type=product&owner_id={{product_id}}&category=detail
 Authorization: Bearer {{token}}
 
 ### 读取产品图片内容

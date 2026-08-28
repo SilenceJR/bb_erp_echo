@@ -425,16 +425,16 @@ department_task  部门子任务，权限继承 workorder，并兼容旧 tasks �
 
 ### POST /api/v1/files/images
 
-使用 `multipart/form-data` 上传一张图片，字段如下：
+使用 `multipart/form-data` 上传一张或多张图片。多图时重复使用同名 `file` 字段，字段如下：
 
 ```text
-file        必填，图片文件
+file        必填，图片文件；至少一个，可重复传入多个文件
 owner_type  必填，product、mold、workorder 或 department_task
 owner_id    必填，关联业务对象 ID
 category    可选，图片分类
 ```
 
-文件大小不得超过 20 MiB；格式白名单为 JPEG、PNG、WebP、GIF，文件扩展名和检测到的 MIME 必须匹配。成功返回 HTTP 201 和上述图片元数据。
+每张文件大小不得超过 20 MiB；格式白名单为 JPEG、PNG、WebP、GIF，文件扩展名和检测到的 MIME 必须匹配。成功返回 HTTP 201 和图片元数据数组，单图时数组长度为 1。批量上传采用全有或全无处理，任一文件校验或保存失败时整批不入库并清理已写入的文件。
 
 ### GET /api/v1/files/:id/content
 

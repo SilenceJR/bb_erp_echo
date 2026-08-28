@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,6 +115,95 @@ func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 	}
 }
 
+func TestCreateReturnsArrayForSingleAndMultipleFiles(t *testing.T) {
+	h, db := testHandler(t)
+	product := model.Product{Name: "P", Code: "P-BATCH"}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatal(err)
+	}
+	user := &auth.CurrentUser{Username: "warehouse", OrganizationID: 1}
+	png := []byte("\x89PNG\r\n\x1a\n")
+
+	single := multipartContextWithFiles(t, http.MethodPost, "/api/v1/files/images", OwnerProduct, product.ID, "gallery", []multipartUpload{{name: "single.png", data: png}})
+	setUser(single, user)
+	if err := h.Create(single); err != nil {
+		t.Fatalf("single upload: %v", err)
+	}
+	singleRecorder := single.Get("test_recorder").(*httptest.ResponseRecorder)
+	if singleRecorder.Code != http.StatusCreated {
+		t.Fatalf("single upload status = %d, body = %s", singleRecorder.Code, singleRecorder.Body.String())
+	}
+	var singleResult []ImageResponse
+	if err := json.Unmarshal(singleRecorder.Body.Bytes(), &singleResult); err != nil {
+		t.Fatalf("decode single response: %v", err)
+	}
+	if len(singleResult) != 1 || singleResult[0].OriginalName != "single.png" {
+		t.Fatalf("single response = %+v", singleResult)
+	}
+
+	multiple := multipartContextWithFiles(t, http.MethodPost, "/api/v1/files/images", OwnerProduct, product.ID, "gallery", []multipartUpload{
+		{name: "first.png", data: png},
+		{name: "second.png", data: png},
+	})
+	setUser(multiple, user)
+	if err := h.Create(multiple); err != nil {
+		t.Fatalf("multiple upload: %v", err)
+	}
+	multipleRecorder := multiple.Get("test_recorder").(*httptest.ResponseRecorder)
+	if multipleRecorder.Code != http.StatusCreated {
+		t.Fatalf("multiple upload status = %d, body = %s", multipleRecorder.Code, multipleRecorder.Body.String())
+	}
+	var multipleResult []ImageResponse
+	if err := json.Unmarshal(multipleRecorder.Body.Bytes(), &multipleResult); err != nil {
+		t.Fatalf("decode multiple response: %v", err)
+	}
+	if len(multipleResult) != 2 || multipleResult[0].OriginalName != "first.png" || multipleResult[1].OriginalName != "second.png" {
+		t.Fatalf("multiple response = %+v", multipleResult)
+	}
+
+	var count int64
+	if err := db.Model(&model.ImageFile{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("image records = %d, want 3", count)
+	}
+	if count := storedFileCount(t, h.service.UploadRoot); count != 3 {
+		t.Fatalf("stored files = %d, want 3", count)
+	}
+}
+
+func TestCreateRejectsInvalidBatchWithoutPersisting(t *testing.T) {
+	h, db := testHandler(t)
+	product := model.Product{Name: "P", Code: "P-INVALID-BATCH"}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatal(err)
+	}
+	c := multipartContextWithFiles(t, http.MethodPost, "/api/v1/files/images", OwnerProduct, product.ID, "gallery", []multipartUpload{
+		{name: "valid.png", data: []byte("\x89PNG\r\n\x1a\n")},
+		{name: "invalid.png", data: []byte("not an image")},
+	})
+	setUser(c, &auth.CurrentUser{Username: "warehouse", OrganizationID: 1})
+	if err := h.Create(c); err == nil {
+		t.Fatal("invalid batch unexpectedly succeeded")
+	} else {
+		var httpErr *echo.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.Code != http.StatusBadRequest {
+			t.Fatalf("invalid batch error = %v", err)
+		}
+	}
+	var count int64
+	if err := db.Model(&model.ImageFile{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("image records after invalid batch = %d", count)
+	}
+	if count := storedFileCount(t, h.service.UploadRoot); count != 0 {
+		t.Fatalf("stored files after invalid batch = %d", count)
+	}
+}
+
 func TestContentMissingAndServicePathValidation(t *testing.T) {
 	h, db := testHandler(t)
 	product := model.Product{Name: "P", Code: "P-3"}
@@ -182,20 +272,62 @@ func contextFor(t *testing.T, method, path string, body *bytes.Buffer) *echo.Con
 func setUser(c *echo.Context, u *auth.CurrentUser) { c.Set(auth.ContextUserKey, u) }
 func ptr(v uint) *uint                             { return &v }
 func uintString(v uint) string                     { return idString(v) }
+
+type multipartUpload struct {
+	name string
+	data []byte
+}
+
 func multipartContext(t *testing.T, method, path, ownerType string, ownerID uint, category, name string, data []byte) *echo.Context {
+	return multipartContextWithFiles(t, method, path, ownerType, ownerID, category, []multipartUpload{{name: name, data: data}})
+}
+
+func multipartContextWithFiles(t *testing.T, method, path, ownerType string, ownerID uint, category string, uploads []multipartUpload) *echo.Context {
 	t.Helper()
 	body := new(bytes.Buffer)
 	w := multipart.NewWriter(body)
-	_ = w.WriteField("owner_type", ownerType)
-	_ = w.WriteField("owner_id", uintString(ownerID))
-	_ = w.WriteField("category", category)
-	part, err := w.CreateFormFile("file", name)
-	if err != nil {
+	if err := w.WriteField("owner_type", ownerType); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = part.Write(data)
-	_ = w.Close()
+	if err := w.WriteField("owner_id", uintString(ownerID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteField("category", category); err != nil {
+		t.Fatal(err)
+	}
+	for _, upload := range uploads {
+		part, err := w.CreateFormFile("file", upload.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(upload.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest(method, path, body)
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	return echo.New().NewContext(req, httptest.NewRecorder())
+	recorder := httptest.NewRecorder()
+	c := echo.New().NewContext(req, recorder)
+	c.Set("test_recorder", recorder)
+	return c
+}
+
+func storedFileCount(t *testing.T, root string) int {
+	t.Helper()
+	count := 0
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			count++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }

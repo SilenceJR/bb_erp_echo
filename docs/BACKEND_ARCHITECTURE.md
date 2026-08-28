@@ -227,7 +227,37 @@ sequenceDiagram
     Note over check,db: 保存履历是为了以后能追溯模具去向、维修和保养过程。
 ~~~
 
-### 4.5 服务端检查并缓存客户端更新
+### 4.5 业务图片单图/多图上传
+
+用户只需要记住：一次可以选择多张图片，只有所有图片都校验并保存成功后，图库才会看到这批图片。
+
+~~~mermaid
+sequenceDiagram
+    actor user as 用户
+    participant page as 图片区域
+    participant api as Go 文件服务
+    participant check as 文件与业务权限检查
+    participant files as 图片文件目录
+    participant db as 数据库
+
+    user->>page: 一次选择一张或多张图片
+    page->>api: 以重复 file 字段提交同一个 multipart 请求
+    api->>check: 检查 owner、权限以及每张图片格式和大小
+    alt 全部检查通过
+        check->>files: 写入本批次物理文件
+        check->>db: 在一个事务中保存全部图片记录
+        db-->>api: 返回图片元数据数组
+        api-->>page: 返回成功结果
+        page-->>user: 刷新图库并显示上传数量
+    else 任一图片失败
+        check->>files: 清理本批次已写入文件
+        check-->>api: 回滚数据库记录并返回错误
+        api-->>page: 返回失败原因
+        page-->>user: 保留原图库并提示重新选择
+    end
+~~~
+
+### 4.6 服务端检查并缓存客户端更新
 
 用户只需要记住：服务端不会盲目下载正式版更新包，只有版本、大小、哈希和签名都通过才会提供给客户端。RC 和手动构建通过独立便携 EXE Artifact 测试，不进入服务端正式版更新缓存。
 

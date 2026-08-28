@@ -81,38 +81,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/auth/logout": {
-            "post": {
-                "description": "撤销当前 refresh token，客户端应同时清理本地 access token。",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["登录认证"],
-                "summary": "退出登录",
-                "parameters": [{"description": "退出参数", "name": "body", "in": "body", "required": true, "schema": {"$ref": "#/definitions/auth.RefreshRequest"}}],
-                "responses": {
-                    "204": {"description": "No Content"},
-                    "400": {"description": "Bad Request", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}},
-                    "500": {"description": "Internal Server Error", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}}
-                }
-            }
-        },
-        "/api/v1/auth/refresh": {
-            "post": {
-                "description": "轮换 refresh token 并签发新的 JWT；旧 refresh token 成功使用后立即失效。",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["登录认证"],
-                "summary": "刷新登录会话",
-                "parameters": [{"description": "刷新参数", "name": "body", "in": "body", "required": true, "schema": {"$ref": "#/definitions/auth.RefreshRequest"}}],
-                "responses": {
-                    "200": {"description": "OK", "schema": {"$ref": "#/definitions/auth.LoginResponse"}},
-                    "400": {"description": "Bad Request", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}},
-                    "401": {"description": "Unauthorized", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}},
-                    "403": {"description": "Forbidden", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}},
-                    "500": {"description": "Internal Server Error", "schema": {"$ref": "#/definitions/auth.ErrorResponse"}}
-                }
-            }
-        },
         "/api/v1/auth/login": {
             "post": {
                 "description": "使用账号密码登录并签发 JWT；后续接口通过 Authorization: Bearer \u003ctoken\u003e 认证。",
@@ -171,6 +139,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/auth/logout": {
+            "post": {
+                "description": "撤销当前 refresh token，客户端应同时清理本地 access token。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "登录认证"
+                ],
+                "summary": "退出登录",
+                "parameters": [
+                    {
+                        "description": "退出参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RefreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/me": {
             "get": {
                 "security": [
@@ -195,6 +206,64 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "description": "轮换 refresh token 并签发新的 JWT；旧 refresh token 成功使用后立即失效。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "登录认证"
+                ],
+                "summary": "刷新登录会话",
+                "parameters": [
+                    {
+                        "description": "刷新参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RefreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/auth.ErrorResponse"
                         }
@@ -853,7 +922,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "图片文件",
+                        "description": "图片文件，可重复传入",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -883,7 +952,10 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/file.ImageResponse"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/file.ImageResponse"
+                            }
                         }
                     },
                     "400": {
@@ -2144,171 +2216,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "model.DepartmentTask": {
-            "type": "object",
-            "properties": {
-                "accepted_at": {
-                    "type": "string"
-                },
-                "assignee_user_id": {
-                    "type": "integer"
-                },
-                "completed_at": {
-                    "type": "string"
-                },
-                "completed_quantity": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "department_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "partial_completed_at": {
-                    "type": "string"
-                },
-                "planned_quantity": {
-                    "type": "integer"
-                },
-                "progress": {
-                    "type": "integer"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "work_order_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "model.WorkOrder": {
-            "type": "object",
-            "properties": {
-                "cancel_reason": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "created_by": {
-                    "type": "integer"
-                },
-                "customer_id": {
-                    "type": "integer"
-                },
-                "department_tasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.DepartmentTask"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "dispatched_at": {
-                    "type": "string"
-                },
-                "due_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "planned_quantity": {
-                    "type": "integer"
-                },
-                "priority": {
-                    "type": "string"
-                },
-                "product_name": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "unit": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.WorkOrderFlowLog": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string"
-                },
-                "actor_user_id": {
-                    "type": "integer"
-                },
-                "actor_username": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "department_id": {
-                    "type": "integer"
-                },
-                "department_task_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "quantity_after": {
-                    "type": "integer"
-                },
-                "quantity_before": {
-                    "type": "integer"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "status_after": {
-                    "type": "string"
-                },
-                "status_before": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "work_order_id": {
-                    "type": "integer"
-                }
-            }
-        },
         "app.HealthResponse": {
             "type": "object",
             "properties": {
@@ -2476,7 +2383,9 @@ const docTemplate = `{
         },
         "auth.RefreshRequest": {
             "type": "object",
-            "required": ["refresh_token"],
+            "required": [
+                "refresh_token"
+            ],
             "properties": {
                 "refresh_token": {
                     "description": "RefreshToken 是登录或上次续期返回的 refresh token。",
@@ -2891,6 +2800,171 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "uploaded_by": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.DepartmentTask": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "assignee_user_id": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "completed_quantity": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "department_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "partial_completed_at": {
+                    "type": "string"
+                },
+                "planned_quantity": {
+                    "type": "integer"
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "work_order_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.WorkOrder": {
+            "type": "object",
+            "properties": {
+                "cancel_reason": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "customer_id": {
+                    "type": "integer"
+                },
+                "department_tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.DepartmentTask"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "dispatched_at": {
+                    "type": "string"
+                },
+                "due_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "planned_quantity": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "product_name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.WorkOrderFlowLog": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "actor_user_id": {
+                    "type": "integer"
+                },
+                "actor_username": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "department_id": {
+                    "type": "integer"
+                },
+                "department_task_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "quantity_after": {
+                    "type": "integer"
+                },
+                "quantity_before": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "status_after": {
+                    "type": "string"
+                },
+                "status_before": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "work_order_id": {
                     "type": "integer"
                 }
             }

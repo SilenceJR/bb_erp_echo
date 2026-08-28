@@ -25,7 +25,7 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 | 模具生命周期 | 已完成 | 台账、借出、归还、维修、保养、状态转换和履历已实现。 | internal/mold、internal/model/mold.go |
 | 任务单流转 | 已完成 | 生产/通用任务、派发、暂停、恢复、加急、正常/强制完成、部门子任务和流转日志已实现。 | internal/workorder |
 | 统计报表 | 已完成 | 首页汇总、库存、任务、模具、业务资料、审计和低库存/需保养数据聚合已实现。 | internal/statistics |
-| 图片文件 | 已完成 | 受保护上传、格式/大小校验、预览、替换、删除和业务权限继承已实现。 | internal/file |
+| 图片文件 | 已完成 | 受保护单图/多图上传、格式/大小校验、批量全有或全无入库、预览、替换、删除和业务权限继承已实现。 | internal/file |
 | 服务端更新检查 | 已完成 | 清单拉取、版本比较、ZIP 校验、缓存、并发合并、状态保留和管理员检查接口已实现。 | internal/update/manifest.go |
 | Tauri v2 客户端更新支持 | 已完成 | 签名 payload、NSIS/Portable/差分资源、SHA-256、Range、内容寻址缓存和完整包兜底已实现。 | internal/update/client_v2.go、internal/update/handler.go |
 | API 文档 | 已完成 | Handler Swagger 注释、docs/API.md 和 OpenAPI 产物已维护；接口变化仍需同步更新。 | docs/API.md、docs/docs.go |
@@ -57,7 +57,7 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 - 库存数量使用四位定点整数，金额和单价使用分；转换和加权平均成本计算在后端完成，避免浮点误差。
 - 库存单据支持草稿、过账和冲销；Idempotency-Key 用于避免重复创建同一业务请求。
 - 模具操作必须经过合法状态转换并记录履历；任务单主状态由办公室流程控制，部门只操作自己的子任务状态。
-- 图片文件按业务 owner 继承权限，路径经过安全校验，上传文件名不直接作为存储文件名。
+- 图片文件按业务 owner 继承权限，路径经过安全校验，上传文件名不直接作为存储文件名；创建接口以重复 `file` 字段接收单图/多图，批量保存失败会清理本批次文件并回滚记录。
 
 ### 3.4 更新与发布支撑
 
@@ -123,6 +123,7 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 
     go vet ./...                         通过（使用临时 GOCACHE/GOTMPDIR）
     Go 测试（排除 internal/update）       通过
+    图片单图/多图批量接收与原子回滚测试      通过（internal/file，含 race）
     bash scripts/test-release-semver.sh  通过
     bash scripts/test-release-delta-base.sh 通过
 

@@ -24,8 +24,8 @@ Web 模块化代码改造、统一弹窗样式改造以及 Tauri Client 对共�
 | 模具模块 | 已完成 | 详情、借出、归还、维修、保养、履历和请求过期保护已拆至模具抽屉及 `useMold` 状态组合式函数。 |
 | 任务单模块 | 已完成 | 任务详情、办公室操作、部门子任务和流转日志已拆至任务单抽屉及 `useWorkorder` 状态组合式函数。 |
 | 角色与账号权限 | 已完成 | 权限配置、角色分配、选项缓存、权限禁用规则由 `useAssignment` 管理。 |
-| 图片管理 | 已完成 | `ImageGallery.vue` 的删除确认已改用统一弹窗封装。 |
-| Web/Tauri 复用 | 已完成 | `client/src/main.ts` 继续直接复用 `web/src/main.ts` 和同一套业务组件。 |
+| 图片管理 | 已完成 | `ImageGallery.vue` 支持一次选择多张图片并通过共用请求层批量提交；删除确认继续使用统一弹窗封装。 |
+| Web/Tauri 复用 | 已完成 | `client/src/main.ts` 继续直接复用 `web/src/main.ts`、同一套业务组件和认证续期逻辑。 |
 | Client HTTP 传输 | 已完成 | Tauri 通过 `desktop-http.ts` 注入 Rust HTTP 传输，业务请求继续使用共用的 `HttpTransport` 抽象。 |
 | Client 服务器地址 | 已完成 | 首次默认地址、登录页设置、顶栏设置和保存后的地址优先级遵循 `client/API_SYNC.md`。 |
 | Client 更新入口 | 已完成 | Vue 仅展示更新状态并触发桌面更新流程；版本、EXE 哈希、签名和本机路径由 Tauri/Rust 负责。 |

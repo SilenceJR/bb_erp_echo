@@ -42,6 +42,12 @@ func (s *Service) EnsureRoot() error {
 	return os.MkdirAll(s.UploadRoot, 0755)
 }
 
+type imageUpload struct {
+	header    *multipart.FileHeader
+	extension string
+	mimeType  string
+}
+
 // SaveImage 先写入随机文件名，再创建数据库记录；记录失败时清理新文件。
 func (s *Service) SaveImage(header *multipart.FileHeader, ownerType string, ownerID uint, category string, replacesID *uint, uploadedBy uint) (*model.ImageFile, error) {
 	if !validOwnerType(ownerType) {
@@ -50,40 +56,109 @@ func (s *Service) SaveImage(header *multipart.FileHeader, ownerType string, owne
 	if ownerID == 0 {
 		return nil, validationError("owner_id 无效")
 	}
-	if header == nil || header.Size <= 0 {
+	upload, err := prepareImageUpload(header)
+	if err != nil {
+		return nil, err
+	}
+	asset, err := s.writeImage(upload, ownerType, ownerID, category, replacesID, uploadedBy)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.Create(asset).Error; err != nil {
+		_ = s.remove(asset.StoragePath)
+		return nil, fmt.Errorf("保存图片记录失败: %w", err)
+	}
+	return asset, nil
+}
+
+// SaveImages 批量保存图片。所有图片文件写入成功后才创建数据库记录，
+// 数据库事务失败时回滚全部记录并清理本批次已写入的物理文件。
+func (s *Service) SaveImages(headers []*multipart.FileHeader, ownerType string, ownerID uint, category string, uploadedBy uint) ([]*model.ImageFile, error) {
+	if !validOwnerType(ownerType) {
+		return nil, validationError(ownerError(ownerType).Error())
+	}
+	if ownerID == 0 {
+		return nil, validationError("owner_id 无效")
+	}
+	if len(headers) == 0 {
 		return nil, validationError("文件不能为空")
 	}
+
+	uploads := make([]imageUpload, len(headers))
+	for i, header := range headers {
+		upload, err := prepareImageUpload(header)
+		if err != nil {
+			return nil, err
+		}
+		uploads[i] = upload
+	}
+
+	assets := make([]*model.ImageFile, 0, len(uploads))
+	paths := make([]string, 0, len(uploads))
+	for _, upload := range uploads {
+		asset, err := s.writeImage(upload, ownerType, ownerID, category, nil, uploadedBy)
+		if err != nil {
+			return nil, withFileCleanup(err, s, paths)
+		}
+		assets = append(assets, asset)
+		paths = append(paths, asset.StoragePath)
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		for _, asset := range assets {
+			if err := tx.Create(asset).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, withFileCleanup(fmt.Errorf("批量保存图片记录失败: %w", err), s, paths)
+	}
+	return assets, nil
+}
+
+func prepareImageUpload(header *multipart.FileHeader) (imageUpload, error) {
+	if header == nil || header.Size <= 0 {
+		return imageUpload{}, validationError("文件不能为空")
+	}
 	if header.Size > MaxImageSize {
-		return nil, validationError(fmt.Sprintf("图片大小不能超过 %dMiB", MaxImageSize>>20))
+		return imageUpload{}, validationError(fmt.Sprintf("图片大小不能超过 %dMiB", MaxImageSize>>20))
 	}
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if !allowedExtension(ext) {
-		return nil, validationError(ErrInvalidImage.Error())
+		return imageUpload{}, validationError(ErrInvalidImage.Error())
 	}
 	src, err := header.Open()
 	if err != nil {
-		return nil, fmt.Errorf("打开上传文件失败: %w", err)
+		return imageUpload{}, fmt.Errorf("打开上传文件失败: %w", err)
 	}
 	defer src.Close()
 	buf := make([]byte, 512)
 	n, readErr := src.Read(buf)
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return nil, fmt.Errorf("读取上传文件失败: %w", readErr)
+		return imageUpload{}, fmt.Errorf("读取上传文件失败: %w", readErr)
 	}
 	mimeType := http.DetectContentType(buf[:n])
 	if !mimeMatchesExtension(mimeType, ext) {
-		return nil, validationError(ErrInvalidImage.Error())
+		return imageUpload{}, validationError(ErrInvalidImage.Error())
 	}
-	if _, err := src.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("重置上传文件失败: %w", err)
+	return imageUpload{header: header, extension: ext, mimeType: mimeType}, nil
+}
+
+func (s *Service) writeImage(upload imageUpload, ownerType string, ownerID uint, category string, replacesID *uint, uploadedBy uint) (*model.ImageFile, error) {
+	src, err := upload.header.Open()
+	if err != nil {
+		return nil, fmt.Errorf("打开上传文件失败: %w", err)
 	}
+	defer src.Close()
+
 	now := time.Now()
 	relativeDir := filepath.Join(ownerType, now.Format("2006"), now.Format("01"))
 	dir := filepath.Join(s.UploadRoot, relativeDir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建上传目录失败: %w", err)
 	}
-	name, err := randomName(ext)
+	name, err := randomName(upload.extension)
 	if err != nil {
 		return nil, fmt.Errorf("生成文件名失败: %w", err)
 	}
@@ -105,12 +180,24 @@ func (s *Service) SaveImage(header *multipart.FileHeader, ownerType string, owne
 		_ = os.Remove(path)
 		return nil, validationError(fmt.Sprintf("图片大小不能超过 %dMiB", MaxImageSize>>20))
 	}
-	asset := &model.ImageFile{OwnerType: ownerType, OwnerID: ownerID, UploadedBy: uploadedBy, Category: strings.TrimSpace(category), OriginalName: header.Filename, Size: written, MimeType: mimeType, Extension: ext, StoragePath: filepath.ToSlash(filepath.Join(relativeDir, name)), ReplacesID: replacesID}
-	if err := s.db.Create(asset).Error; err != nil {
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("保存图片记录失败: %w", err)
+	return &model.ImageFile{OwnerType: ownerType, OwnerID: ownerID, UploadedBy: uploadedBy, Category: strings.TrimSpace(category), OriginalName: upload.header.Filename, Size: written, MimeType: upload.mimeType, Extension: upload.extension, StoragePath: filepath.ToSlash(filepath.Join(relativeDir, name)), ReplacesID: replacesID}, nil
+}
+
+func withFileCleanup(err error, service *Service, paths []string) error {
+	if cleanupErr := service.cleanupFiles(paths); cleanupErr != nil {
+		return errors.Join(err, fmt.Errorf("清理批量图片文件失败: %w", cleanupErr))
 	}
-	return asset, nil
+	return err
+}
+
+func (s *Service) cleanupFiles(paths []string) error {
+	var cleanupErr error
+	for _, path := range paths {
+		if err := s.remove(path); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("%s: %w", path, err))
+		}
+	}
+	return cleanupErr
 }
 
 func (s *Service) ReplaceImage(id uint, header *multipart.FileHeader, category string, uploadedBy uint) (*model.ImageFile, error) {
