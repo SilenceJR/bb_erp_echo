@@ -750,7 +750,6 @@ jobs:
       - name: Download release assets
         uses: actions/download-artifact@v8
         with:
-          pattern: "*-${{ github.run_number }}"
           merge-multiple: true
           path: release-assets
 
