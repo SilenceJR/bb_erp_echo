@@ -151,8 +151,15 @@ echo "Uploading versioned release assets..."
 upload_pids=()
 upload_files=()
 for file in "${!resource_hashes[@]}"; do
-  curl --fail --silent --show-error --location -X POST "${auth[@]}" "${json[@]}" \
+  # Gitee API v5 accepts release uploads reliably when the token and release
+  # identity are sent as multipart fields; large files may otherwise upload
+  # without returning a response.
+  curl --fail --silent --show-error --location -X POST "${json[@]}" \
     --connect-timeout 30 --max-time 900 \
+    -F "access_token=$token" \
+    -F "owner=$release_owner" \
+    -F "repo=$release_repo" \
+    -F "release_id=$release_id" \
     -F "file=@$asset_dir/$file" \
     "$api_base/repos/$release_owner/$release_repo/releases/$release_id/attach_files" >/dev/null &
   upload_pids+=("$!")
