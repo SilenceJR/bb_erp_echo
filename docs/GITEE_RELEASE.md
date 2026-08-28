@@ -110,6 +110,8 @@ git push origin v0.1.0-rc.1
 
 在对应 GitHub Actions 运行中下载并解压 `bb-erp-client-windows-portable-*` Artifact，保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录后运行。该客户端只作为测试副本使用，不修改正式版 manifest，也不作为正式版自动更新来源；该 Artifact 是多文件归档，不能按单文件 Artifact 处理。
 
+正式发布作业不再单独上传 NSIS 中转 Artifact。签名安装器已包含在 `bb-erp-client-windows.zip` 的 `installer/` 目录中，发布作业下载该客户端包后提取 `*setup.exe`，再由发布脚本按 manifest 校验并上传。这样可以减少内部 Artifact 数量，同时保留客户端更新所需的独立签名安装器。
+
 正式版验收使用不带预发布标识的标签。只有正式版标签才生成签名 v2 更新清单、上传 Gitee Release，并在全部附件通过匿名下载、大小、SHA-256、签名和版本递增复验后更新正式版 manifest。差分升级仍只以正式版上一版本为基线。
 
 验收以下结果：正式版客户端能访问正式 manifest 并正常完成检查、差分/完整更新、重启和失败恢复；RC/手动 Artifact 能在独立目录启动；预发布标签不会触发 Gitee 发布或修改正式版 manifest；Windows 10/11 的安装、断网、损坏资源、不可写目录和回滚结果记录在发布验收单中。

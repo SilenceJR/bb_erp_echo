@@ -162,3 +162,9 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 - [Web 与 Tauri Client 产品架构与交互时序图](WEB_CLIENT_ARCHITECTURE.md)
 
 后端、Web 或 Client 的模块边界、数据流、请求传输方式和更新流程发生变化时，必须同步更新对应图示，避免文档继续描述旧结构。
+### 2026-08-29 正式发布 CI 第 59 次重试问题记录
+
+- `v0.0.4` 的 Windows 构建及 6 个预期 Artifact 均已成功生成；发布作业失败原因为 `release-assets/bb-erp-client-windows-x86_64-setup.exe` 不存在。
+- 根因是签名 NSIS 安装器只存在于 `bb-erp-client-windows.zip` 的 `installer/` 目录，标准归档 Artifact 下载后不会自动展开其业务 ZIP 内容。
+- 修复为发布作业从已有客户端 ZIP 提取 `*setup.exe`，不新增独立 NSIS Artifact；后续仍须以同一 `v0.0.4` 标签重新执行完整构建和发布验收。
+- 当前未标记 Gitee Release、稳定 manifest 或 Windows 用户升级验收完成。

@@ -166,3 +166,9 @@ git diff --check
 - 本次记录覆盖 Web 结构、交互样式、Tauri Client 复用边界、构建和验收状态。
 - 不调整 Go 后端接口、权限定义、数据库结构或业务数据格式。
 - 不把工作区已有的 `.codex`、`README.md`、`docs/USER_GUIDE.md`、`output/` 等无关变更纳入本次状态结论。
+### 2026-08-29 正式发布 CI 第 59 次重试问题记录
+
+- Go、Web、Tauri 前端、Rust 和 Windows 打包均通过；发布作业在 manifest 资源文件校验阶段失败。
+- 失败文件为签名 NSIS 安装器，实际已随 `bb-erp-client-windows.zip` 放在 `installer/` 目录；发布作业此前没有解包客户端 ZIP。
+- 当前工作流改为复用已有客户端 Artifact，在发布前提取安装器，避免额外的 NSIS 中转 Artifact；该修复未改变 all-in-one 内容或客户端更新协议。
+- Gitee 正式发布和 Windows 用户升级仍待下一次同标签重试完成后验收。

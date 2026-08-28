@@ -765,6 +765,19 @@ jobs:
           name: bb-erp-client-windows-${{ github.run_number }}
           path: release-assets
 
+      - name: Extract signed NSIS installer from client package
+        shell: bash
+        run: |
+          client_archive="release-assets/bb-erp-client-windows.zip"
+          test -s "$client_archive"
+          installer_member="$(unzip -Z1 "$client_archive" | awk 'tolower($0) ~ /setup[.]exe$/ { print; exit }')"
+          test -n "$installer_member" || {
+            echo "Signed NSIS installer was not found in $client_archive" >&2
+            exit 1
+          }
+          unzip -p "$client_archive" "$installer_member" > release-assets/bb-erp-client-windows-x86_64-setup.exe
+          test -s release-assets/bb-erp-client-windows-x86_64-setup.exe
+
       - name: Download all-in-one release asset
         uses: actions/download-artifact@v8
         with:
