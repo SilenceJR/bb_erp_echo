@@ -10,36 +10,44 @@ function Fail([string] $Message) {
   throw "TAURI_UPDATER_PUBLIC_KEY 无效：$Message"
 }
 
-$lines = @($Value -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-if ($lines.Count -eq 0 -or $lines.Count -gt 2) {
-  Fail "必须是公钥 Base64 行、两行 Minisign 公钥文本，或其 Base64 封装"
-}
-
 $keyLine = $null
 $commentKeyId = $null
-$envelopeDecoded = $null
+$inputText = $Value.Trim()
+if (-not $inputText) {
+  Fail "内容不能为空"
+}
 
-if ($lines.Count -eq 2 -and $lines[0] -match '^untrusted comment: minisign public key ([0-9A-Fa-f]{16})$') {
-  $commentKeyId = $Matches[1]
-  $keyLine = $lines[1]
-} elseif ($lines.Count -eq 1 -and $lines[0] -match '^[A-Za-z0-9+/]+={0,2}$') {
-  $candidate = $lines[0]
+$publicText = $null
+if ($inputText -match 'untrusted comment: minisign public key') {
+  $publicText = $inputText
+} else {
+  $candidate = $inputText -replace '\s', ''
+  if ($candidate -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
+    Fail "格式必须是 Base64 内容"
+  }
   try {
     $decoded = [Convert]::FromBase64String($candidate)
-    $decodedText = [Text.Encoding]::UTF8.GetString($decoded)
-    $decodedLines = @($decodedText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    if ($decodedLines.Count -eq 2 -and $decodedLines[0] -match '^untrusted comment: minisign public key ([0-9A-Fa-f]{16})$') {
-      $commentKeyId = $Matches[1]
-      $keyLine = $decodedLines[1]
-      $envelopeDecoded = $decodedText
-    } else {
-      $keyLine = $candidate
-    }
   } catch {
-    $keyLine = $candidate
+    Fail "公钥 Base64 无法解码"
   }
-} else {
-  Fail "格式必须是 Base64 内容"
+  if ($decoded.Length -eq 42) {
+    $keyLine = $candidate
+  } else {
+    try {
+      $publicText = [Text.Encoding]::UTF8.GetString($decoded)
+    } catch {
+      Fail "Base64 封装无法转换为公钥文本"
+    }
+  }
+}
+
+if ($publicText) {
+  $lines = @($publicText -split "`r`n|`n|`r" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($lines.Count -ne 2 -or $lines[0] -notmatch '^untrusted comment: minisign public key ([0-9A-Fa-f]{16})$') {
+    Fail "公钥文本必须包含匹配的 Minisign 注释和 Base64 公钥行"
+  }
+  $commentKeyId = $Matches[1]
+  $keyLine = $lines[1]
 }
 
 if ($keyLine -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
