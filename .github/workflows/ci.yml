@@ -183,6 +183,17 @@ jobs:
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY -or -not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -or -not $env:TAURI_UPDATER_PUBLIC_KEY) {
             throw "TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD and TAURI_UPDATER_PUBLIC_KEY must be configured for official releases."
           }
+          & "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $env:TAURI_UPDATER_PUBLIC_KEY | Out-Null
+
+      - name: Normalize Tauri updater public key
+        if: steps.release.outputs.stable == 'true'
+        id: updater-key
+        shell: pwsh
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          $normalized = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $env:TAURI_UPDATER_PUBLIC_KEY) -join ""
+          "value=$normalized" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -256,9 +267,12 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          BB_ERP_UPDATE_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          BB_ERP_UPDATE_PUBLIC_KEY: ${{ steps.updater-key.outputs.value }}
         run: |
           $createUpdaterArtifacts = "${{ steps.release.outputs.stable }}" -eq "true"
+          if ($createUpdaterArtifacts) {
+            $env:BB_ERP_UPDATE_PUBLIC_KEY = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $env:BB_ERP_UPDATE_PUBLIC_KEY) -join ""
+          }
           if (-not $createUpdaterArtifacts) {
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
@@ -270,6 +284,8 @@ jobs:
 
       - name: Assemble Windows release packages
         shell: pwsh
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ steps.updater-key.outputs.value }}
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -285,7 +301,7 @@ jobs:
             $stableManifestUrl = "https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/raw/main/update-manifest.json"
           }
           $updateEnabled = if ($stableManifestUrl) { "true" } else { "false" }
-          $updateSigningPublicKey = "${{ vars.TAURI_UPDATER_PUBLIC_KEY }}"
+          $updateSigningPublicKey = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $env:TAURI_UPDATER_PUBLIC_KEY) -join ""
 
           $serverPackageRoot = "release-build/packages/server"
           $clientPackageRoot = "release-build/packages/client"
@@ -631,7 +647,7 @@ jobs:
           TAURI_CLIENT_DIR: client
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ steps.updater-key.outputs.value }}
           RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ steps.release.outputs.version == '0.0.2' && 'true' || 'false' }}
         run: bash scripts/build-client-update-v2.sh
 

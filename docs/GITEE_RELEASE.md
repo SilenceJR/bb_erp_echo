@@ -44,7 +44,7 @@ Repository/Environment Variables：
 - `GITEE_SOURCE_REPO`
 - `GITEE_RELEASE_OWNER`
 - `GITEE_RELEASE_REPO`
-- `TAURI_UPDATER_PUBLIC_KEY`：`tauri signer generate` 生成的整个 `.pub` 文件内容（官方 Base64 envelope），同时注入客户端并写入服务端发布包；不要手工解包或只复制内部第二行。
+- `TAURI_UPDATER_PUBLIC_KEY`：`tauri signer generate` 生成的完整 `.pub` 文件或其 Base64 封装；正式构建会校验 Minisign 公钥长度、Base64 内容和 key identifier。若发布环境只保存了唯一公钥 Base64 行，CI 会根据公钥内容补齐匹配的注释并重新封装，不会改变密钥材料。
 
 Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 或日志中。若 Gitee 的令牌模型不能按单仓库授权，使用专门的发布机器人账号，并只把该账号加入上述两个仓库。签名私钥必须另存一份加密离线备份；确认私钥和密码都可恢复前不得发布首个 v2 基线标签。
 
