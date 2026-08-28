@@ -66,7 +66,7 @@ if ($keyBytes.Length -ne 42) {
 }
 
 $keyIdBytes = $keyBytes[2..9]
-$keyId = (($keyIdBytes | ForEach-Object { $_.ToString("x2") }) -join "")
+$keyId = (($keyIdBytes[7..0] | ForEach-Object { $_.ToString("x2") }) -join "")
 if ($commentKeyId -and $commentKeyId.ToLowerInvariant() -ne $keyId) {
   Fail "注释中的 key identifier 与公钥内容不一致"
 }
