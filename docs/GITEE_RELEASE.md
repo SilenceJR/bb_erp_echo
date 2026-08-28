@@ -55,7 +55,7 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 | 任意分支 push | 是 | 否 | 否 |
 | GitHub PR | 是 | 否 | 否 |
 | `main`/`master` push | 是 | 否 | 否 |
-| 手动 `workflow_dispatch` | 是 | 是，保留 14 天 | 默认否；填写已有正式 `release_tag` 时可安全重试该标签的发布 |
+| 手动 `workflow_dispatch` | 是 | 是，保留 14 天 | 默认否；填写已有正式 `release_tag` 时可安全重试该标签的发布，输入类型为字符串 |
 | 合法正式版 `vMAJOR.MINOR.PATCH` 标签 | 是 | 是 | 是，更新正式版 manifest |
 | 合法预发布 `vMAJOR.MINOR.PATCH-prerelease` 标签 | 是 | 是 | 否，仅用于独立测试 |
 

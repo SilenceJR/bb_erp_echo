@@ -13,10 +13,12 @@ on:
         description: "可选：仅手动临时包使用的下载基地址；手动构建不会发布 Release"
         required: false
         default: ""
+        type: string
       release_tag:
         description: "可选：重试已有正式标签的发布，例如 v0.0.4；仅用于已存在标签，不创建新标签"
         required: false
         default: ""
+        type: string
 
 concurrency:
   group: ci-${{ github.ref }}
