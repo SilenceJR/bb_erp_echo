@@ -547,7 +547,7 @@ pub async fn client_update_check(
     #[cfg(windows)]
     {
         begin_task(&engine)?;
-        let result = async {
+        let result: Result<Option<ClientUpdatePlan>, String> = async {
             let origin = clean_origin(&server_url)?;
             emit(
                 &engine,
@@ -626,7 +626,7 @@ pub async fn client_update_apply(
     #[cfg(windows)]
     {
         begin_task(&engine)?;
-        let result = async {
+        let result: Result<UpdateApplyResult, String> = async {
             let origin = engine
                 .checked_origin
                 .lock()
