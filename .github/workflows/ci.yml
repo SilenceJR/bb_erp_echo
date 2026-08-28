@@ -749,10 +749,44 @@ jobs:
           git fetch --tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           echo "value=$(git rev-list -n1 "refs/tags/$RELEASE_TAG")" >> "$GITHUB_OUTPUT"
 
-      - name: Download release assets
+      - name: Prepare release asset directory
+        shell: bash
+        run: mkdir -p release-assets
+
+      - name: Download server release asset
         uses: actions/download-artifact@v8
         with:
-          merge-multiple: true
+          name: bb-erp-server-windows.zip
+          path: release-assets
+
+      - name: Download client release asset
+        uses: actions/download-artifact@v8
+        with:
+          name: bb-erp-client-windows.zip
+          path: release-assets
+
+      - name: Download all-in-one release asset
+        uses: actions/download-artifact@v8
+        with:
+          name: bb-erp-all-in-one-windows.zip
+          path: release-assets
+
+      - name: Download updater release asset
+        uses: actions/download-artifact@v8
+        with:
+          name: bb-erp-updater-windows.zip
+          path: release-assets
+
+      - name: Download update manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: update-manifest.json
+          path: release-assets
+
+      - name: Download portable client release asset
+        uses: actions/download-artifact@v8
+        with:
+          name: bb-erp-client-windows-portable-${{ github.run_number }}
           path: release-assets
 
       - name: Publish to public Gitee distribution repository

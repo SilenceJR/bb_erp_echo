@@ -65,7 +65,7 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于本次构建所对应的 GitHub 标签提交；已有标签手动重试时不会把修复提交误当成标签提交。
 2. 在公开发布仓库创建标签和 Release。
-3. 从本次运行的全部构建 Artifact 直接合并下载 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分；不再额外生成重复的 `gitee-release-assets-*` 中转包。此前的多行 `pattern` 和运行号通配均会漏掉实际名称为 `update-manifest.json` 的清单，现改为不设筛选条件并由发布脚本严格校验清单资源集合。单个上传设置连接和总时限，避免 Gitee 附件接口无响应时无限等待。
+3. 按实际 Artifact 名称逐个下载 server、client、all-in-one、updater ZIP、`update-manifest.json` 和便携客户端目录；不再额外生成重复的 `gitee-release-assets-*` 中转包。直接上传的单文件 Artifact 必须按文件名指定下载，不能依赖全量合并，否则会漏掉非压缩 Artifact。发布脚本仍严格校验清单资源集合。单个上传设置连接和总时限，避免 Gitee 附件接口无响应时无限等待。
 4. 动态读取 manifest 资源集合，匿名下载全部附件，复验大小、SHA-256 和签名字段。
 5. 仅在全部复验成功后更新公开仓库 `main/update-manifest.json`。
 6. 再次匿名读取稳定 manifest 并确认内容一致。
