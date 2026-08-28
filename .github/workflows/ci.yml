@@ -722,7 +722,6 @@ jobs:
           name: bb-erp-client-windows-portable-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
           path: release-build/bb-erp-client-windows-x86_64-portable
 
       - name: Upload complete release bundle for publishing

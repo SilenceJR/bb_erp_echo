@@ -106,7 +106,7 @@ git tag v0.1.0-rc.1
 git push origin v0.1.0-rc.1
 ```
 
-在对应 GitHub Actions 运行中下载 `bb-erp-client-windows-portable-*` Artifact，保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录后运行。该客户端只作为测试副本使用，不修改正式版 manifest，也不作为正式版自动更新来源。
+在对应 GitHub Actions 运行中下载并解压 `bb-erp-client-windows-portable-*` Artifact，保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录后运行。该客户端只作为测试副本使用，不修改正式版 manifest，也不作为正式版自动更新来源；该 Artifact 是多文件归档，不能按单文件 Artifact 处理。
 
 正式版验收使用不带预发布标识的标签。只有正式版标签才生成签名 v2 更新清单、上传 Gitee Release，并在全部附件通过匿名下载、大小、SHA-256、签名和版本递增复验后更新正式版 manifest。差分升级仍只以正式版上一版本为基线。
 
