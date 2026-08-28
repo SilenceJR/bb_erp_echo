@@ -65,7 +65,7 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于本次构建所对应的 GitHub 标签提交；已有标签手动重试时不会把修复提交误当成标签提交。
 2. 在公开发布仓库创建标签和 Release。
-3. 按运行号 Artifact 名称逐个下载 server、client、all-in-one、updater ZIP、`update-manifest.json` 和便携客户端目录；构建侧单文件 Artifact 使用 GitHub 官方默认标准归档，避免跨 Job 直接文件下载的兼容边界。下载后仍由发布脚本严格校验清单资源集合。不再额外生成重复的 `gitee-release-assets-*` 中转包；标准归档只存在于内部 Artifact，公开 Gitee 附件仍是原始发布文件。
+3. 按运行号 Artifact 名称逐个下载 server、client、all-in-one、updater ZIP、manifest 资源组和便携客户端目录；manifest 资源组包含 `update-manifest.json` 及本次实际生成的 `.zstpatch`，不单独增加差分 Artifact。构建侧使用 GitHub 官方默认标准归档，避免跨 Job 直接文件下载的兼容边界。下载后仍由发布脚本严格校验清单资源集合。不再额外生成重复的 `gitee-release-assets-*` 中转包；标准归档只存在于内部 Artifact，公开 Gitee 附件仍是原始发布文件。
 4. 正式附件按体积从小到大串行上传，禁用 `Expect: 100-continue` 并固定 HTTP/1.1；单次请求允许慢速大文件上传，但会在持续无上传进度时中止，整个发布作业设有总时限和有限次数重试。每次请求后调用 Gitee Release 附件列表接口确认结果，即使上传请求超时但服务端已保存附件，也不会重复上传。
 5. 重跑失败作业时，发布脚本只恢复名称和发布说明均匹配的自动 Release，并复用名称、大小一致的已有附件；同名尺寸冲突或人工创建的同标签 Release 会停止发布。最终仍以匿名下载、大小和 SHA-256 为准。
 6. 动态读取 manifest 资源集合，匿名下载全部附件，复验大小、SHA-256 和签名字段。
@@ -141,6 +141,12 @@ git push origin v0.1.0-rc.1
 - 六个正式附件均在首次请求返回 HTTP 201；最大 all-in-one 实际上传约 27.4 MB、耗时约 743 秒。随后全部附件通过匿名下载、大小和 SHA-256 复验。
 - [Gitee 0.0.5 Release](https://gitee.com/SilenceJR/bb_erp_releases/releases/tag/v0.0.5) 已包含 updater、NSIS、client、server、独立便携 EXE 和 all-in-one；公开稳定 manifest 已验证为 `0.0.5`，并包含签名 v2 更新信息。
 - 历史 `0.1.0-rc.3` manifest 不含 v2 payload，因此 `0.0.5` 是完整更新基线，不生成历史 RC 差分；Windows 真机安装和 `0.0.5 → 0.0.6` 用户升级仍待验收。
+
+### 0.0.6 首次发布问题记录
+
+- GitHub Actions #66 的 Go、Web、Tauri、Windows 构建和签名通过，并成功生成 `0.0.5 → 0.0.6` 差分包；差分约 3.88 MB，低于约 18.5 MB 完整便携 EXE，满足发布阈值。
+- 首次发布在上传 Gitee 前停止：`update-manifest` Artifact 只包含 JSON，发布作业缺少 manifest 引用的 `.zstpatch`。
+- 修复为将 JSON 与可选 `.zstpatch` 放入同一个 manifest 资源组 Artifact，不增加 Artifact 数量；正式 Release、稳定 manifest 和 Windows 用户升级仍未标记完成。
 
 ### 历史记录
 

@@ -182,3 +182,9 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 - Gitee 六个正式附件首次上传均返回 HTTP 201，之后完成匿名大小和 SHA-256 复验；稳定 manifest 已从历史 `0.1.0-rc.3` 迁移并独立读取确认版本为 `0.0.5`。
 - all-in-one 约 27.4 MB，上传约 743 秒；记录证明需要保留慢速大文件容忍、串行上传和附件回查，不能恢复旧的短固定时限或并发上传。
 - 0.0.5 是完整更新基线；0.0.6 和 Windows 真机用户升级仍待验收。
+
+### 2026-08-29 正式版本 0.0.6 首次发布问题
+
+- GitHub Actions #66 的全部构建和签名通过，生成的 `0.0.5 → 0.0.6` 差分约 3.88 MB，满足相对完整便携 EXE 的体积阈值。
+- Gitee 发布在上传前因 manifest 引用的 `.zstpatch` 未包含于跨作业 Artifact 而停止；0.0.5 稳定 manifest 未被修改。
+- 修复为复用现有 update-manifest Artifact 同时携带 JSON 和可选差分文件，不增加新的 Artifact；修复后的 0.0.6 发布仍待重试。

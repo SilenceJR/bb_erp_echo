@@ -186,3 +186,9 @@ git diff --check
 - 独立便携 EXE 和 all-in-one 均通过首次上传及匿名 SHA-256 复验；稳定 manifest 已独立读取确认为 `0.0.5` 并包含签名 v2 更新信息。
 - 历史 RC 不含 v2 payload，0.0.5 因此只提供完整更新基线；0.0.6 将验证从 0.0.5 的差分或完整包回退。
 - Windows 10/11 的真实安装、升级、断网、损坏资源、不可写目录、重启和数据保留仍待用户验收。
+
+### 2026-08-29 正式版本 0.0.6 首次发布问题
+
+- GitHub Actions #66 已从稳定 0.0.5 生成约 3.88 MB 的 0.0.6 客户端差分，Windows 构建和签名通过。
+- 首次 Gitee 发布在上传前停止，因为现有 update-manifest Artifact 未携带 manifest 引用的 `.zstpatch`；公开 0.0.5 未受影响。
+- 修复为把 JSON 和可选差分放入同一内部 Artifact，不增加中转包；0.0.6 正式 Release 与 Windows 用户升级仍待重试验收。
