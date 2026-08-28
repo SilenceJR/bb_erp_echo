@@ -6,9 +6,10 @@ source "$script_dir/release-stable-migration.sh"
 
 RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION=true
 release_allows_historical_stable_migration 0.1.0-rc.3 0.0.2
+release_allows_historical_stable_migration 0.1.0-rc.3 0.0.3
 
-if release_allows_historical_stable_migration 0.1.0-rc.3 0.0.3; then
-  echo "Accepted a historical migration for a non-initial release." >&2
+if release_allows_historical_stable_migration 0.1.0-rc.3 0.0.4; then
+  echo "Accepted a historical migration beyond the fallback release." >&2
   exit 1
 fi
 if release_allows_historical_stable_migration 0.1.0-rc.4 0.0.2; then
