@@ -148,6 +148,13 @@ git push origin v0.1.0-rc.1
 - 首次发布在上传 Gitee 前停止：`update-manifest` Artifact 只包含 JSON，发布作业缺少 manifest 引用的 `.zstpatch`。
 - 修复为将 JSON 与可选 `.zstpatch` 放入同一个 manifest 资源组 Artifact，不增加 Artifact 数量；正式 Release、稳定 manifest 和 Windows 用户升级仍未标记完成。
 
+### 0.0.6 正式发布验收
+
+- [GitHub Actions #69](https://github.com/SilenceJR/bb_erp_echo/actions/runs/33200710415) 使用 `main` 的修复 Workflow 和已有 `release_tag=v0.0.6` 完成重新构建；源码标签仍指向 `357148ce0dd56072f6eab595511f6b9f5fa39cd0`，未改写。
+- update-manifest Artifact 同时包含 JSON 和 `.zstpatch`；[Gitee 0.0.6 Release](https://gitee.com/SilenceJR/bb_erp_releases/releases/tag/v0.0.6) 已包含七个正式附件，均在首次请求返回 HTTP 201，并通过匿名大小与 SHA-256 复验。
+- 稳定 manifest 已独立读取确认版本为 `0.0.6`；签名 v2 payload 的差分 `from_version` 为 `0.0.5`，差分大小 3,875,261 字节，完整便携 EXE 大小 18,523,136 字节，满足体积阈值。
+- 技术发布链路已闭环；Windows 10/11 真机的 `0.0.5 → 0.0.6` 检查、应用、重启、完整包回退、断网恢复和业务数据保留仍待用户验收。
+
 ### 历史记录
 
 此前的 `v0.1.0-rc.3` 曾按旧流程发布并写入稳定 manifest。该记录仅用于历史追踪；本次由 `0.0.5` 通过严格的一次性迁移条件建立新的正式稳定基线，保留 RC Release 和源码历史。
