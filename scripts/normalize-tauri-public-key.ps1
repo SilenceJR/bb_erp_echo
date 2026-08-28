@@ -18,7 +18,7 @@ if (-not $inputText) {
 }
 
 $publicText = $null
-if ($inputText -match 'untrusted comment: minisign public key') {
+if ($inputText -match 'untrusted comment: minisign public key:?') {
   $publicText = $inputText
 } else {
   $candidate = $inputText -replace '\s', ''
@@ -42,7 +42,7 @@ if ($inputText -match 'untrusted comment: minisign public key') {
 }
 
 if ($publicText) {
-  $commentMatch = [regex]::Match($publicText, 'untrusted comment: minisign public key ([0-9A-Fa-f]{16})')
+  $commentMatch = [regex]::Match($publicText, 'untrusted comment: minisign public key:?\s+([0-9A-Fa-f]{16})')
   $keyMatches = [regex]::Matches($publicText, '[A-Za-z0-9+/]{50,}={0,2}')
   if (-not $commentMatch.Success -or $keyMatches.Count -ne 1) {
     Fail "公钥文本必须包含匹配的 Minisign 注释和 Base64 公钥行"
@@ -71,5 +71,5 @@ if ($commentKeyId -and $commentKeyId.ToLowerInvariant() -ne $keyId) {
   Fail "注释中的 key identifier 与公钥内容不一致"
 }
 
-$canonicalText = "untrusted comment: minisign public key $keyId`n$keyLine`n"
+$canonicalText = "untrusted comment: minisign public key: $keyId`n$keyLine`n"
 [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($canonicalText))
