@@ -278,7 +278,11 @@ jobs:
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
             Remove-Item Env:BB_ERP_UPDATE_PUBLIC_KEY -ErrorAction SilentlyContinue
           }
-          @{ version = "${{ steps.release.outputs.version }}"; bundle = @{ createUpdaterArtifacts = $createUpdaterArtifacts } } | ConvertTo-Json -Compress |
+          $tauriConfig = @{ version = "${{ steps.release.outputs.version }}"; bundle = @{ createUpdaterArtifacts = $createUpdaterArtifacts } }
+          if ($createUpdaterArtifacts) {
+            $tauriConfig.plugins = @{ updater = @{ pubkey = $env:BB_ERP_UPDATE_PUBLIC_KEY } }
+          }
+          $tauriConfig | ConvertTo-Json -Compress |
             Set-Content -Path "../release-build/tauri-version.json" -Encoding UTF8
           npm run desktop:build -- --bundles nsis --config ../release-build/tauri-version.json
 
