@@ -15,7 +15,7 @@ release_owner="${GITEE_RELEASE_OWNER:?GITEE_RELEASE_OWNER is required}"
 release_repo="${GITEE_RELEASE_REPO:?GITEE_RELEASE_REPO is required}"
 token="${GITEE_TOKEN:?GITEE_TOKEN is required}"
 source_token="${GITEE_SOURCE_TOKEN:-$token}"
-expected_sha="${GITHUB_SHA:?GITHUB_SHA is required}"
+expected_sha="${RELEASE_EXPECTED_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
 asset_dir="${RELEASE_ASSET_DIR:-release-assets}"
 stable_url="$web_base/$release_owner/$release_repo/raw/main/update-manifest.json"
 

@@ -13,6 +13,10 @@ on:
         description: "可选：仅手动临时包使用的下载基地址；手动构建不会发布 Release"
         required: false
         default: ""
+      release_tag:
+        description: "可选：重试已有正式标签的发布，例如 v0.0.4；仅用于已存在标签，不创建新标签"
+        required: false
+        default: ""
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -154,6 +158,15 @@ jobs:
           $ErrorActionPreference = "Stop"
           if ("${{ github.ref_type }}" -eq "tag") {
             $tag = "${{ github.ref_name }}"
+            $semverPattern = '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-((0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+            if ($tag -notmatch $semverPattern) {
+              throw "Invalid release tag '$tag'. Expected vMAJOR.MINOR.PATCH[-prerelease]."
+            }
+            $version = $tag.Substring(1)
+            $stable = -not $tag.Contains('-')
+            "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } elseif ("${{ inputs.release_tag }}") {
+            $tag = "${{ inputs.release_tag }}"
             $semverPattern = '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-((0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
             if ($tag -notmatch $semverPattern) {
               throw "Invalid release tag '$tag'. Expected vMAJOR.MINOR.PATCH[-prerelease]."
@@ -713,7 +726,7 @@ jobs:
     name: Publish verified Gitee release
     runs-on: ubuntu-latest
     needs: [build-windows]
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    if: (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && !contains(inputs.release_tag, '-'))
     environment: gitee-release
     concurrency:
       group: gitee-production-release
@@ -722,17 +735,22 @@ jobs:
     steps:
       - name: Checkout publisher
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve source commit for release tag
+        id: release-source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          git fetch --tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          echo "value=$(git rev-list -n1 "refs/tags/$RELEASE_TAG")" >> "$GITHUB_OUTPUT"
 
       - name: Download release assets
         uses: actions/download-artifact@v8
         with:
-          pattern: |
-            bb-erp-server-windows-${{ github.run_number }}
-            bb-erp-client-windows-${{ github.run_number }}
-            bb-erp-all-in-one-windows-${{ github.run_number }}
-            bb-erp-updater-windows-${{ github.run_number }}
-            update-manifest-${{ github.run_number }}
-            bb-erp-client-windows-portable-${{ github.run_number }}
+          pattern: "*-${{ github.run_number }}"
           merge-multiple: true
           path: release-assets
 
@@ -744,7 +762,8 @@ jobs:
           GITEE_SOURCE_REPO: ${{ vars.GITEE_SOURCE_REPO }}
           GITEE_RELEASE_OWNER: ${{ vars.GITEE_RELEASE_OWNER }}
           GITEE_RELEASE_REPO: ${{ vars.GITEE_RELEASE_REPO }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          RELEASE_EXPECTED_SHA: ${{ steps.release-source.outputs.value }}
           RELEASE_ASSET_DIR: release-assets
-          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (github.ref_name == 'v0.0.2' || github.ref_name == 'v0.0.3' || github.ref_name == 'v0.0.4') && 'true' || 'false' }}
+          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (github.ref_name == 'v0.0.2' || github.ref_name == 'v0.0.3' || github.ref_name == 'v0.0.4' || inputs.release_tag == 'v0.0.2' || inputs.release_tag == 'v0.0.3' || inputs.release_tag == 'v0.0.4') && 'true' || 'false' }}
         run: bash scripts/publish-gitee-release.sh

@@ -55,7 +55,7 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 | 任意分支 push | 是 | 否 | 否 |
 | GitHub PR | 是 | 否 | 否 |
 | `main`/`master` push | 是 | 否 | 否 |
-| 手动 `workflow_dispatch` | 是 | 是，保留 14 天 | 否 |
+| 手动 `workflow_dispatch` | 是 | 是，保留 14 天 | 默认否；填写已有正式 `release_tag` 时可安全重试该标签的发布 |
 | 合法正式版 `vMAJOR.MINOR.PATCH` 标签 | 是 | 是 | 是，更新正式版 manifest |
 | 合法预发布 `vMAJOR.MINOR.PATCH-prerelease` 标签 | 是 | 是 | 否，仅用于独立测试 |
 
@@ -63,9 +63,9 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 正式发布由 `scripts/publish-gitee-release.sh` 执行：
 
-1. 查询 Gitee 源码仓库并确认同名标签提交等于 GitHub Actions 的 `GITHUB_SHA`。
+1. 查询 Gitee 源码仓库并确认同名标签提交等于本次构建所对应的 GitHub 标签提交；已有标签手动重试时不会把修复提交误当成标签提交。
 2. 在公开发布仓库创建标签和 Release。
-3. 从各个构建 Artifact 直接合并下载 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分；不再额外生成重复的 `gitee-release-assets-*` 中转包。单个上传设置连接和总时限，避免 Gitee 附件接口无响应时无限等待。
+3. 从各个构建 Artifact 直接合并下载 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分；不再额外生成重复的 `gitee-release-assets-*` 中转包。下载匹配使用单一运行号通配模式，避免多行 `pattern` 被当成一个整体导致发布目录为空。单个上传设置连接和总时限，避免 Gitee 附件接口无响应时无限等待。
 4. 动态读取 manifest 资源集合，匿名下载全部附件，复验大小、SHA-256 和签名字段。
 5. 仅在全部复验成功后更新公开仓库 `main/update-manifest.json`。
 6. 再次匿名读取稳定 manifest 并确认内容一致。
@@ -84,7 +84,7 @@ https://gitee.com/SilenceJR/bb_erp_releases/releases/download/<标签>/<文件�
 
 任一上传或复验失败时，正式版 manifest 不会被更新。发布脚本会拒绝预发布标签，即使被误调用也不能覆盖正式版 manifest。已存在的同版本 Release 不会自动覆盖，避免重跑时静默替换已发布二进制。
 
-正式发布的 `all-in-one` 已包含 `client/bb_erp_client.exe` 和 `client/bb-erp-portable.json`，可用于全量部署；但客户端更新清单仍需要根目录的独立签名便携 EXE，不能用全量包替代。`bb-erp-client-windows-portable-*` Artifact 只保留为构建验收和发布时提取该独立 EXE/清单，`gitee-release-assets-*` 不再重复保存同一组文件。
+正式发布的 `all-in-one` 已包含 `client/bb_erp_client.exe` 和 `client/bb-erp-portable.json`，可用于全量部署；但客户端更新清单仍需要根目录的独立签名便携 EXE，不能用全量包替代。`bb-erp-client-windows-portable-*` Artifact 只保留为构建验收和发布时提取该独立 EXE/清单，`gitee-release-assets-*` 不再重复保存同一组文件。若正式标签的发布作业仅在下载 Artifact 阶段失败，可从 Actions 手动填写已有 `release_tag` 重试；作业会重新校验该标签的源码提交，不会覆盖已有 Release 或改写标签。
 
 全量便携包解压后的目录约定如下：
 
