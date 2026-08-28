@@ -342,6 +342,7 @@ func AllModels() []any {
 		&Department{},
 		&Terminal{},
 		&User{},
+		&RefreshSession{},
 		&Role{},
 		&Permission{},
 		&UserRole{},

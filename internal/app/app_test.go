@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
@@ -70,6 +72,112 @@ func TestLoginMeAndInvalidCredentials(t *testing.T) {
 	}
 }
 
+// TestRefreshRotatesAndLogoutRevokes 验证 refresh token 轮换、旧令牌失效和退出撤销。
+func TestRefreshRotatesAndLogoutRevokes(t *testing.T) {
+	erp := newTestApp(t)
+	session := erp.loginSession(t, "admin", "admin123456")
+
+	rec := erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": session.RefreshToken,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refresh status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var refreshed loginSession
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	refreshed.AccessToken, _ = body["access_token"].(string)
+	refreshed.RefreshToken, _ = body["refresh_token"].(string)
+	if refreshed.AccessToken == "" || refreshed.RefreshToken == "" {
+		t.Fatalf("refresh response missing tokens: %v", body)
+	}
+	if refreshed.RefreshToken == session.RefreshToken {
+		t.Fatal("refresh token was not rotated")
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": session.RefreshToken,
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old refresh status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+	if rec = erp.request(http.MethodGet, "/api/v1/auth/me", refreshed.AccessToken, nil); rec.Code != http.StatusOK {
+		t.Fatalf("refreshed access token status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/logout", "", map[string]any{
+		"refresh_token": refreshed.RefreshToken,
+	}); rec.Code != http.StatusNoContent {
+		t.Fatalf("logout status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": refreshed.RefreshToken,
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked refresh status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+// TestRefreshRejectsExpiredAndDisabledSessions 验证 refresh token 的过期和账号状态边界。
+func TestRefreshRejectsExpiredAndDisabledSessions(t *testing.T) {
+	erp := newTestApp(t)
+	session := erp.loginSession(t, "admin", "admin123456")
+	if err := erp.DB.Model(&model.RefreshSession{}).
+		Where("user_id = ?", 1).
+		Update("expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
+		t.Fatalf("expire refresh session: %v", err)
+	}
+	if rec := erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": session.RefreshToken,
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expired refresh status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	disabled := erp.createLimitedUserAndLoginSession(t)
+	var user model.User
+	if err := erp.DB.Where("username = ?", "limited").First(&user).Error; err != nil {
+		t.Fatalf("find limited user: %v", err)
+	}
+	if err := erp.DB.Model(&user).Update("status", model.StatusDisabled).Error; err != nil {
+		t.Fatalf("disable limited user: %v", err)
+	}
+	if rec := erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": disabled.RefreshToken,
+	}); rec.Code != http.StatusForbidden {
+		t.Fatalf("disabled refresh status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+// TestRefreshAllowsOnlyOneConcurrentRotation 验证同一个 refresh token 并发使用时只允许一次成功。
+func TestRefreshAllowsOnlyOneConcurrentRotation(t *testing.T) {
+	erp := newTestApp(t)
+	session := erp.loginSession(t, "admin", "admin123456")
+	statuses := make(chan int, 2)
+	var group sync.WaitGroup
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			rec := erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+				"refresh_token": session.RefreshToken,
+			})
+			statuses <- rec.Code
+		}()
+	}
+	group.Wait()
+	close(statuses)
+
+	var success, unauthorized int
+	for status := range statuses {
+		switch status {
+		case http.StatusOK:
+			success++
+		case http.StatusUnauthorized:
+			unauthorized++
+		}
+	}
+	if success != 1 || unauthorized != 1 {
+		t.Fatalf("concurrent refresh statuses = success:%d unauthorized:%d", success, unauthorized)
+	}
+}
+
 // TestChangePasswordInvalidatesOldToken 验证修改密码接口的认证、密码校验、
 // bcrypt 长度限制，以及密码版本递增后旧 JWT 立即失效。
 func TestChangePasswordInvalidatesOldToken(t *testing.T) {
@@ -81,6 +189,7 @@ func TestChangePasswordInvalidatesOldToken(t *testing.T) {
 		t.Fatalf("anonymous change password status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
 	token := erp.login(t, "admin", "admin123456")
+	secondSession := erp.loginSession(t, "admin", "admin123456")
 
 	tests := []struct {
 		name       string
@@ -130,6 +239,11 @@ func TestChangePasswordInvalidatesOldToken(t *testing.T) {
 	rec = erp.request(http.MethodGet, "/api/v1/auth/me", token, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("old token status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": secondSession.RefreshToken,
+	}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("refresh token after password change status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 	if rec = erp.request(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
 		"username": "admin",
@@ -303,6 +417,11 @@ type testApp struct {
 	*App
 }
 
+type loginSession struct {
+	AccessToken  string
+	RefreshToken string
+}
+
 // newTestApp 创建隔离测试应用。
 //
 // 参数说明：
@@ -373,6 +492,12 @@ func (a *testApp) request(method, path, token string, body any) *httptest.Respon
 // - password：登录密码。
 func (a *testApp) login(t *testing.T, username, password string) string {
 	t.Helper()
+	return a.loginSession(t, username, password).AccessToken
+}
+
+// loginSession 登录并返回 access/refresh token 对，供会话轮换测试使用。
+func (a *testApp) loginSession(t *testing.T, username, password string) loginSession {
+	t.Helper()
 	rec := a.request(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
 		"username": username,
 		"password": password,
@@ -386,7 +511,11 @@ func (a *testApp) login(t *testing.T, username, password string) string {
 	if !ok || token == "" {
 		t.Fatalf("missing access_token in %v", body)
 	}
-	return token
+	refreshToken, ok := body["refresh_token"].(string)
+	if !ok || refreshToken == "" {
+		t.Fatalf("missing refresh_token in %v", body)
+	}
+	return loginSession{AccessToken: token, RefreshToken: refreshToken}
 }
 
 // createLimitedUserAndLogin 创建没有角色权限的普通账号并登录。
@@ -394,6 +523,11 @@ func (a *testApp) login(t *testing.T, username, password string) string {
 // 参数说明：
 // - t：当前测试对象。
 func (a *testApp) createLimitedUserAndLogin(t *testing.T) string {
+	t.Helper()
+	return a.createLimitedUserAndLoginSession(t).AccessToken
+}
+
+func (a *testApp) createLimitedUserAndLoginSession(t *testing.T) loginSession {
 	t.Helper()
 	hash, err := auth.HashPassword("limited123")
 	if err != nil {
@@ -410,7 +544,7 @@ func (a *testApp) createLimitedUserAndLogin(t *testing.T) string {
 	if err := a.DB.Create(&user).Error; err != nil {
 		t.Fatalf("create limited user: %v", err)
 	}
-	return a.login(t, "limited", "limited123")
+	return a.loginSession(t, "limited", "limited123")
 }
 
 // createTerminalUserAndLogin 创建部门终端账号并登录。

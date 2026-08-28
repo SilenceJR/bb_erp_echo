@@ -2,6 +2,10 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -14,6 +18,13 @@ import (
 	"github.com/labstack/echo/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+)
+
+var (
+	// ErrInvalidRefreshToken 表示 refresh token 不存在、过期或已被轮换/撤销。
+	ErrInvalidRefreshToken = errors.New("invalid refresh token")
+	// ErrRefreshAccountDisabled 表示 refresh token 所属账号已停用。
+	ErrRefreshAccountDisabled = errors.New("refresh account disabled")
 )
 
 const (
@@ -60,6 +71,14 @@ type Service struct {
 	DB *gorm.DB
 }
 
+// TokenPair 是登录或续期时返回给客户端的令牌集合。
+type TokenPair struct {
+	AccessToken      string
+	ExpiresAt        time.Time
+	RefreshToken     string
+	RefreshExpiresAt time.Time
+}
+
 // NewService 创建认证服务。
 //
 // 参数说明：
@@ -97,6 +116,134 @@ func (s *Service) IssueToken(user model.User) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("issue jwt token: %w", err)
 	}
 	return token, expiresAt, nil
+}
+
+// IssueTokenPair 为指定用户签发 access token 和新的 refresh token。
+//
+// 原始 refresh token 不会写入数据库，数据库只保存不可逆摘要。
+func (s *Service) IssueTokenPair(user model.User) (TokenPair, error) {
+	accessToken, expiresAt, err := s.IssueToken(user)
+	if err != nil {
+		return TokenPair{}, err
+	}
+
+	refreshToken, refreshExpiresAt, err := s.createRefreshSession(user.ID, time.Now())
+	if err != nil {
+		return TokenPair{}, err
+	}
+	return TokenPair{
+		AccessToken:      accessToken,
+		ExpiresAt:        expiresAt,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: refreshExpiresAt,
+	}, nil
+}
+
+// RotateRefreshToken 原子轮换 refresh token，并签发新的 access token。
+//
+// 旧 refresh token 成功使用后立即撤销；连续 30 天没有成功轮换时，旧会话自然过期。
+func (s *Service) RotateRefreshToken(raw string) (model.User, TokenPair, error) {
+	now := time.Now()
+	hash := hashRefreshToken(raw)
+	var user model.User
+	var pair TokenPair
+
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var session model.RefreshSession
+		if err := tx.Where("token_hash = ?", hash).First(&session).Error; err != nil {
+			return ErrInvalidRefreshToken
+		}
+		if session.RevokedAt != nil || !now.Before(session.ExpiresAt) {
+			return ErrInvalidRefreshToken
+		}
+		if err := tx.First(&user, session.UserID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidRefreshToken
+			}
+			return fmt.Errorf("load refresh session user: %w", err)
+		}
+		if user.Status != model.StatusActive {
+			return ErrRefreshAccountDisabled
+		}
+
+		accessToken, accessExpiresAt, err := s.IssueToken(user)
+		if err != nil {
+			return err
+		}
+		newRefreshToken, refreshExpiresAt, err := s.createRefreshSessionWithDB(tx, user.ID, now)
+		if err != nil {
+			return err
+		}
+
+		revokedAt := now
+		result := tx.Model(&model.RefreshSession{}).
+			Where("id = ? AND revoked_at IS NULL", session.ID).
+			Updates(map[string]any{"revoked_at": revokedAt, "last_used_at": now})
+		if result.Error != nil {
+			return fmt.Errorf("revoke rotated refresh session: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return ErrInvalidRefreshToken
+		}
+
+		pair = TokenPair{
+			AccessToken:      accessToken,
+			ExpiresAt:        accessExpiresAt,
+			RefreshToken:     newRefreshToken,
+			RefreshExpiresAt: refreshExpiresAt,
+		}
+		return nil
+	})
+	if err != nil {
+		return model.User{}, TokenPair{}, err
+	}
+	return user, pair, nil
+}
+
+// RevokeRefreshToken 撤销一个 refresh token；令牌不存在时保持幂等成功。
+func (s *Service) RevokeRefreshToken(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	now := time.Now()
+	return s.DB.Model(&model.RefreshSession{}).
+		Where("token_hash = ? AND revoked_at IS NULL", hashRefreshToken(raw)).
+		Updates(map[string]any{"revoked_at": now, "last_used_at": now}).Error
+}
+
+// RevokeRefreshTokensForUser 撤销指定用户的全部 refresh token。
+func (s *Service) RevokeRefreshTokensForUser(db *gorm.DB, userID uint, now time.Time) error {
+	return db.Model(&model.RefreshSession{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Updates(map[string]any{"revoked_at": now, "last_used_at": now}).Error
+}
+
+func (s *Service) createRefreshSession(userID uint, now time.Time) (string, time.Time, error) {
+	return s.createRefreshSessionWithDB(s.DB, userID, now)
+}
+
+func (s *Service) createRefreshSessionWithDB(db *gorm.DB, userID uint, now time.Time) (string, time.Time, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", time.Time{}, fmt.Errorf("generate refresh token: %w", err)
+	}
+	raw := base64.RawURLEncoding.EncodeToString(bytes)
+	expiresAt := now.Add(s.Config.JWT.RefreshExpiresIn)
+	session := model.RefreshSession{
+		UserID:     userID,
+		TokenHash:  hashRefreshToken(raw),
+		ExpiresAt:  expiresAt,
+		LastUsedAt: now,
+	}
+	if err := db.Create(&session).Error; err != nil {
+		return "", time.Time{}, fmt.Errorf("store refresh session: %w", err)
+	}
+	return raw, expiresAt, nil
+}
+
+func hashRefreshToken(raw string) string {
+	digest := sha256.Sum256([]byte(raw))
+	return fmt.Sprintf("%x", digest[:])
 }
 
 // NormalizePasswordVersion 将旧数据或旧 JWT 中缺失的版本视为初始版本。

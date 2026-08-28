@@ -46,6 +46,8 @@ air
 BB_ERP_HTTP_HOST=0.0.0.0
 BB_ERP_HTTP_PORT=8080
 BB_ERP_DATABASE_PATH=data/erp.db
+BB_ERP_JWT_EXPIRES_IN=2h
+BB_ERP_JWT_REFRESH_EXPIRES_IN=720h
 BB_ERP_ADMIN_USERNAME=admin
 ```
 
@@ -54,6 +56,8 @@ BB_ERP_ADMIN_USERNAME=admin
 - `BB_ERP_HTTP_HOST=0.0.0.0` 表示允许局域网其他电脑访问。
 - `BB_ERP_HTTP_PORT` 是端口，默认 `8080`。
 - `BB_ERP_DATABASE_PATH` 是 SQLite 数据库文件，默认 `data/erp.db`。
+- `BB_ERP_JWT_EXPIRES_IN` 是 access token 有效期，默认 `2h`。
+- `BB_ERP_JWT_REFRESH_EXPIRES_IN` 是 refresh token 每次轮换后的滚动有效期，默认 `720h`（30 天）。
 - JWT 密钥由系统内部使用，无需额外配置；首次登录后必须在“系统 / 用户”中修改默认管理员密码。
 
 ### 防火墙
@@ -187,6 +191,8 @@ Content-Type: application/json
 ```http
 Authorization: Bearer <token>
 ```
+
+客户端会在 access token 到期前自动使用 refresh token 续期。连续 30 天未成功续期后需要重新登录；修改密码后原登录会话会全部失效。
 
 列表接口通常支持：
 

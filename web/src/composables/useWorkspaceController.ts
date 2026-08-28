@@ -1,4 +1,4 @@
-import {computed, nextTick, onMounted, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {appMessageBox} from './useAppMessageBox'
 import {useAssignment} from './useAssignment'
 import {useAuth} from './useAuth'
@@ -7,11 +7,19 @@ import {useModuleData} from './useModuleData'
 import {useWarehouse} from './useWarehouse'
 import {useWorkorder} from './useWorkorder'
 import {ElMessage} from 'element-plus'
-import {ApiError, apiBaseUrl, desktopAppVersion, downloadApiFile, request, saveDesktopServerUrl, testDesktopServerUrl} from '../api/http'
+import {ApiError, apiBaseUrl, configureAuthSession, desktopAppVersion, downloadApiFile, request, saveDesktopServerUrl, testDesktopServerUrl} from '../api/http'
 import type {MetricTone} from '../components/ui/MetricCard.vue'
 import type {StatusTone} from '../components/ui/StatusTag.vue'
 import {type ModuleItem, modules} from '../data/modules'
 import type {BasicItem, ClientUpdateStatus, CurrentUser, PaginatedResponse, SkeletonResponse} from '../types'
+
+type AuthResponse = {
+  access_token: string
+  expires_at: string
+  refresh_token: string
+  refresh_expires_at: string
+  user: CurrentUser
+}
 
 
 /**
@@ -68,8 +76,12 @@ const {
 
 const {
   tokenKey,
+  refreshTokenKey,
+  tokenExpiresAtKey,
   desktopClient,
   token,
+  refreshToken,
+  tokenExpiresAt,
   currentUser,
   errorMessage,
   healthStatus,
@@ -85,6 +97,9 @@ const {
 } = useAuth()
 
 let authRequestGeneration = 0
+let refreshInFlight: Promise<string> | null = null
+let sessionRefreshTimer: number | undefined
+const sessionRefreshLeadMs = 5 * 60 * 1000
 
 const {
   activeKey,
@@ -863,6 +878,75 @@ function handlePageSizeChange(value: number) {
   void loadActiveModule()
 }
 
+function clearSessionRefreshTimer() {
+  if (sessionRefreshTimer !== undefined) {
+    window.clearTimeout(sessionRefreshTimer)
+    sessionRefreshTimer = undefined
+  }
+}
+
+function scheduleSessionRefresh() {
+  clearSessionRefreshTimer()
+  if (!token.value || !refreshToken.value) return
+
+  const expiresAt = Date.parse(tokenExpiresAt.value)
+  if (Number.isNaN(expiresAt)) return
+  const delay = Math.max(0, expiresAt - Date.now() - sessionRefreshLeadMs)
+  sessionRefreshTimer = window.setTimeout(() => {
+    void refreshSession().catch(() => handleAuthFailure())
+  }, delay)
+}
+
+function applyAuthResponse(data: AuthResponse) {
+  token.value = data.access_token
+  tokenExpiresAt.value = data.expires_at
+  refreshToken.value = data.refresh_token
+  currentUser.value = data.user
+  localStorage.setItem(tokenKey, data.access_token)
+  localStorage.setItem(tokenExpiresAtKey, data.expires_at)
+  localStorage.setItem(refreshTokenKey, data.refresh_token)
+  scheduleSessionRefresh()
+}
+
+async function refreshSession(): Promise<string> {
+  if (refreshInFlight) return refreshInFlight
+  const expectedRefreshToken = refreshToken.value
+  const expectedGeneration = authRequestGeneration
+  if (!expectedRefreshToken) throw new Error('登录会话已失效，请重新登录')
+
+  refreshInFlight = (async () => {
+    const data = await request<AuthResponse>('/api/v1/auth/refresh', {
+      method: 'POST',
+      body: {refresh_token: expectedRefreshToken},
+    })
+    if (expectedGeneration !== authRequestGeneration || refreshToken.value !== expectedRefreshToken) {
+      throw new Error('登录会话已结束，请重新登录')
+    }
+    applyAuthResponse(data)
+    return data.access_token
+  })().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
+function handleAuthFailure() {
+  authRequestGeneration += 1
+  clearAuthSession()
+  errorMessage.value = '登录已失效，请重新登录'
+}
+
+function refreshOnSessionActivity() {
+  if (document.visibilityState !== 'visible') return
+  if (!token.value || !refreshToken.value) return
+  const expiresAt = Date.parse(tokenExpiresAt.value)
+  if (!Number.isNaN(expiresAt) && expiresAt > Date.now() + sessionRefreshLeadMs) {
+    scheduleSessionRefresh()
+    return
+  }
+  void refreshSession().catch(() => handleAuthFailure())
+}
+
 async function login() {
   if (loading.value || serverTesting.value) return
   const requestGeneration = ++authRequestGeneration
@@ -871,16 +955,14 @@ async function login() {
   errorMessage.value = ''
   let loginFailed = false
   try {
-    const data = await request<{ access_token: string; user: CurrentUser }>('/api/v1/auth/login', {
+    const data = await request<AuthResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: loginForm,
     })
     if (requestGeneration !== authRequestGeneration || requestServerAddress !== apiBaseUrl()) {
       throw new Error('服务器地址已变化，本次登录结果已失效，请重新登录')
     }
-    token.value = data.access_token
-    currentUser.value = data.user
-    localStorage.setItem(tokenKey, data.access_token)
+    applyAuthResponse(data)
     await bootstrap(requestGeneration, requestServerAddress)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败'
@@ -895,14 +977,29 @@ async function login() {
 }
 
 function clearAuthSession() {
+  clearSessionRefreshTimer()
   token.value = ''
+  refreshToken.value = ''
+  tokenExpiresAt.value = ''
   currentUser.value = null
   localStorage.removeItem(tokenKey)
+  localStorage.removeItem(refreshTokenKey)
+  localStorage.removeItem(tokenExpiresAtKey)
 }
 
-function logout() {
+async function logout() {
+  const activeRefreshToken = refreshToken.value
   authRequestGeneration += 1
   clearAuthSession()
+  if (!activeRefreshToken) return
+  try {
+    await request<void>('/api/v1/auth/logout', {
+      method: 'POST',
+      body: {refresh_token: activeRefreshToken},
+    })
+  } catch {
+    // 本地会话已经清理，服务端撤销失败不阻止用户退出当前设备。
+  }
 }
 
 function openServerSettings() {
@@ -2276,7 +2373,16 @@ function workorderActionLabel(value: unknown): string {
   return labels[String(value)] || String(value || '-')
 }
 
+configureAuthSession({
+  getToken: () => token.value,
+  refresh: refreshSession,
+  onFailure: handleAuthFailure,
+})
+
 onMounted(() => {
+  window.addEventListener('focus', refreshOnSessionActivity)
+  document.addEventListener('visibilitychange', refreshOnSessionActivity)
+  scheduleSessionRefresh()
   if (token.value) {
     const requestGeneration = ++authRequestGeneration
     const requestServerAddress = apiBaseUrl()
@@ -2287,6 +2393,13 @@ onMounted(() => {
     void loadHealth()
     void loadClientUpdate()
   }
+})
+
+onBeforeUnmount(() => {
+  clearSessionRefreshTimer()
+  window.removeEventListener('focus', refreshOnSessionActivity)
+  document.removeEventListener('visibilitychange', refreshOnSessionActivity)
+  configureAuthSession(null)
 })
 
 

@@ -209,6 +209,14 @@ definitions:
     - password
     - username
     type: object
+  auth.RefreshRequest:
+    properties:
+      refresh_token:
+        description: RefreshToken 是登录或上次续期返回的 refresh token。
+        type: string
+    required:
+    - refresh_token
+    type: object
   auth.LoginResponse:
     properties:
       access_token:
@@ -216,6 +224,12 @@ definitions:
         type: string
       expires_at:
         description: ExpiresAt 是令牌过期时间。
+        type: string
+      refresh_expires_at:
+        description: RefreshExpiresAt 是本次 refresh token 的滚动失效时间。
+        type: string
+      refresh_token:
+        description: RefreshToken 是用于静默续期的轮换令牌。
         type: string
       user:
         allOf:
@@ -1070,6 +1084,72 @@ paths:
       security:
       - BearerAuth: []
       summary: 修改当前用户密码
+      tags:
+      - 登录认证
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 撤销当前 refresh token，客户端应同时清理本地 access token。
+      parameters:
+      - description: 退出参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+      summary: 退出登录
+      tags:
+      - 登录认证
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 轮换 refresh token 并签发新的 JWT；旧 refresh token 成功使用后立即失效。
+      parameters:
+      - description: 刷新参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.ErrorResponse'
+      summary: 刷新登录会话
       tags:
       - 登录认证
   /api/v1/auth/login:

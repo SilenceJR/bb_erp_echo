@@ -55,6 +55,38 @@ func TestIssueTokenIncludesPasswordVersion(t *testing.T) {
 	}
 }
 
+// TestIssueTokenPairStoresOnlyRefreshHash 验证 refresh token 只以摘要形式持久化。
+func TestIssueTokenPairStoresOnlyRefreshHash(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	if err := db.AutoMigrate(&model.RefreshSession{}); err != nil {
+		t.Fatalf("migrate refresh sessions: %v", err)
+	}
+
+	service := NewService(&config.Config{JWT: config.JWTConfig{
+		Secret:           "test-secret",
+		ExpiresIn:        time.Hour,
+		RefreshExpiresIn: 24 * time.Hour,
+		Issuer:           "test-issuer",
+	}}, db)
+	pair, err := service.IssueTokenPair(model.User{ID: 7, PasswordVersion: 1})
+	if err != nil {
+		t.Fatalf("issue token pair: %v", err)
+	}
+	var session model.RefreshSession
+	if err := db.Where("user_id = ?", 7).First(&session).Error; err != nil {
+		t.Fatalf("find refresh session: %v", err)
+	}
+	if session.TokenHash == pair.RefreshToken || len(session.TokenHash) != 64 {
+		t.Fatalf("refresh token was not stored as a SHA-256 hex hash: %q", session.TokenHash)
+	}
+	if !session.ExpiresAt.After(session.LastUsedAt) {
+		t.Fatalf("refresh session expiry = %v, last used = %v", session.ExpiresAt, session.LastUsedAt)
+	}
+}
+
 func TestValidatePassword(t *testing.T) {
 	tests := []struct {
 		name     string

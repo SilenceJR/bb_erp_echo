@@ -7,7 +7,25 @@ Content-Type: application/json
   "password": "admin123456"
 }
 
-> {% client.global.set("token", response.body.access_token); %}
+> {% client.global.set("token", response.body.access_token); client.global.set("refresh_token", response.body.refresh_token); %}
+
+### 自动续期并轮换 refresh token
+POST http://127.0.0.1:8080/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refresh_token}}"
+}
+
+> {% client.global.set("token", response.body.access_token); client.global.set("refresh_token", response.body.refresh_token); %}
+
+### 退出登录并撤销 refresh token
+POST http://127.0.0.1:8080/api/v1/auth/logout
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refresh_token}}"
+}
 
 ### 修改当前账号密码（成功后需重新登录）
 POST http://127.0.0.1:8080/api/v1/auth/change-password

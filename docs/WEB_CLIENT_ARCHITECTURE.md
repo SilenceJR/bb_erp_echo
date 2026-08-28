@@ -116,6 +116,7 @@ flowchart TB
 | 页面 | 使用共用 Vue 页面 | 使用同一套共用 Vue 页面 |
 | 访问 Go 服务 | 浏览器发起同源或配置地址请求 | Rust HTTP 传话通道发起请求 |
 | 服务地址 | 使用浏览器端配置 | 可保存到本机并切换 |
+| 登录会话 | 共用 access/refresh token 自动轮换 | 共用 access/refresh token 自动轮换 |
 | 桌面文件和安装 | 不负责安装桌面程序 | Rust/Tauri 负责下载、安装和回滚 |
 | 更新显示 | 只能展示后端提供的正式版状态 | 可以检查、下载并执行正式版桌面更新；RC 使用独立便携 EXE 测试包 |
 | 业务 API | 与 Client 使用同样的路径和字段 | 与 Web 使用同样的路径和字段 |
@@ -143,6 +144,11 @@ sequenceDiagram
         workspace->>api: 查询当前用户信息
         api-->>workspace: 返回角色、部门和权限
         workspace-->>user: 显示允许使用的菜单和操作
+        loop access token 临近过期或接口返回 401
+            workspace->>api: 提交 refresh token
+            api-->>workspace: 返回轮换后的令牌
+            workspace->>api: 使用新 access token 重试原请求
+        end
     else 登录失败
         api-->>login: 返回错误
         login-->>user: 显示错误并保留登录页面

@@ -93,9 +93,16 @@ sequenceDiagram
     auth->>db: 查询账号、状态、角色和权限
     db-->>auth: 返回账号信息
     alt 账号有效
-        auth-->>api: 生成登录凭证
-        api-->>page: 返回登录成功和可用权限
+        auth->>db: 保存 refresh token 摘要
+        auth-->>api: 生成 access/refresh 登录凭证
+        api-->>page: 返回登录成功、令牌和可用权限
         page-->>user: 显示允许使用的菜单和操作
+        loop access token 临近过期
+            page->>api: 提交 refresh token
+            api->>auth: 原子轮换 refresh token
+            auth->>db: 撤销旧会话并保存新摘要
+            api-->>page: 返回新的登录凭证
+        end
     else 账号或密码错误
         auth-->>api: 拒绝登录
         api-->>page: 返回错误原因
@@ -258,7 +265,7 @@ sequenceDiagram
 
 已实现但需要真实环境验收的内容：
 
-- JWT 使用系统内部密钥；管理员首次登录后在系统内修改默认密码。
+- JWT 使用系统内部密钥；access token 默认 2 小时，refresh token 按活跃会话滚动 30 天；管理员首次登录后在系统内修改默认密码。
 - 真实账号下的权限和组织/部门数据范围。
 - Windows 10/11 安装、升级、断网和回滚。
 - SQLite、图片目录和更新缓存的备份恢复。

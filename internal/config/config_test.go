@@ -34,6 +34,9 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Web.DistDir != "web/dist" {
 		t.Fatalf("web dist dir = %q", cfg.Web.DistDir)
 	}
+	if cfg.JWT.ExpiresIn != 2*time.Hour || cfg.JWT.RefreshExpiresIn != 30*24*time.Hour {
+		t.Fatalf("unexpected jwt durations: expires=%s refresh=%s", cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
+	}
 	if cfg.Update.CheckInterval != 6*time.Hour || cfg.Update.ManifestTimeout != 20*time.Second || cfg.Update.DownloadTimeout != 10*time.Minute {
 		t.Fatalf("unexpected update durations: %+v", cfg.Update)
 	}
@@ -45,6 +48,8 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_LOG_DIR", "tmp-logs")
 	t.Setenv("BB_ERP_LOG_CONSOLE", "false")
 	t.Setenv("BB_ERP_LOG_RETENTION_DAYS", "7")
+	t.Setenv("BB_ERP_JWT_EXPIRES_IN", "90m")
+	t.Setenv("BB_ERP_JWT_REFRESH_EXPIRES_IN", "168h")
 	t.Setenv("BB_ERP_WEB_ENABLED", "false")
 	t.Setenv("BB_ERP_WEB_DIST_DIR", "tmp-web-dist")
 	t.Setenv("BB_ERP_UPDATE_CHECK_INTERVAL", "30m")
@@ -75,6 +80,9 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Web.DistDir != "tmp-web-dist" {
 		t.Fatalf("web dist dir = %q", cfg.Web.DistDir)
+	}
+	if cfg.JWT.ExpiresIn != 90*time.Minute || cfg.JWT.RefreshExpiresIn != 168*time.Hour {
+		t.Fatalf("jwt env durations: expires=%s refresh=%s", cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
 	}
 	if cfg.Update.CheckInterval != 30*time.Minute || cfg.Update.ManifestTimeout != 9*time.Second || cfg.Update.DownloadTimeout != 2*time.Minute {
 		t.Fatalf("update env durations: %+v", cfg.Update)

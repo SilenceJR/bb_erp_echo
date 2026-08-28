@@ -71,8 +71,10 @@ type DatabaseConfig struct {
 type JWTConfig struct {
 	// Secret 是 JWT HMAC 签名密钥，按当前部署策略使用系统内部配置。
 	Secret string `koanf:"secret"`
-	// ExpiresIn 是 access token 有效期，例如 24h。
+	// ExpiresIn 是 access token 有效期，例如 2h。
 	ExpiresIn time.Duration `koanf:"expires_in"`
+	// RefreshExpiresIn 是 refresh token 在每次成功轮换后的滚动有效期，例如 720h。
+	RefreshExpiresIn time.Duration `koanf:"refresh_expires_in"`
 	// Issuer 是 JWT 签发方，用于区分令牌来源。
 	Issuer string `koanf:"issuer"`
 }
@@ -149,7 +151,8 @@ func Load() (*Config, error) {
 		"http.allowed_origins":           []string{"http://localhost:3000", "http://localhost:5173"},
 		"database.path":                  "data/erp.db",
 		"jwt.secret":                     "change-me-in-production",
-		"jwt.expires_in":                 "24h",
+		"jwt.expires_in":                 "2h",
+		"jwt.refresh_expires_in":         "720h",
 		"jwt.issuer":                     "bb-erp-echo",
 		"log.level":                      "info",
 		"log.dir":                        "logs",
@@ -186,9 +189,29 @@ func Load() (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	// JWT duration names contain a semantic underscore; read the public environment
+	// variable names directly so BB_ERP_JWT_EXPIRES_IN and its refresh counterpart
+	// are not split into a different koanf path.
+	if expiresIn, ok := os.LookupEnv("BB_ERP_JWT_EXPIRES_IN"); ok {
+		parsed, err := time.ParseDuration(strings.TrimSpace(expiresIn))
+		if err != nil {
+			return nil, fmt.Errorf("parse BB_ERP_JWT_EXPIRES_IN: %w", err)
+		}
+		cfg.JWT.ExpiresIn = parsed
+	}
+	if refreshExpiresIn, ok := os.LookupEnv("BB_ERP_JWT_REFRESH_EXPIRES_IN"); ok {
+		parsed, err := time.ParseDuration(strings.TrimSpace(refreshExpiresIn))
+		if err != nil {
+			return nil, fmt.Errorf("parse BB_ERP_JWT_REFRESH_EXPIRES_IN: %w", err)
+		}
+		cfg.JWT.RefreshExpiresIn = parsed
+	}
 
 	if cfg.JWT.ExpiresIn == 0 {
-		cfg.JWT.ExpiresIn = 24 * time.Hour
+		cfg.JWT.ExpiresIn = 2 * time.Hour
+	}
+	if cfg.JWT.RefreshExpiresIn == 0 {
+		cfg.JWT.RefreshExpiresIn = 30 * 24 * time.Hour
 	}
 	if cfg.Log.Dir == "" {
 		cfg.Log.Dir = "logs"

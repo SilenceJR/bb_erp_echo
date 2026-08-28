@@ -84,7 +84,7 @@ npm ci
 npm run desktop:dev
 ```
 
-默认管理员为 `admin` / `admin123456`。首次进入管理系统后，应在“系统 / 用户”中将管理员密码修改为正式密码；JWT 密钥由系统内部使用，无需额外配置。
+默认管理员为 `admin` / `admin123456`。首次进入管理系统后，应在“系统 / 用户”中将管理员密码修改为正式密码；JWT 密钥由系统内部使用，无需额外配置。默认 access token 有效期为 2 小时，客户端会使用 refresh token 自动续期；连续 30 天未成功续期后需要重新登录。可通过 `BB_ERP_JWT_EXPIRES_IN` 和 `BB_ERP_JWT_REFRESH_EXPIRES_IN` 调整期限。
 
 ## 内网部署与网络方案
 
@@ -99,6 +99,8 @@ BB_ERP_HTTP_HOST=0.0.0.0
 BB_ERP_HTTP_PORT=8080
 BB_ERP_HTTP_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 BB_ERP_DATABASE_PATH=data/erp.db
+BB_ERP_JWT_EXPIRES_IN=2h
+BB_ERP_JWT_REFRESH_EXPIRES_IN=720h
 BB_ERP_LOG_DIR=logs
 BB_ERP_FILES_ROOT_DIR=static/uploads
 BB_ERP_WEB_ENABLED=true

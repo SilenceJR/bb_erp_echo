@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-27
+更新时间：2026-08-28
 
 ## 文档入口
 
@@ -22,7 +22,7 @@ GET /swagger/doc.json
 
 ## 认证
 
-除 `/health`、`/ready`、`/api/v1/auth/login`、`/swagger/*` 外，业务接口默认需要：
+除 `/health`、`/ready`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/swagger/*` 外，业务接口默认需要：
 
 ```http
 Authorization: Bearer <token>
@@ -81,7 +81,9 @@ q=关键字
 ```json
 {
   "access_token": "...",
-  "expires_at": "2026-07-31T17:00:00+08:00",
+  "expires_at": "2026-08-28T14:00:00+08:00",
+  "refresh_token": "...",
+  "refresh_expires_at": "2026-09-27T12:00:00+08:00",
   "user": {
     "id": 1,
     "username": "admin",
@@ -91,9 +93,27 @@ q=关键字
 }
 ```
 
+默认 access token 有效期为 2 小时，refresh token 默认在 30 天无成功续期后失效；每次续期都会轮换 refresh token。服务端可通过 `BB_ERP_JWT_EXPIRES_IN` 和 `BB_ERP_JWT_REFRESH_EXPIRES_IN` 环境变量覆盖。
+
+### POST /api/v1/auth/refresh
+
+续期接口不需要 Bearer Token，只需提交最近一次登录或续期返回的 refresh token：
+
+```json
+{
+  "refresh_token": "..."
+}
+```
+
+成功返回与登录相同的令牌和当前用户结构；旧 refresh token 立即失效。令牌无效、已过期或已轮换返回 `401`，账号停用返回 `403`。
+
+### POST /api/v1/auth/logout
+
+撤销当前 refresh token，成功返回 `204 No Content`。客户端仍应立即清理本地 access token；已经签发的 access token 会在自身过期或密码版本变化前保持可验证。
+
 ### POST /api/v1/auth/change-password
 
-修改当前登录账号密码。请求必须携带当前有效的 Bearer Token；成功后旧 JWT 立即失效，需要重新登录。
+修改当前登录账号密码。请求必须携带当前有效的 Bearer Token；成功后旧 JWT 立即失效，同时撤销该账号的全部 refresh token，需要重新登录。
 
 请求：
 

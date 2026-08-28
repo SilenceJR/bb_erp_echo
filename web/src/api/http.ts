@@ -1,6 +1,20 @@
 import type { ApiErrorBody } from '../types'
 import {activeTransport, desktopBridge} from './transport'
 
+export interface AuthSessionHooks {
+  getToken: () => string
+  refresh: () => Promise<string>
+  onFailure: () => void
+}
+
+let authSessionHooks: AuthSessionHooks | null = null
+
+// configureAuthSession 注册 Web 与 Tauri 共用的认证续期回调。
+// 请求层只负责一次 401 重试，具体令牌状态仍由工作台控制器管理。
+export function configureAuthSession(hooks: AuthSessionHooks | null): void {
+  authSessionHooks = hooks
+}
+
 // ApiRequestOptions 扩展 fetch 配置，允许调用方直接传普通对象作为 JSON body。
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown>
@@ -44,11 +58,11 @@ export async function request<T>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await activeTransport().fetch(path, {
+  const response = await fetchWithAuthRetry(path, {
     ...options,
     headers,
     body,
-  })
+  }, token)
 
   if (response.status === 204) {
     return undefined as T
@@ -78,7 +92,7 @@ export async function requestBlob(
   const headers = new Headers(options.headers)
   headers.set('Accept', 'image/*, application/octet-stream')
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await activeTransport().fetch(path, {...options, headers})
+  const response = await fetchWithAuthRetry(path, {...options, headers}, token)
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || ''
     const data = contentType.includes('application/json') ? await response.json() : await response.text()
@@ -90,6 +104,31 @@ export async function requestBlob(
     throw new ApiError(response.status, fallback)
   }
   return response.blob()
+}
+
+async function fetchWithAuthRetry(path: string, init: RequestInit, token: string): Promise<Response> {
+  let response = await activeTransport().fetch(path, init)
+  if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
+
+  try {
+    const currentToken = authSessionHooks!.getToken()
+    const refreshedToken = currentToken && currentToken !== token
+      ? currentToken
+      : await authSessionHooks!.refresh()
+    const retryHeaders = new Headers(init.headers)
+    retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
+    response = await activeTransport().fetch(path, {...init, headers: retryHeaders})
+  } catch {
+    authSessionHooks!.onFailure()
+  }
+  return response
+}
+
+function shouldRefreshAfterUnauthorized(path: string, token: string, response: Response): boolean {
+  if (response.status !== 401 || !token || !authSessionHooks) return false
+  return !path.startsWith('/api/v1/auth/login')
+    && !path.startsWith('/api/v1/auth/refresh')
+    && !path.startsWith('/api/v1/auth/logout')
 }
 
 // downloadApiFile 通过当前 HttpTransport 获取受保护文件。Tauri 会走 Rust HTTP

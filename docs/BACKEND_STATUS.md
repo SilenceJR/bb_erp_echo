@@ -15,8 +15,8 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 | 领域 | 状态 | 当前说明 | 依据 |
 | --- | --- | --- | --- |
 | 服务启动与配置 | 已完成 | 配置默认值、BB_ERP_ 环境变量覆盖、健康检查、就绪检查和优雅关闭已接入。 | internal/app、internal/config |
-| SQLite 数据层 | 已完成 | 自动建表/迁移、WAL、外键和忙等待配置已接入；当前按单机内网场景设计。 | internal/database、internal/model |
-| 登录认证 | 已完成 | JWT 登录、当前用户、账号状态检查、当前账号修改密码和密码版本失效校验已实现。 | internal/auth、internal/middleware/auth.go |
+| SQLite 数据层 | 已完成 | 自动建表/迁移、WAL、外键、忙等待和持久化 refresh 会话已接入；当前按单机内网场景设计。 | internal/database、internal/model |
+| 登录认证 | 已完成 | JWT 登录、2 小时 access token、活跃 30 天 refresh token 轮换、退出撤销、账号状态检查、当前账号修改密码和密码版本失效校验已实现。 | internal/auth、internal/middleware/auth.go |
 | 角色与权限 | 已完成 | Casbin RBAC、权限初始化、角色/权限配置和组织/部门数据范围校验已实现。 | internal/role、internal/user |
 | 审计与请求日志 | 已完成 | 写操作审计、个人账号/部门终端账号身份记录、结构化日志和请求 ID 已接入。 | internal/audit、internal/middleware、internal/logger |
 | 客户、联系人、供应商 | 已完成 | 列表、分页、搜索、创建、更新/删除及联系人电话明细已实现。 | internal/customer、internal/contact、internal/supplier |
@@ -45,7 +45,8 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 
 ### 3.2 认证、权限与审计
 
-- 登录返回 JWT 和当前账号信息；受保护 API 通过 Bearer Token 校验账号状态。
+- 登录返回 JWT、refresh token 和当前账号信息；受保护 API 通过 Bearer Token 校验账号状态，refresh token 只保存 SHA-256 摘要并在成功续期后轮换。
+- `/api/v1/auth/refresh` 支持活跃会话自动续期，`/api/v1/auth/logout` 撤销 refresh token；修改密码会在同一事务中撤销该账号全部 refresh 会话。
 - Casbin 权限以 API object/action 表达，当前 action 为 read/write；中间件同时校验组织和部门数据范围。
 - cost:view 独立控制采购单价、平均成本、库存金额和统计金额，后端响应会主动裁剪无权限字段。
 - 写操作审计记录账号类型、组织、部门、终端、请求 ID、路径、状态和结果；部门终端账号的具体人员显示为“未知”。
