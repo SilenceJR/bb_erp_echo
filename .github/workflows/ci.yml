@@ -676,7 +676,7 @@ jobs:
           name: bb-erp-server-windows-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
+          archive: true
           path: release-build/bb-erp-server-windows.zip
 
       - name: Upload Windows client package
@@ -685,7 +685,7 @@ jobs:
           name: bb-erp-client-windows-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
+          archive: true
           path: release-build/bb-erp-client-windows.zip
 
       - name: Upload Windows all-in-one package
@@ -694,7 +694,7 @@ jobs:
           name: bb-erp-all-in-one-windows-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
+          archive: true
           path: release-build/bb-erp-all-in-one-windows.zip
 
       - name: Upload Windows updater
@@ -703,7 +703,7 @@ jobs:
           name: bb-erp-updater-windows-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
+          archive: true
           path: release-build/bb-erp-updater-windows.zip
 
       - name: Upload update manifest
@@ -713,7 +713,7 @@ jobs:
           name: update-manifest-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 14
-          archive: false
+          archive: true
           path: release-build/update-manifest.json
 
       - name: Upload Windows portable client test package
@@ -756,31 +756,31 @@ jobs:
       - name: Download server release asset
         uses: actions/download-artifact@v8
         with:
-          name: bb-erp-server-windows.zip
+          name: bb-erp-server-windows-${{ github.run_number }}
           path: release-assets
 
       - name: Download client release asset
         uses: actions/download-artifact@v8
         with:
-          name: bb-erp-client-windows.zip
+          name: bb-erp-client-windows-${{ github.run_number }}
           path: release-assets
 
       - name: Download all-in-one release asset
         uses: actions/download-artifact@v8
         with:
-          name: bb-erp-all-in-one-windows.zip
+          name: bb-erp-all-in-one-windows-${{ github.run_number }}
           path: release-assets
 
       - name: Download updater release asset
         uses: actions/download-artifact@v8
         with:
-          name: bb-erp-updater-windows.zip
+          name: bb-erp-updater-windows-${{ github.run_number }}
           path: release-assets
 
       - name: Download update manifest
         uses: actions/download-artifact@v8
         with:
-          name: update-manifest.json
+          name: update-manifest-${{ github.run_number }}
           path: release-assets
 
       - name: Download portable client release asset
