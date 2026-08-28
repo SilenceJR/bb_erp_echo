@@ -148,11 +148,24 @@ release_json="$(curl --fail --silent --show-error --location -X POST "${auth[@]}
 release_id="$(jq -er '.id' <<<"$release_json")"
 
 echo "Uploading versioned release assets..."
+upload_pids=()
+upload_files=()
 for file in "${!resource_hashes[@]}"; do
   curl --fail --silent --show-error --location -X POST "${auth[@]}" "${json[@]}" \
+    --connect-timeout 30 --max-time 900 \
     -F "file=@$asset_dir/$file" \
-    "$api_base/repos/$release_owner/$release_repo/releases/$release_id/attach_files" >/dev/null
+    "$api_base/repos/$release_owner/$release_repo/releases/$release_id/attach_files" >/dev/null &
+  upload_pids+=("$!")
+  upload_files+=("$file")
 done
+upload_failed=0
+for index in "${!upload_pids[@]}"; do
+  if ! wait "${upload_pids[$index]}"; then
+    echo "Failed to upload release asset: ${upload_files[$index]}" >&2
+    upload_failed=1
+  fi
+done
+(( upload_failed == 0 )) || exit 1
 
 echo "Verifying anonymous downloads, sizes, and SHA-256 hashes..."
 verify_dir="$(mktemp -d)"

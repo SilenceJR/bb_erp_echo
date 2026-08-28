@@ -65,7 +65,7 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于 GitHub Actions 的 `GITHUB_SHA`。
 2. 在公开发布仓库创建标签和 Release。
-3. 上传 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分。
+3. 并行上传 server、client、all-in-one、updater ZIP，以及签名 NSIS、便携 EXE和可选 zstd 差分；单个上传设置连接和总时限，避免 Gitee 附件接口无响应时无限等待。
 4. 动态读取 manifest 资源集合，匿名下载全部附件，复验大小、SHA-256 和签名字段。
 5. 仅在全部复验成功后更新公开仓库 `main/update-manifest.json`。
 6. 再次匿名读取稳定 manifest 并确认内容一致。
