@@ -42,12 +42,13 @@ if ($inputText -match 'untrusted comment: minisign public key') {
 }
 
 if ($publicText) {
-  $lines = @($publicText -split "`r`n|`n|`r" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  if ($lines.Count -ne 2 -or $lines[0] -notmatch '^untrusted comment: minisign public key ([0-9A-Fa-f]{16})$') {
+  $commentMatch = [regex]::Match($publicText, 'untrusted comment: minisign public key ([0-9A-Fa-f]{16})')
+  $keyMatches = [regex]::Matches($publicText, '[A-Za-z0-9+/]{50,}={0,2}')
+  if (-not $commentMatch.Success -or $keyMatches.Count -ne 1) {
     Fail "公钥文本必须包含匹配的 Minisign 注释和 Base64 公钥行"
   }
-  $commentKeyId = $Matches[1]
-  $keyLine = $lines[1]
+  $commentKeyId = $commentMatch.Groups[1].Value
+  $keyLine = $keyMatches[0].Value
 }
 
 if ($keyLine -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
