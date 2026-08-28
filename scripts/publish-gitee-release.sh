@@ -3,6 +3,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=release-semver.sh
 source "$script_dir/release-semver.sh"
+# shellcheck source=release-stable-migration.sh
+source "$script_dir/release-stable-migration.sh"
 
 api_base="${GITEE_API_BASE:-https://gitee.com/api/v5}"
 web_base="${GITEE_WEB_BASE:-https://gitee.com}"
@@ -181,9 +183,13 @@ if [[ "$stable_code" == "200" ]]; then
     echo "Release or current stable version is not valid SemVer: release=$release_version stable=$current_stable_version" >&2
     exit 1
   }
-  if [[ "$stable_comparison" != "1" ]]; then
+  if [[ "$stable_comparison" != "1" ]] \
+    && ! release_allows_historical_stable_migration "$current_stable_version" "$release_version"; then
     echo "Release version must be greater than current stable version: release=$release_version stable=$current_stable_version" >&2
     exit 1
+  fi
+  if [[ "$stable_comparison" != "1" ]]; then
+    echo "Using the explicitly authorized historical stable migration: $current_stable_version -> $release_version."
   fi
 elif [[ "$stable_code" != "404" ]]; then
   echo "Unable to recheck stable manifest (HTTP ${stable_code:-000}); refusing to update it." >&2

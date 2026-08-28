@@ -632,6 +632,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ steps.release.outputs.version == '0.0.2' && 'true' || 'false' }}
         run: bash scripts/build-client-update-v2.sh
 
       - name: Collect complete release assets
@@ -742,4 +743,5 @@ jobs:
           GITEE_RELEASE_REPO: ${{ vars.GITEE_RELEASE_REPO }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_ASSET_DIR: release-assets
+          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ github.ref_name == 'v0.0.2' && 'true' || 'false' }}
         run: bash scripts/publish-gitee-release.sh

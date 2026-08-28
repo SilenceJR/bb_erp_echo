@@ -6,6 +6,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=release-semver.sh
 source "$script_dir/release-semver.sh"
+# shellcheck source=release-stable-migration.sh
+source "$script_dir/release-stable-migration.sh"
 
 asset_dir="${RELEASE_ASSET_DIR:?RELEASE_ASSET_DIR is required}"
 manifest="${RELEASE_MANIFEST_FILE:-$asset_dir/update-manifest.json}"
@@ -78,9 +80,13 @@ if [[ "$stable_http_code" == "200" ]]; then
     echo "Current or stable manifest version is not valid SemVer: current=$version stable=$stable_version" >&2
     exit 1
   }
-  if [[ "$version_comparison" != "1" ]]; then
+  if [[ "$version_comparison" != "1" ]] \
+    && ! release_allows_historical_stable_migration "$stable_version" "$version"; then
     echo "Release version must be greater than stable version: current=$version stable=$stable_version" >&2
     exit 1
+  fi
+  if [[ "$version_comparison" != "1" ]]; then
+    echo "Using the explicitly authorized historical stable migration: $stable_version -> $version."
   fi
   previous_payload_b64="$(jq -er '.client_update_v2.payload // empty' "$previous_manifest" || true)"
   if [[ -n "$previous_payload_b64" ]]; then

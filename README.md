@@ -129,6 +129,12 @@ Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标�
 
 仓库拓扑、remote 切换、Secrets/Variables、最小权限、正式版发布和 RC 便携包测试见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。当前 Gitee 源码主仓库为 `SilenceJR/bb_erp_echo`，公开发布仓库为 `SilenceJR/bb_erp_releases`。
 
+### 0.0.x 正式版发布顺序
+
+当前代码作为正式版本 `0.0.2` 发布；随后仅增加发布验收记录文档并发布 `0.0.3`，用于验证正式客户端的自动升级链路。版本号由正式标签注入 Windows 服务端和 Tauri 客户端，源码依赖清单中的开发版本号不代表正式发布版本。
+
+用户验收顺序：先下载 `0.0.2` 全量包并启动服务端和客户端，保留数据库、上传图片、配置和日志；再在客户端检查并执行 `0.0.3` 更新，确认增量更新或完整包回退、重启后的版本显示和业务数据完整性。Windows 10/11 的安装、断网、损坏资源、不可写目录和回滚结果必须记录后，才能把发布环境标记为完成。
+
 ## 权限与仓库原则
 
 - `warehouse:read/write` 控制仓库与物品资料；`inventory:documents:read/write` 控制物品流水和四类出入库操作。
