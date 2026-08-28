@@ -30,8 +30,8 @@ flowchart TB
     subgraph storage["系统保存的数据"]
         db["SQLite 数据库<br/>账号、权限、资料、库存、任务、模具、审计"]:::done
         files["图片文件目录<br/>按业务对象受保护保存"]:::done
-        cache["客户端更新包缓存<br/>完整包和可选增量包"]:::done
-        remote["远程更新清单和发布资源<br/>用于版本检查和客户端下载"]:::pending
+        cache["正式版客户端更新包缓存<br/>完整包和可选增量包"]:::done
+        remote["正式版远程更新清单和发布资源<br/>用于版本检查和客户端下载"]:::pending
     end
 
     users --> clients
@@ -222,7 +222,7 @@ sequenceDiagram
 
 ### 4.5 服务端检查并缓存客户端更新
 
-用户只需要记住：服务端不会盲目下载更新包，只有版本、大小、哈希和签名都通过才会提供给客户端。
+用户只需要记住：服务端不会盲目下载正式版更新包，只有版本、大小、哈希和签名都通过才会提供给客户端。RC 和手动构建通过独立便携 EXE Artifact 测试，不进入服务端正式版更新缓存。
 
 ~~~mermaid
 sequenceDiagram

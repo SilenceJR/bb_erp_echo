@@ -26,10 +26,17 @@
 - `/api/v1/updates/client/tauri/windows/x86_64/<当前版本>` 提供官方 updater JSON；`/api/v1/updates/client/artifacts/<sha256>` 只分发当前已验签 manifest 中的内容寻址资源，支持 ETag 和 Range。
 - 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。
 - 兼容客户端 ZIP 仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。局域网服务可使用 HTTP，但 Rust 只接受 loopback/私网地址，所有自动更新资源仍须通过端到端签名与哈希验证；公网服务必须 HTTPS。
+- 客户端不检测、不选择 RC 渠道；自动更新始终只使用正式版 `update-manifest.json`。RC 或手动构建版本通过 GitHub Actions 提供的独立便携客户端 Artifact 测试，不加入正式版更新链路。
 
 ## 调试说明
 
 - 先启动 Go 后端：`go run ./cmd/server`
 - 再启动桌面调试：`cd client && npm run desktop:dev`
 - macOS 调试直接使用 Tauri dev。
+## RC 与手动构建测试
+
+- 预发布标签和 `workflow_dispatch` 只生成 Windows 构建 Artifact，不生成或更新正式版自动更新 manifest。
+- 使用 `bb-erp-client-windows-portable-*` Artifact 时，必须保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录。
+- RC 测试电脑应使用独立测试目录；测试 EXE 不应覆盖正式安装目录，也不应把测试包当作正式升级包分发。
+
 - Windows 支持通过 `npm run desktop:build` 构建安装包，前提是本机已安装 Rust、Node.js 和 Tauri 对应平台依赖。

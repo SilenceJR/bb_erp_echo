@@ -1,6 +1,6 @@
 # Gitee 主仓库与发布闭环
 
-本项目采用“Gitee 主仓库 → GitHub 只读镜像 → GitHub Actions Windows 构建 → Gitee 公开发布仓库”的单向链路。源码仓库可保持私有；公开发布仓库只保存 `update-manifest.json` 和版本 Release 附件。
+本项目采用“Gitee 主仓库 → GitHub 只读镜像 → GitHub Actions Windows 构建 → Gitee 公开发布仓库”的单向链路。源码仓库可保持私有；公开发布仓库只保存正式版 `update-manifest.json` 和正式版 Release 附件。RC 与手动构建只保留 GitHub Actions 临时 Artifact，不进入正式版更新链路。
 
 ## 仓库与本地 remote
 
@@ -8,7 +8,7 @@
 
 1. Gitee 源码主仓库：日常分支、合并和版本标签的唯一写入入口。
 2. GitHub 镜像仓库：接收 Gitee Push 镜像，只运行 Actions，不直接开发或打标签。
-3. Gitee 公开发布仓库：默认分支为 `main`，只保存稳定 manifest 和二进制 Release。
+3. Gitee 公开发布仓库：默认分支为 `main`，只保存正式版 manifest 和二进制 Release。
 
 取得实际 Gitee 地址后，在每个开发工作副本执行：
 
@@ -56,9 +56,10 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 | GitHub PR | 是 | 否 | 否 |
 | `main`/`master` push | 是 | 否 | 否 |
 | 手动 `workflow_dispatch` | 是 | 是，保留 14 天 | 否 |
-| 合法 `vMAJOR.MINOR.PATCH[-prerelease]` 标签 | 是 | 是 | 是 |
+| 合法正式版 `vMAJOR.MINOR.PATCH` 标签 | 是 | 是 | 是，更新正式版 manifest |
+| 合法预发布 `vMAJOR.MINOR.PATCH-prerelease` 标签 | 是 | 是 | 否，仅用于独立测试 |
 
-非法的 `v*` 标签会在 Windows 构建开始前失败。正式构建把标签的前导 `v` 去掉后注入 Go 和 Tauri，例如 `v1.2.3-rc.1` 对应应用版本 `1.2.3-rc.1`。
+非法的 `v*` 标签会在 Windows 构建开始前失败。构建会把标签的前导 `v` 去掉后注入 Go 和 Tauri，例如 `v1.2.3-rc.1` 对应应用版本 `1.2.3-rc.1`。预发布版本不会生成正式版签名更新清单，也不会运行 Gitee 发布任务。
 
 正式发布由 `scripts/publish-gitee-release.sh` 执行：
 
@@ -81,7 +82,7 @@ https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json
 https://gitee.com/SilenceJR/bb_erp_releases/releases/download/<标签>/<文件名>
 ```
 
-任一上传或复验失败时，稳定 manifest 不会被更新。已存在的同版本 Release 不会自动覆盖，避免重跑时静默替换已发布二进制；需要修复时应发布新的预发布或补丁版本标签。
+任一上传或复验失败时，正式版 manifest 不会被更新。发布脚本会拒绝预发布标签，即使被误调用也不能覆盖正式版 manifest。已存在的同版本 Release 不会自动覆盖，避免重跑时静默替换已发布二进制。
 
 全量便携包解压后的目录约定如下：
 
@@ -98,25 +99,31 @@ installer/<Tauri 安装器>
 
 ## 首次实际验收
 
-外部仓库、镜像、Secrets 和 Variables 配置完成后，用预发布标签执行一次闭环，例如：
+RC 或手动构建只用于生成独立测试包：
 
 ```bash
 git tag v0.1.0-rc.1
 git push origin v0.1.0-rc.1
 ```
 
-增量升级首次发布固定分两步：先发布 `v0.1.0-rc.4` 作为 v2 全量基线（没有可用的上一份 v2 manifest，因此不得生成差分）；完成 Windows 10/11 的 `rc.3 → rc.4` 全量安装、重启和配置保留验证后，再发布仅含无害版本变化的 `v0.1.0-rc.5`。`rc.5` 必须从稳定 `rc.4` 便携 EXE生成补丁、回放并逐字节等于新 EXE；补丁达到 NSIS 大小 80% 时按设计只发布全量。
+在对应 GitHub Actions 运行中下载 `bb-erp-client-windows-portable-*` Artifact，保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录后运行。该客户端只作为测试副本使用，不修改正式版 manifest，也不作为正式版自动更新来源。
 
-验收以下结果：Gitee 标签同步到 GitHub；Actions 三项验证和 Windows 构建成功；Gitee Release 中 manifest 声明的全部附件可匿名下载；稳定 manifest 中版本、URL、大小、SHA-256 和签名一致；`rc.4 → rc.5` 精确版本/哈希选择差分，`rc.3 → rc.5` 选择全量；国内内网服务电脑可访问稳定地址并由管理员立即检查、缓存客户端包。真实网络耗时、差分节省比例、断网/损坏/不可写/回滚结果记录在发布验收单中。
+正式版验收使用不带预发布标识的标签。只有正式版标签才生成签名 v2 更新清单、上传 Gitee Release，并在全部附件通过匿名下载、大小、SHA-256、签名和版本递增复验后更新正式版 manifest。差分升级仍只以正式版上一版本为基线。
+
+验收以下结果：正式版客户端能访问正式 manifest 并正常完成检查、差分/完整更新、重启和失败恢复；RC/手动 Artifact 能在独立目录启动；预发布标签不会触发 Gitee 发布或修改正式版 manifest；Windows 10/11 的安装、断网、损坏资源、不可写目录和回滚结果记录在发布验收单中。
+
+### 历史记录
+
+此前的 `v0.1.0-rc.3` 曾按旧流程发布并写入稳定 manifest。该记录仅用于历史追踪；切换到当前流程后，应先发布一个正式版标签，使正式版 manifest 恢复为正式版本。
 
 首次闭环已于 2026-08-26 16:35 CST 完成：
 
 - 源码提交：`f26d8c62081a8821c973972a28a9b9d2e1d8a091`
-- 预发布标签：`v0.1.0-rc.3`
+- 历史预发布标签：`v0.1.0-rc.3`
 - [GitHub Actions #18](https://github.com/SilenceJR/bb_erp_echo/actions/runs/32942763389)：Go、Web、Tauri 前端、Windows 打包和 Gitee 发布全部成功，总耗时 1 小时 6 分 7 秒。
 - [Gitee 预发布版本](https://gitee.com/SilenceJR/bb_erp_releases/releases/tag/v0.1.0-rc.3)：四个 Windows ZIP 均可匿名下载。
-- [稳定 manifest](https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json)：版本为 `0.1.0-rc.3`；四个附件的 URL、实际字节数和 SHA-256 经本地匿名下载复验一致。
+- [历史稳定 manifest](https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json)：当时版本为 `0.1.0-rc.3`；四个附件的 URL、实际字节数和 SHA-256 经本地匿名下载复验一致。
 
-首次联调中发现并修复了 Gitee API 对不存在 Release 返回 `200 null`、对不存在文件返回 `200 []` 的兼容问题。`v0.1.0-rc.1` 和 `v0.1.0-rc.2` 保留用于故障追踪；稳定 manifest 只在 `v0.1.0-rc.3` 的全部附件复验成功后更新。GitHub 向 Gitee 上传约 51.5 MB 发布附件耗时约 53 分钟，后续正式发布需为该阶段预留足够时间。
+首次联调中发现并修复了 Gitee API 对不存在 Release 返回 `200 null`、对不存在文件返回 `200 []` 的兼容问题。GitHub 向 Gitee 上传约 51.5 MB 发布附件耗时约 53 分钟，后续正式发布需为该阶段预留足够时间。
 
 参考：[Gitee 仓库镜像说明](https://blog.gitee.com/2021/07/15/repo-mirror/)、[Gitee Release 附件下载路由](https://blog.gitee.com/2022/08/18/update/)、[GitHub Actions Artifact](https://github.com/actions/upload-artifact)。

@@ -22,16 +22,9 @@ if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-
   exit 1
 fi
 if [[ "$tag" == *-* ]]; then
-  prerelease_part="${tag#*-}"
-  IFS='.' read -r -a prerelease_ids <<<"$prerelease_part"
-  for identifier in "${prerelease_ids[@]}"; do
-    if [[ "$identifier" =~ ^[0-9]+$ && ${#identifier} -gt 1 && "$identifier" == 0* ]]; then
-      echo "Invalid numeric prerelease identifier with a leading zero: $identifier" >&2
-      exit 1
-    fi
-  done
+  echo "Prerelease tag $tag is for standalone Windows client testing and must not update the stable manifest." >&2
+  exit 1
 fi
-
 if [[ ! -s "$asset_dir/update-manifest.json" ]]; then
   nested_manifest="$(find "$asset_dir" -mindepth 2 -maxdepth 2 -name update-manifest.json -type f -print -quit)"
   if [[ -n "$nested_manifest" ]]; then

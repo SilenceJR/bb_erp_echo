@@ -27,6 +27,11 @@ command -v jq >/dev/null
 command -v curl >/dev/null
 command -v sha256sum >/dev/null
 
+if [[ "$tag" == *-* || "$version" == *-* ]]; then
+  echo "Prerelease client builds are standalone test packages and cannot update the stable manifest." >&2
+  exit 1
+fi
+
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 

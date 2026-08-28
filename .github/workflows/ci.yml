@@ -159,17 +159,18 @@ jobs:
               throw "Invalid release tag '$tag'. Expected vMAJOR.MINOR.PATCH[-prerelease]."
             }
             $version = $tag.Substring(1)
-            "official=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            $stable = -not $tag.Contains('-')
             "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
             $version = "0.0.0-dev.${{ github.run_number }}"
-            "official=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            $stable = $false
             "tag=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
+          "stable=$($stable.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Validate Gitee release configuration
-        if: steps.release.outputs.official == 'true'
+        if: steps.release.outputs.stable == 'true'
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -257,10 +258,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           BB_ERP_UPDATE_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
         run: |
-          $createUpdaterArtifacts = "${{ steps.release.outputs.official }}" -eq "true"
+          $createUpdaterArtifacts = "${{ steps.release.outputs.stable }}" -eq "true"
           if (-not $createUpdaterArtifacts) {
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
+            Remove-Item Env:BB_ERP_UPDATE_PUBLIC_KEY -ErrorAction SilentlyContinue
           }
           @{ version = "${{ steps.release.outputs.version }}"; bundle = @{ createUpdaterArtifacts = $createUpdaterArtifacts } } | ConvertTo-Json -Compress |
             Set-Content -Path "../release-build/tauri-version.json" -Encoding UTF8
@@ -323,6 +325,17 @@ jobs:
             "install_mode": "portable"
           }
           "@ | Set-Content -Path (Join-Path $clientPackageRoot "client/bb-erp-portable.json") -Encoding UTF8
+          $portableTestRoot = "release-build/bb-erp-client-windows-x86_64-portable"
+          New-Item -ItemType Directory -Force -Path $portableTestRoot | Out-Null
+          Copy-Item -LiteralPath $clientExePath (Join-Path $portableTestRoot "bb-erp-client-windows-x86_64.exe") -Force
+          Copy-Item -LiteralPath (Join-Path $clientPackageRoot "client/bb-erp-portable.json") (Join-Path $portableTestRoot "bb-erp-portable.json") -Force
+          @"
+          博邦 ERP Windows 便携客户端测试包
+          ==================================
+
+          请将本目录中的 EXE 与 bb-erp-portable.json 保持在同一目录后运行 EXE。
+          RC 或手动构建版本仅用于独立测试，不会参与正式版自动更新。
+          "@ | Set-Content -Path (Join-Path $portableTestRoot "README.txt") -Encoding UTF8
           $installers = Get-ChildItem "client/src-tauri/target/release/bundle" -Include "*.exe","*.msi" -Recurse -ErrorAction SilentlyContinue
           foreach ($installer in $installers) {
             Copy-Item $installer.FullName (Join-Path $clientPackageRoot ("installer/" + $installer.Name)) -Force
@@ -604,7 +617,7 @@ jobs:
           $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path "release-build/update-manifest.json" -Encoding UTF8
 
       - name: Build signed client update manifest and optional delta
-        if: steps.release.outputs.official == 'true'
+        if: steps.release.outputs.stable == 'true'
         shell: bash
         env:
           RELEASE_ASSET_DIR: release-build
@@ -673,6 +686,7 @@ jobs:
           path: release-build/bb-erp-updater-windows.zip
 
       - name: Upload update manifest
+        if: steps.release.outputs.stable == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: update-manifest-${{ github.run_number }}
@@ -680,6 +694,15 @@ jobs:
           retention-days: 14
           archive: false
           path: release-build/update-manifest.json
+
+      - name: Upload Windows portable client test package
+        uses: actions/upload-artifact@v7
+        with:
+          name: bb-erp-client-windows-portable-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+          path: release-build/bb-erp-client-windows-x86_64-portable
 
       - name: Upload complete release bundle for publishing
         uses: actions/upload-artifact@v7
@@ -693,7 +716,7 @@ jobs:
     name: Publish verified Gitee release
     runs-on: ubuntu-latest
     needs: [build-windows]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     environment: gitee-release
     concurrency:
       group: gitee-production-release

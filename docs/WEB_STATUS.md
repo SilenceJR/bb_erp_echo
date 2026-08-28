@@ -35,7 +35,7 @@ Web 模块化代码改造、统一弹窗样式改造以及 Tauri Client 对共�
 | 浏览器全流程验收 | 待完成 | 需要启动 Go API 并使用测试账号完成登录、权限、库存、模具、任务单和图片流程。 |
 | 功能分支与提交 | 待完成 | 当前修复在 `codex/fix-start-system-client-path` 分支，尚待提交、远端推送和合并。 |
 | Client 桌面运行态 | 待完成 | 需要在 macOS、Windows 10/11 真机完成登录、窗口、服务器切换、弹窗和更新流程验收。 |
-| Client 安装包验证 | 待完成 | 需要执行 `npm run desktop:build`，并完成 Windows 安装、升级、回滚和断网场景验证；全量便携包必须确认 `启动系统.bat` 能从 `client\bb_erp_client.exe` 启动客户端。 |
+| Client 安装包验证 | 待完成 | 需要执行 `npm run desktop:build`，并完成正式版 Windows 安装、升级、回滚和断网场景验证；RC/手动构建使用独立便携客户端 Artifact，确认 EXE 与 `bb-erp-portable.json` 同目录即可启动；全量便携包必须确认 `启动系统.bat` 能从 `client\bb_erp_client.exe` 启动客户端。 |
 
 ## 3. 目录职责
 
@@ -149,7 +149,7 @@ git diff --check
 - 库存出入库、未提交表单关闭确认、模具生命周期、任务单流转、图片删除的真实 API 交互验收。
 - 桌面宽度和移动宽度下 MessageBox 的视觉截图及键盘焦点验收。
 - Tauri Client 在 macOS、Windows 10/11 的真实窗口、HTTP 传输、服务器地址保存和更新入口验收。
-- Windows 安装包、NSIS/便携版升级、断网、损坏资源、不可写目录和回滚验收。
+- Windows 正式版安装包、NSIS/便携版升级、断网、损坏资源、不可写目录和回滚验收；RC/手动便携客户端 Artifact 的独立启动验收。
 
 ## 6. 后续工作顺序
 
