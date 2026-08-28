@@ -8,8 +8,9 @@ RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION=true
 release_allows_historical_stable_migration 0.1.0-rc.3 0.0.2
 release_allows_historical_stable_migration 0.1.0-rc.3 0.0.3
 release_allows_historical_stable_migration 0.1.0-rc.3 0.0.4
+release_allows_historical_stable_migration 0.1.0-rc.3 0.0.5
 
-if release_allows_historical_stable_migration 0.1.0-rc.3 0.0.5; then
+if release_allows_historical_stable_migration 0.1.0-rc.3 0.0.6; then
   echo "Accepted a historical migration beyond the second fallback release." >&2
   exit 1
 fi

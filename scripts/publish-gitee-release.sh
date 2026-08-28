@@ -5,6 +5,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/release-semver.sh"
 # shellcheck source=release-stable-migration.sh
 source "$script_dir/release-stable-migration.sh"
+# shellcheck source=gitee-release-upload.sh
+source "$script_dir/gitee-release-upload.sh"
 
 api_base="${GITEE_API_BASE:-https://gitee.com/api/v5}"
 web_base="${GITEE_WEB_BASE:-https://gitee.com}"
@@ -108,10 +110,16 @@ fi
 release_url="$api_base/repos/$release_owner/$release_repo/releases/tags/$tag"
 release_lookup="$(curl --fail --silent --show-error --location "${auth[@]}" "${json[@]}" "$release_url")"
 if jq -e 'type == "object" and .id != null' <<<"$release_lookup" >/dev/null; then
-  echo "Release $tag already exists in the Gitee distribution repository; refusing to overwrite it." >&2
-  exit 1
-fi
-if ! jq -e '. == null' <<<"$release_lookup" >/dev/null; then
+  expected_release_name="BB ERP $tag"
+  expected_release_body="Automated Windows release for $tag"
+  if ! jq -e --arg tag "$tag" --arg name "$expected_release_name" --arg body "$expected_release_body" \
+    '.tag_name == $tag and .name == $name and .body == $body' <<<"$release_lookup" >/dev/null; then
+    echo "Release $tag already exists but was not created by this publisher; refusing to modify it." >&2
+    exit 1
+  fi
+  release_id="$(jq -er '.id' <<<"$release_lookup")"
+  echo "Resuming publisher-owned Gitee Release $tag (id=$release_id)."
+elif ! jq -e '. == null' <<<"$release_lookup" >/dev/null; then
   echo "Unexpected response while checking Release $tag; refusing to publish." >&2
   exit 1
 fi
@@ -135,49 +143,36 @@ else
   exit 1
 fi
 
-prerelease=false
-[[ "$tag" == *-* ]] && prerelease=true
-echo "Creating the Gitee distribution release..."
-release_json="$(curl --fail --silent --show-error --location -X POST "${auth[@]}" "${json[@]}" \
-  --data-urlencode "tag_name=$tag" \
-  --data-urlencode "name=BB ERP $tag" \
-  --data-urlencode "body=Automated Windows release for $tag" \
-  --data-urlencode "target_commitish=main" \
-  --data-urlencode "prerelease=$prerelease" \
-  "$api_base/repos/$release_owner/$release_repo/releases")"
-release_id="$(jq -er '.id' <<<"$release_json")"
+if [[ -z "${release_id:-}" ]]; then
+  prerelease=false
+  [[ "$tag" == *-* ]] && prerelease=true
+  echo "Creating the Gitee distribution release..."
+  release_json="$(curl --fail --silent --show-error --location -X POST "${auth[@]}" "${json[@]}" \
+    --data-urlencode "tag_name=$tag" \
+    --data-urlencode "name=BB ERP $tag" \
+    --data-urlencode "body=Automated Windows release for $tag" \
+    --data-urlencode "target_commitish=main" \
+    --data-urlencode "prerelease=$prerelease" \
+    "$api_base/repos/$release_owner/$release_repo/releases")"
+  release_id="$(jq -er '.id' <<<"$release_json")"
+fi
 
-echo "Uploading versioned release assets..."
-upload_pids=()
+echo "Uploading or reusing versioned release assets..."
 upload_files=()
 for file in "${!resource_hashes[@]}"; do
-  # Gitee API v5 accepts release uploads reliably when the token and release
-  # identity are sent as multipart fields; large files may otherwise upload
-  # without returning a response.
-  curl --fail --silent --show-error --location -X POST "${json[@]}" \
-    --connect-timeout 30 --max-time 900 \
-    -F "access_token=$token" \
-    -F "owner=$release_owner" \
-    -F "repo=$release_repo" \
-    -F "release_id=$release_id" \
-    -F "file=@$asset_dir/$file" \
-    "$api_base/repos/$release_owner/$release_repo/releases/$release_id/attach_files" >/dev/null &
-  upload_pids+=("$!")
-  upload_files+=("$file")
+  upload_files+=("${resource_sizes[$file]}"$'\t'"$file")
 done
-upload_failed=0
-for index in "${!upload_pids[@]}"; do
-  if ! wait "${upload_pids[$index]}"; then
-    echo "Failed to upload release asset: ${upload_files[$index]}" >&2
-    upload_failed=1
-  fi
+mapfile -t upload_files < <(printf '%s\n' "${upload_files[@]}" | sort -n)
+for entry in "${upload_files[@]}"; do
+  file="${entry#*$'\t'}"
+  gitee_upload_release_asset "$file" "${resource_sizes[$file]}"
 done
-(( upload_failed == 0 )) || exit 1
 
 echo "Verifying anonymous downloads, sizes, and SHA-256 hashes..."
 verify_dir="$(mktemp -d)"
 trap 'rm -rf "$verify_dir"' EXIT
-for file in "${!resource_hashes[@]}"; do
+for entry in "${upload_files[@]}"; do
+  file="${entry#*$'\t'}"
   url="$web_base/$release_owner/$release_repo/releases/download/$tag/$file"
   curl --fail --silent --show-error --location --retry 6 --retry-all-errors \
     --output "$verify_dir/$file" "$url"

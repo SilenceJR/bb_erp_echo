@@ -15,7 +15,7 @@ on:
         default: ""
         type: string
       release_tag:
-        description: "可选：重试已有正式标签的发布，例如 v0.0.4；仅用于已存在标签，不创建新标签"
+        description: "可选：重试已有正式标签的发布，例如 v0.0.5；仅用于已存在标签，不创建新标签"
         required: false
         default: ""
         type: string
@@ -667,7 +667,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_UPDATER_PUBLIC_KEY: ${{ steps.updater-key.outputs.value }}
-          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (steps.release.outputs.version == '0.0.2' || steps.release.outputs.version == '0.0.3' || steps.release.outputs.version == '0.0.4') && 'true' || 'false' }}
+          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (steps.release.outputs.version == '0.0.2' || steps.release.outputs.version == '0.0.3' || steps.release.outputs.version == '0.0.4' || steps.release.outputs.version == '0.0.5') && 'true' || 'false' }}
         run: bash scripts/build-client-update-v2.sh
 
       - name: Upload Windows server package
@@ -727,6 +727,7 @@ jobs:
   publish-gitee:
     name: Publish verified Gitee release
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     needs: [build-windows]
     if: (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && !contains(inputs.release_tag, '-'))
     environment: gitee-release
@@ -813,5 +814,5 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
           RELEASE_EXPECTED_SHA: ${{ steps.release-source.outputs.value }}
           RELEASE_ASSET_DIR: release-assets
-          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (github.ref_name == 'v0.0.2' || github.ref_name == 'v0.0.3' || github.ref_name == 'v0.0.4' || inputs.release_tag == 'v0.0.2' || inputs.release_tag == 'v0.0.3' || inputs.release_tag == 'v0.0.4') && 'true' || 'false' }}
+          RELEASE_ALLOW_HISTORICAL_STABLE_MIGRATION: ${{ (github.ref_name == 'v0.0.2' || github.ref_name == 'v0.0.3' || github.ref_name == 'v0.0.4' || github.ref_name == 'v0.0.5' || inputs.release_tag == 'v0.0.2' || inputs.release_tag == 'v0.0.3' || inputs.release_tag == 'v0.0.4' || inputs.release_tag == 'v0.0.5') && 'true' || 'false' }}
         run: bash scripts/publish-gitee-release.sh
