@@ -118,7 +118,7 @@ git push origin v0.1.0-rc.1
 
 验收以下结果：正式版客户端能访问正式 manifest 并正常完成检查、差分/完整更新、重启和失败恢复；RC/手动 Artifact 能在独立目录启动；预发布标签不会触发 Gitee 发布或修改正式版 manifest；Windows 10/11 的安装、断网、损坏资源、不可写目录和回滚结果记录在发布验收单中。
 
-## 0.0.2 → 0.0.3 发布实施记录
+## 0.0.2 → 0.0.6 发布实施记录
 
 本次正式发布保留 `v0.0.1` 至 `v0.0.4` 标签及其提交历史，不覆盖远程对象。`v0.0.2` 和 `v0.0.3` 的 Gitee 大附件上传均超时并已清理未完成 Release；`v0.0.4` 完成全部 Windows 构建、Artifact 下载和 NSIS 提取，但 `bb-erp-all-in-one-windows.zip` 与独立便携 EXE 在 900 秒内仍以 0 字节响应超时，公开 Release 仅含部分附件，稳定 manifest 未更新。`0.0.5` 引入可恢复的串行上传与附件状态确认，作为新的正式基线；`0.0.6` 只用于验证相邻正式版本升级链路。
 
@@ -133,6 +133,14 @@ git push origin v0.1.0-rc.1
 5. 确认 `0.0.6` 的差分基线来自 `0.0.5`；若差分包超过 NSIS 的 80%，验证签名完整包回退。
 
 `0.0.5` 和 `0.0.6` 不新增业务 API；版本号由标签注入。用户先部署 `0.0.5` 全量包，再验证 `0.0.5 → 0.0.6` 的检查、差分或完整包回退、重启和失败恢复，并确认数据库、上传图片、配置和日志未被升级覆盖。
+
+### 0.0.5 正式发布验收
+
+- 源码提交和标签：`8aad538adefba4cef3e378a010af0a0a95a728cc` / `v0.0.5`。
+- [GitHub Actions #63](https://github.com/SilenceJR/bb_erp_echo/actions/runs/33195183416) 的 Go、Web、Tauri、Windows 构建、签名、Artifact 下载和 Gitee 发布全部成功。
+- 六个正式附件均在首次请求返回 HTTP 201；最大 all-in-one 实际上传约 27.4 MB、耗时约 743 秒。随后全部附件通过匿名下载、大小和 SHA-256 复验。
+- [Gitee 0.0.5 Release](https://gitee.com/SilenceJR/bb_erp_releases/releases/tag/v0.0.5) 已包含 updater、NSIS、client、server、独立便携 EXE 和 all-in-one；公开稳定 manifest 已验证为 `0.0.5`，并包含签名 v2 更新信息。
+- 历史 `0.1.0-rc.3` manifest 不含 v2 payload，因此 `0.0.5` 是完整更新基线，不生成历史 RC 差分；Windows 真机安装和 `0.0.5 → 0.0.6` 用户升级仍待验收。
 
 ### 历史记录
 
