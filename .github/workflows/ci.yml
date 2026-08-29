@@ -305,19 +305,24 @@ jobs:
         shell: pwsh
         env:
           TAURI_UPDATER_PUBLIC_KEY: ${{ steps.updater-key.outputs.value }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.version }}
+          PACKAGE_TAG: ${{ steps.release.outputs.tag }}
+          UPDATE_BASE_URL: ${{ inputs.update_base_url }}
+          GITEE_RELEASE_OWNER: ${{ vars.GITEE_RELEASE_OWNER }}
+          GITEE_RELEASE_REPO: ${{ vars.GITEE_RELEASE_REPO }}
         run: |
           $ErrorActionPreference = "Stop"
 
-          $version = "${{ steps.release.outputs.version }}"
-          $tag = "${{ steps.release.outputs.tag }}"
-          $baseUrl = "${{ inputs.update_base_url }}"
+          $version = $env:PACKAGE_VERSION
+          $tag = $env:PACKAGE_TAG
+          $baseUrl = $env:UPDATE_BASE_URL
           if (-not $baseUrl -and $tag) {
-            $baseUrl = "https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/releases/download/$tag"
+            $baseUrl = "https://gitee.com/$($env:GITEE_RELEASE_OWNER)/$($env:GITEE_RELEASE_REPO)/releases/download/$tag"
           }
           $baseUrl = $baseUrl.TrimEnd("/")
           $stableManifestUrl = ""
-          if ("${{ vars.GITEE_RELEASE_OWNER }}" -and "${{ vars.GITEE_RELEASE_REPO }}") {
-            $stableManifestUrl = "https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/raw/main/update-manifest.json"
+          if ($env:GITEE_RELEASE_OWNER -and $env:GITEE_RELEASE_REPO) {
+            $stableManifestUrl = "https://gitee.com/$($env:GITEE_RELEASE_OWNER)/$($env:GITEE_RELEASE_REPO)/raw/main/update-manifest.json"
           }
           $updateEnabled = if ($stableManifestUrl) { "true" } else { "false" }
           $updateSigningPublicKey = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $env:TAURI_UPDATER_PUBLIC_KEY) -join ""

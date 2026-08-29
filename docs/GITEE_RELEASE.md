@@ -210,6 +210,7 @@ Windows 10 和 Windows 11 分别记录以下结果；每项均需保存开始/�
 - 修复后的正式包必须确认：`version.json` 含标签版本和稳定 `manifest_url`；manifest 的服务端资源含由现有 Tauri/Minisign 私钥生成且可由已部署公钥流式验证的签名，包大小不超过 512 MiB；稳定加载器可激活暂存 updater/runner，runner 只按安装目录和可选明确 Service 名执行且保留退出码和 `pause`；显式 Service 必须实际指向目标目录的服务端 EXE，手工 `-package` 必须同时传入 manifest 的 `server.signature`；压缩前后 CI 都拒绝缺失元数据、引用内嵌 ZIP、不能传播升级器或隐藏日志的 server/all-in-one 包。
 - 0.0.8 不具备可信服务端包签名和可传播的加载器，首次恢复必须把下一正式版 all-in-one 全量包部署到新目录并只迁移业务数据；不要复用 0.0.8 的 updater/批处理，也不要先复制新版 `version.json` 到旧目录。确认修复基线运行正常后，再用其“一键升级服务端.bat”验收下一相邻版本，才能同时覆盖可信签名、runner 激活和回滚链路。
 - 下一正式版需在 Windows 10/11 复验：更新中心下载反馈、缓存复用、断网/超时/签名不符/损坏包错误、重复双击互斥、批处理窗口保留、日志内容、同路径进程停止与重启、Windows Service 显式服务名、updater/runner 下一轮激活、版本显示、失败回滚，以及数据库、上传图片、配置和历史日志保留。
+- 修复提交首次镜像产生的 GitHub Actions #77 在作业创建前报 `(Line: 308, Col: 14): Exceeded max expression length 21000`。原因是新增打包逻辑使含 `${{ ... }}` 的单个 PowerShell `run` 标量超过平台上限；现已把版本、标签、更新地址及 Gitee 仓库变量改为步骤 `env` 输入，避免 GitHub 把整段脚本作为超长表达式标量处理。后续 CI 结果须另行记录，不用本地 YAML 解析成功替代远程工作流验收。
 
 ### 历史记录
 
