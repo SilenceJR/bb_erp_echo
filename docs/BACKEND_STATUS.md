@@ -225,4 +225,4 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 - 新服务端包的 `version.json` 增加 `manifest_url`，升级成功时随服务端和公钥一起更新版本元数据；失败回滚时恢复旧元数据。用户启动脚本以及 `data`、`static`、`updates`、`logs` 仍不被新包覆盖。
 - 升级器使用安装目录级互斥锁和唯一备份目录；远端下载与显式 `-package` 都强制使用已安装公钥流式验签并限制为 512 MiB，手工包需同时提供 manifest 中的 `-package-signature`。便携部署只停止同一绝对路径的服务端进程；显式 Windows Service 名必须存在且实际指向目标目录的 `bb-erp-server.exe`。新版 updater/runner 暂存到独立文件，由下一次稳定加载器启动时激活，失败回滚会清理暂存文件。
 - 本地更新模块和升级器测试覆盖权限、按需下载、并发缓存复用、可信签名拒绝、损坏 ZIP、版本元数据、互斥锁、日志持久化、文件大小以及替换/回滚；Windows 新正式包的下载、批处理升级、服务重启和数据保留尚待复验，不标记完成。
-- 首次推送修复后 GitHub Actions #77 在创建作业前拒绝工作流：大型 PowerShell `run` 块因包含表达式而超过 GitHub 单表达式 21,000 字符上限。动态值已全部移入步骤 `env`，脚本只读取环境变量；本地校验确认仍含表达式的最大 YAML 标量为 1,413 字节，避免再次触发同类解析失败。
+- 首次推送修复后 GitHub Actions #77 在创建作业前拒绝工作流：大型 PowerShell `run` 块因包含表达式而超过 GitHub 单表达式 21,000 字符上限。动态值已全部移入步骤 `env`，脚本只读取环境变量；本地校验确认仍含表达式的最大 YAML 标量为 1,413 字节。修正后的 GitHub Actions #78 已成功完成 Go、Web、Tauri 前端与 Rust 核心四个验证作业。
