@@ -13,8 +13,9 @@ export interface ModuleItem {
 // modules 根据当前 Echo 后端已注册接口维护，后续后端扩展 CRUD 时同步调整。
 export const modules: ModuleItem[] = [
   { key: 'dashboard', title: '首页', group: 'dashboard', status: 'available', description: '常用功能与全部业务入口。' },
-  { key: 'users', title: '用户账号', group: 'system', path: '/api/v1/system/users', readPermission: 'system:users:read', writePermission: 'system:users:write', status: 'available', description: '个人账号和部门终端账号基础管理。' },
   { key: 'departments', title: '部门', group: 'system', path: '/api/v1/system/departments', readPermission: 'system:departments:read', writePermission: 'system:departments:write', status: 'available', description: '部门基础数据。' },
+  { key: 'employees', title: '员工档案', group: 'system', path: '/api/v1/system/employees', readPermission: 'system:employees:read', writePermission: 'system:employees:write', status: 'available', description: '维护员工档案、在职状态与所属部门。' },
+  { key: 'users', title: '用户账号', group: 'system', path: '/api/v1/system/users', readPermission: 'system:users:read', writePermission: 'system:users:write', status: 'available', description: '个人账号和部门终端账号基础管理。' },
   { key: 'terminals', title: '终端', group: 'system', path: '/api/v1/system/terminals', readPermission: 'system:terminals:read', writePermission: 'system:terminals:write', status: 'available', description: '公共电脑和部门终端。' },
   { key: 'roles', title: '角色', group: 'system', path: '/api/v1/system/roles', readPermission: 'system:roles:read', writePermission: 'system:roles:write', status: 'available', description: '角色清单与权限绑定入口。' },
   { key: 'permissions', title: '权限', group: 'system', path: '/api/v1/system/permissions', readPermission: 'system:permissions:read', status: 'available', description: '系统功能权限清单。' },

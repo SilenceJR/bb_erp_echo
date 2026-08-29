@@ -107,6 +107,11 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 
+	warehouse := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
+	if err := s.DB.FirstOrCreate(&warehouse, model.Warehouse{Code: warehouse.Code}).Error; err != nil {
+		return err
+	}
+
 	for _, permission := range DefaultPermissions() {
 		if err := s.DB.FirstOrCreate(&permission, model.Permission{Code: permission.Code}).Error; err != nil {
 			return err
@@ -430,6 +435,8 @@ func DefaultPermissions() []model.Permission {
 		{"组织维护", "system:organizations:write", "/api/v1/system/organizations", "write"},
 		{"部门查看", "system:departments:read", "/api/v1/system/departments", "read"},
 		{"部门维护", "system:departments:write", "/api/v1/system/departments", "write"},
+		{"员工查看", "system:employees:read", "/api/v1/system/employees", "read"},
+		{"员工维护", "system:employees:write", "/api/v1/system/employees", "write"},
 		{"终端查看", "system:terminals:read", "/api/v1/system/terminals", "read"},
 		{"终端维护", "system:terminals:write", "/api/v1/system/terminals", "write"},
 		{"用户查看", "system:users:read", "/api/v1/system/users", "read"},

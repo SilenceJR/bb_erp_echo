@@ -6,6 +6,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/operator"
 	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
@@ -30,18 +31,24 @@ func Audit(db *gorm.DB, logger *slog.Logger) echo.MiddlewareFunc {
 			}
 
 			current := auth.GetCurrentUser(c)
+			status := response.ResponseStatus(c)
+			// Echo 延迟到上层 HTTPErrorHandler 写错误响应；此时 middleware
+			// 看到的响应状态仍可能是 200。审计不能把失败请求记录成成功状态。
+			if err != nil && status < http.StatusBadRequest {
+				status = response.StatusFromError(err)
+			}
 			log := model.AuditLog{
 				RequestID: c.Response().Header().Get(echo.HeaderXRequestID),
 				Object:    c.Path(),
 				Action:    method,
 				Method:    method,
 				Path:      c.Request().URL.Path,
-				Status:    response.ResponseStatus(c),
+				Status:    status,
 				RemoteIP:  c.RealIP(),
 				UserAgent: c.Request().UserAgent(),
 				Result:    "success",
 			}
-			if err != nil || response.ResponseStatus(c) >= http.StatusBadRequest {
+			if err != nil || status >= http.StatusBadRequest {
 				log.Result = "failed"
 			}
 			if current != nil {
@@ -56,6 +63,12 @@ func Audit(db *gorm.DB, logger *slog.Logger) echo.MiddlewareFunc {
 				} else {
 					log.PersonName = current.Name
 				}
+			}
+			if identity, ok := operator.Get(c); ok {
+				log.OperatorEmployeeID = &identity.EmployeeID
+				log.OperatorEmployeeName = identity.EmployeeName
+				log.OperatorDepartmentID = &identity.DepartmentID
+				log.OperatorDepartmentName = identity.DepartmentName
 			}
 			if createErr := db.Create(&log).Error; createErr != nil {
 				logger.Error("create audit log failed", "error", createErr)

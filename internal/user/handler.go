@@ -37,8 +37,80 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 	system.GET("/users", h.ListUsers, require("/api/v1/system/users", "read"))
 	system.POST("/users", h.CreateUser, require("/api/v1/system/users", "write"))
 	system.PATCH("/users/:id/status", h.UpdateUserStatus, require("/api/v1/system/users", "write"))
+	system.PATCH("/users/:id/affiliation", h.UpdateUserAffiliation, require("/api/v1/system/users", "write"))
 	system.POST("/users/:id/reset-password", h.ResetUserPassword, require("/api/v1/system/users", "write"))
 	system.POST("/users/:id/roles", h.AssignUserRoles, require("/api/v1/system/users", "write"))
+}
+
+// UpdateUserAffiliation 修改账号当前部门和终端归属。
+//
+// 部门和终端必须同属当前管理员组织；停用部门或终端不能绑定。请求采用
+// 全量替换语义，department_id/terminal_id 均可传 null 清除归属。
+// @Summary 修改用户部门和终端归属
+// @Tags 用户管理
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "用户 ID"
+// @Param body body map[string]interface{} true "归属信息"
+// @Success 200 {object} model.User
+// @Failure 400 {object} response.ErrorBody
+// @Failure 403 {object} response.ErrorBody
+// @Failure 404 {object} response.ErrorBody
+// @Failure 409 {object} response.ErrorBody
+// @Router /api/v1/system/users/{id}/affiliation [patch]
+func (h *Handler) UpdateUserAffiliation(c *echo.Context) error {
+	current := auth.GetCurrentUser(c)
+	if current == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	}
+	id, err := request.ParamID(c)
+	if err != nil {
+		return err
+	}
+	var req struct {
+		DepartmentID *uint `json:"department_id"`
+		TerminalID   *uint `json:"terminal_id"`
+	}
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	db := h.DB.WithContext(c.Request().Context())
+	var target model.User
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		// 目标账号读取、组织边界和部门/终端状态校验、条件更新必须在
+		// 同一事务内完成，避免管理员校验旧归属后覆盖并发变更。
+		if err := tx.First(&target, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+			}
+			return err
+		}
+		if target.OrganizationID != current.OrganizationID {
+			return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
+		}
+		if err := h.validateAffiliationsDB(tx, target.OrganizationID, req.DepartmentID, req.TerminalID); err != nil {
+			return err
+		}
+		if target.AccountType == model.AccountTypeDepartmentTerminal && (req.DepartmentID == nil || req.TerminalID == nil) {
+			return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号必须绑定部门和终端")
+		}
+		result := tx.Model(&model.User{}).
+			Where("id = ? AND organization_id = ? AND updated_at = ?", target.ID, target.OrganizationID, target.UpdatedAt).
+			Updates(map[string]any{"department_id": req.DepartmentID, "terminal_id": req.TerminalID})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "用户归属已发生变化，请刷新后重试")
+		}
+		target.DepartmentID = req.DepartmentID
+		target.TerminalID = req.TerminalID
+		return tx.First(&target, target.ID).Error
+	}); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, target)
 }
 
 // ListUsers 查询当前用户组织内的账号列表。
@@ -243,32 +315,55 @@ func (h *Handler) canAccessOrg(c *echo.Context, orgID uint) bool {
 // 时，还必须保证终端正是该部门的终端。所有校验在创建前完成，避免非法关联
 // 留下半成品用户数据。
 func (h *Handler) validateAffiliations(organizationID uint, departmentID, terminalID *uint) error {
+	return h.validateAffiliationsDB(h.DB, organizationID, departmentID, terminalID)
+}
+
+func (h *Handler) validateAffiliationsDB(db *gorm.DB, organizationID uint, departmentID, terminalID *uint) error {
 	if departmentID != nil {
 		var department model.Department
-		if err := h.DB.Where("id = ? AND organization_id = ?", *departmentID, organizationID).First(&department).Error; err != nil {
+		if err := db.Where("id = ?", *departmentID).First(&department).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return echo.NewHTTPError(http.StatusBadRequest, "部门不属于目标组织")
+				return echo.NewHTTPError(http.StatusForbidden, "部门不属于目标组织")
 			}
 			return err
+		}
+		if department.OrganizationID != organizationID {
+			return echo.NewHTTPError(http.StatusForbidden, "部门不属于目标组织")
+		}
+		if department.Status != model.StatusActive {
+			return echo.NewHTTPError(http.StatusConflict, "部门已停用，不能绑定账号")
 		}
 	}
 
 	if terminalID == nil {
 		return nil
 	}
+	if departmentID == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "绑定终端时必须同时选择所属部门")
+	}
 
 	var terminal model.Terminal
-	terminalQuery := h.DB.Model(&model.Terminal{}).
-		Joins("JOIN departments ON departments.id = terminals.department_id").
-		Where("terminals.id = ? AND departments.organization_id = ?", *terminalID, organizationID)
-	if err := terminalQuery.First(&terminal).Error; err != nil {
+	if err := db.First(&terminal, *terminalID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return echo.NewHTTPError(http.StatusBadRequest, "终端不属于目标组织")
+			return echo.NewHTTPError(http.StatusForbidden, "终端不属于目标组织")
 		}
 		return err
 	}
-	if departmentID != nil && terminal.DepartmentID != *departmentID {
-		return echo.NewHTTPError(http.StatusBadRequest, "终端不属于所选部门")
+	var terminalDepartment model.Department
+	if err := db.First(&terminalDepartment, terminal.DepartmentID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusForbidden, "终端不属于目标组织")
+		}
+		return err
+	}
+	if terminalDepartment.OrganizationID != organizationID {
+		return echo.NewHTTPError(http.StatusForbidden, "终端不属于目标组织")
+	}
+	if terminal.Status != model.StatusActive {
+		return echo.NewHTTPError(http.StatusConflict, "终端已停用，不能绑定账号")
+	}
+	if terminal.DepartmentID != *departmentID {
+		return echo.NewHTTPError(http.StatusForbidden, "终端不属于所选部门")
 	}
 	return nil
 }

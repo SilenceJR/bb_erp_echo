@@ -10,6 +10,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/operator"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
@@ -68,36 +69,47 @@ type createRequest struct {
 	Priority            string `json:"priority"`
 	Description         string `json:"description"`
 	TargetDepartmentIDs []uint `json:"target_department_ids"`
+	OperatorEmployeeID  uint   `json:"operator_employee_id" validate:"required"`
 }
 
 // temporaryProductRequest 是生产单内临时建立仓库产品档案的请求体。
 type temporaryProductRequest struct {
-	Name string `json:"name" validate:"required" example:"白色外壳"`
-	Code string `json:"code" validate:"required" example:"P-001"`
-	Spec string `json:"spec" example:"标准"`
-	Unit string `json:"unit" example:"个"`
+	Name               string `json:"name" validate:"required" example:"白色外壳"`
+	Code               string `json:"code" validate:"required" example:"P-001"`
+	Spec               string `json:"spec" example:"标准"`
+	Unit               string `json:"unit" example:"个"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
 }
 
 type reasonRequest struct {
-	Reason string `json:"reason"`
+	Reason             string `json:"reason"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
 }
 
 type urgentRequest struct {
-	Urgent bool `json:"urgent"`
+	Urgent             bool `json:"urgent"`
+	OperatorEmployeeID uint `json:"operator_employee_id" validate:"required"`
 }
 
 type completeRequest struct {
-	Mode   string `json:"mode"`
-	Reason string `json:"reason"`
+	Mode               string `json:"mode"`
+	Reason             string `json:"reason"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
 }
 
 type partialCompleteRequest struct {
-	CompletedQuantity int64  `json:"completed_quantity"`
-	Remark            string `json:"remark"`
+	CompletedQuantity  int64  `json:"completed_quantity"`
+	Remark             string `json:"remark"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
 }
 
 type remarkRequest struct {
-	Remark string `json:"remark"`
+	Remark             string `json:"remark"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
+}
+
+type operatorActionRequest struct {
+	OperatorEmployeeID uint `json:"operator_employee_id" validate:"required"`
 }
 
 // RegisterRoutes 注册任务单模块路由。
@@ -143,6 +155,7 @@ const temporaryProductObject = "/api/v1/workorder/products"
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [get]
+// @Router /api/v1/tasks [get]
 func (h *Handler) List(c *echo.Context) error {
 	query := pagination.FromEcho(c)
 	db := h.DB.Model(&model.WorkOrder{})
@@ -183,6 +196,7 @@ func (h *Handler) List(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [post]
+// @Router /api/v1/tasks [post]
 func (h *Handler) Create(c *echo.Context) error {
 	var req createRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -196,13 +210,6 @@ func (h *Handler) Create(c *echo.Context) error {
 		return err
 	}
 	itemType := defaultString(req.Type, TypeProduction)
-	var product *model.Product
-	if itemType == TypeProduction {
-		product, err = h.loadActiveProduct(req.ProductID)
-		if err != nil {
-			return err
-		}
-	}
 	current := auth.GetCurrentUser(c)
 	item := model.WorkOrder{
 		Code:            strings.TrimSpace(req.Code),
@@ -215,11 +222,6 @@ func (h *Handler) Create(c *echo.Context) error {
 		DueAt:           dueAt,
 		Description:     strings.TrimSpace(req.Description),
 	}
-	if product != nil {
-		item.ProductID = &product.ID
-		item.ProductName = product.Name
-		item.Unit = product.Unit
-	}
 	if item.Code == "" {
 		item.Code = fmt.Sprintf("WO-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano())
 	}
@@ -229,17 +231,32 @@ func (h *Handler) Create(c *echo.Context) error {
 	if current != nil {
 		item.CreatedBy = current.ID
 	}
-	item.DepartmentTasks = make([]model.DepartmentTask, 0, len(req.TargetDepartmentIDs))
-	for _, departmentID := range uniqueUint(req.TargetDepartmentIDs) {
-		item.DepartmentTasks = append(item.DepartmentTasks, model.DepartmentTask{
-			DepartmentID:      departmentID,
-			Title:             item.Title,
-			Status:            DepartmentTaskDraft,
-			PlannedQuantity:   item.PlannedQuantity,
-			CompletedQuantity: 0,
-		})
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
+			return err
+		}
+		if err := h.validateTargetDepartmentsDB(tx, c, req.TargetDepartmentIDs); err != nil {
+			return err
+		}
+		if itemType == TypeProduction {
+			product, err := h.loadActiveProductDB(tx, req.ProductID)
+			if err != nil {
+				return err
+			}
+			item.ProductID = &product.ID
+			item.ProductName = product.Name
+			item.Unit = product.Unit
+		}
+		item.DepartmentTasks = make([]model.DepartmentTask, 0, len(req.TargetDepartmentIDs))
+		for _, departmentID := range uniqueUint(req.TargetDepartmentIDs) {
+			item.DepartmentTasks = append(item.DepartmentTasks, model.DepartmentTask{
+				DepartmentID:      departmentID,
+				Title:             item.Title,
+				Status:            DepartmentTaskDraft,
+				PlannedQuantity:   item.PlannedQuantity,
+				CompletedQuantity: 0,
+			})
+		}
 		if err := tx.Create(&item).Error; err != nil {
 			return err
 		}
@@ -285,37 +302,51 @@ func (h *Handler) CreateTemporaryProduct(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "产品编码不能为空")
 	}
 
-	var existing model.Product
-	err := h.DB.Where("code = ?", req.Code).First(&existing).Error
-	if err == nil {
-		return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
-	item := model.Product{
-		Name:   req.Name,
-		Code:   req.Code,
-		Spec:   req.Spec,
-		Unit:   req.Unit,
-		Status: model.StatusActive,
-	}
-	if err := h.DB.Create(&item).Error; err != nil {
-		if isUniqueConstraintError(err) {
+	var item model.Product
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
+			return err
+		}
+		var existing model.Product
+		err := tx.Where("code = ?", req.Code).First(&existing).Error
+		if err == nil {
 			return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
 		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		item = model.Product{
+			Name:             req.Name,
+			Code:             req.Code,
+			Spec:             req.Spec,
+			Unit:             req.Unit,
+			Status:           model.StatusActive,
+			OperatorSnapshot: operator.Snapshot(c),
+		}
+		if err := tx.Create(&item).Error; err != nil {
+			if isUniqueConstraintError(err) {
+				return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusCreated, item)
 }
 
 func (h *Handler) loadActiveProduct(id *uint) (*model.Product, error) {
+	return h.loadActiveProductDB(h.DB, id)
+}
+
+func (h *Handler) loadActiveProductDB(db *gorm.DB, id *uint) (*model.Product, error) {
 	if id == nil || *id == 0 {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择仓库产品")
 	}
 	var product model.Product
-	if err := h.DB.First(&product, *id).Error; err != nil {
+	if err := db.First(&product, *id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, echo.NewHTTPError(http.StatusNotFound, "仓库产品不存在")
 		}
@@ -339,41 +370,63 @@ func isUniqueConstraintError(err error) bool {
 // @Tags workorder
 // @Security BearerAuth
 // @Param id path int true "任务单 ID"
+// @Param body body operatorActionRequest true "操作人参数"
 // @Success 200 {object} model.WorkOrder
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/dispatch [post]
+// @Router /api/v1/tasks/{id}/dispatch [post]
 func (h *Handler) Dispatch(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
+	var req operatorActionRequest
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
 	var item model.WorkOrder
-	if err := h.DB.Preload("DepartmentTasks").First(&item, id).Error; err != nil {
-		return recordNotFound(err, "任务单不存在")
-	}
-	if item.Status != StatusDraft {
-		return echo.NewHTTPError(http.StatusBadRequest, "只有草稿任务单可以派发")
-	}
-	if len(item.DepartmentTasks) == 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "请先选择流转部门")
-	}
-	now := time.Now()
-	before := item.Status
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		item.Status = StatusProcessing
-		item.DispatchedAt = &now
-		if err := tx.Save(&item).Error; err != nil {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
 			return err
 		}
-		for _, task := range item.DepartmentTasks {
+		if err := tx.Preload("DepartmentTasks").First(&item, id).Error; err != nil {
+			return recordNotFound(err, "任务单不存在")
+		}
+		if item.Status != StatusDraft {
+			return echo.NewHTTPError(http.StatusBadRequest, "只有草稿任务单可以派发")
+		}
+		if len(item.DepartmentTasks) == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "请先选择流转部门")
+		}
+		now := time.Now()
+		before := item.Status
+		result := tx.Model(&model.WorkOrder{}).
+			Where("id = ? AND status = ?", item.ID, StatusDraft).
+			Updates(map[string]any{"status": StatusProcessing, "dispatched_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "任务状态已变化，请刷新后重试")
+		}
+		item.Status = StatusProcessing
+		item.DispatchedAt = &now
+		for index := range item.DepartmentTasks {
+			task := &item.DepartmentTasks[index]
 			taskBefore := task.Status
 			task.Status = DepartmentTaskReceived
 			task.AcceptedAt = &now
-			if err := tx.Save(&task).Error; err != nil {
-				return err
+			result := tx.Model(&model.DepartmentTask{}).
+				Where("id = ? AND status = ?", task.ID, taskBefore).
+				Updates(map[string]any{"status": task.Status, "accepted_at": task.AcceptedAt})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return echo.NewHTTPError(http.StatusConflict, "部门子任务状态已变化，请刷新后重试")
 			}
 			if err := h.createFlowLog(tx, c, item.ID, &task.ID, &task.DepartmentID, "dispatch_department", taskBefore, task.Status, 0, task.PlannedQuantity, "", ""); err != nil {
 				return err
@@ -398,6 +451,7 @@ func (h *Handler) Dispatch(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/pause [post]
+// @Router /api/v1/tasks/{id}/pause [post]
 func (h *Handler) Pause(c *echo.Context) error {
 	var req reasonRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -406,7 +460,7 @@ func (h *Handler) Pause(c *echo.Context) error {
 	if strings.TrimSpace(req.Reason) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "暂停必须填写原因")
 	}
-	return h.changeWorkOrderStatus(c, StatusPaused, "pause", req.Reason, func(item model.WorkOrder) error {
+	return h.changeWorkOrderStatus(c, req.OperatorEmployeeID, StatusPaused, "pause", req.Reason, func(item model.WorkOrder) error {
 		if item.Status != StatusProcessing && item.Status != StatusPendingClose {
 			return echo.NewHTTPError(http.StatusBadRequest, "只有正在处理或待确认任务可以暂停")
 		}
@@ -419,14 +473,20 @@ func (h *Handler) Pause(c *echo.Context) error {
 // @Tags workorder
 // @Security BearerAuth
 // @Param id path int true "任务单 ID"
+// @Param body body operatorActionRequest true "操作人参数"
 // @Success 200 {object} model.WorkOrder
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/resume [post]
+// @Router /api/v1/tasks/{id}/resume [post]
 func (h *Handler) Resume(c *echo.Context) error {
-	return h.changeWorkOrderStatus(c, StatusProcessing, "resume", "", func(item model.WorkOrder) error {
+	var req operatorActionRequest
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	return h.changeWorkOrderStatus(c, req.OperatorEmployeeID, StatusProcessing, "resume", "", func(item model.WorkOrder) error {
 		if item.Status != StatusPaused {
 			return echo.NewHTTPError(http.StatusBadRequest, "只有暂停任务可以恢复")
 		}
@@ -446,6 +506,7 @@ func (h *Handler) Resume(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/urgent [post]
+// @Router /api/v1/tasks/{id}/urgent [post]
 func (h *Handler) SetUrgent(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -456,19 +517,31 @@ func (h *Handler) SetUrgent(c *echo.Context) error {
 		return err
 	}
 	var item model.WorkOrder
-	if err := h.DB.First(&item, id).Error; err != nil {
-		return recordNotFound(err, "任务单不存在")
-	}
-	before := item.Priority
-	if req.Urgent {
-		item.Priority = PriorityUrgent
-	} else {
-		item.Priority = PriorityNormal
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
 			return err
 		}
+		if err := tx.First(&item, id).Error; err != nil {
+			return recordNotFound(err, "任务单不存在")
+		}
+		before := item.Priority
+		after := PriorityNormal
+		if req.Urgent {
+			after = PriorityUrgent
+		}
+		if before == after {
+			return nil
+		}
+		result := tx.Model(&model.WorkOrder{}).
+			Where("id = ? AND priority = ?", item.ID, before).
+			Update("priority", after)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "任务优先级已变化，请刷新后重试")
+		}
+		item.Priority = after
 		return h.createFlowLog(tx, c, item.ID, nil, nil, "urgent", before, item.Priority, 0, 0, "", "")
 	}); err != nil {
 		return err
@@ -488,6 +561,7 @@ func (h *Handler) SetUrgent(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/complete [post]
+// @Router /api/v1/tasks/{id}/complete [post]
 func (h *Handler) Complete(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -498,40 +572,49 @@ func (h *Handler) Complete(c *echo.Context) error {
 		return err
 	}
 	var item model.WorkOrder
-	if err := h.DB.Preload("DepartmentTasks").First(&item, id).Error; err != nil {
-		return recordNotFound(err, "任务单不存在")
-	}
-	targetStatus := ""
-	action := ""
-	if req.Mode == "normal" {
-		if item.Status != StatusPendingClose {
-			return echo.NewHTTPError(http.StatusBadRequest, "正常完成只能在待办公室确认状态执行")
-		}
-		if !allDepartmentTasksCompleted(item.DepartmentTasks) {
-			return echo.NewHTTPError(http.StatusBadRequest, "所有部门完成后才能正常完成")
-		}
-		targetStatus = StatusCompletedNormal
-		action = "complete_normal"
-	} else if req.Mode == "forced" {
-		if item.Status != StatusProcessing && item.Status != StatusPaused && item.Status != StatusPendingClose {
-			return echo.NewHTTPError(http.StatusBadRequest, "当前状态不能强制完成")
-		}
-		if strings.TrimSpace(req.Reason) == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "强制完成必须填写原因")
-		}
-		targetStatus = StatusCompletedForced
-		action = "complete_forced"
-	} else {
-		return echo.NewHTTPError(http.StatusBadRequest, "完成模式必须为 normal 或 forced")
-	}
-	before := item.Status
-	now := time.Now()
-	item.Status = targetStatus
-	item.CompletedAt = &now
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
 			return err
 		}
+		if err := tx.Preload("DepartmentTasks").First(&item, id).Error; err != nil {
+			return recordNotFound(err, "任务单不存在")
+		}
+		targetStatus := ""
+		action := ""
+		if req.Mode == "normal" {
+			if item.Status != StatusPendingClose {
+				return echo.NewHTTPError(http.StatusBadRequest, "正常完成只能在待办公室确认状态执行")
+			}
+			if !allDepartmentTasksCompleted(item.DepartmentTasks) {
+				return echo.NewHTTPError(http.StatusBadRequest, "所有部门完成后才能正常完成")
+			}
+			targetStatus = StatusCompletedNormal
+			action = "complete_normal"
+		} else if req.Mode == "forced" {
+			if item.Status != StatusProcessing && item.Status != StatusPaused && item.Status != StatusPendingClose {
+				return echo.NewHTTPError(http.StatusBadRequest, "当前状态不能强制完成")
+			}
+			if strings.TrimSpace(req.Reason) == "" {
+				return echo.NewHTTPError(http.StatusBadRequest, "强制完成必须填写原因")
+			}
+			targetStatus = StatusCompletedForced
+			action = "complete_forced"
+		} else {
+			return echo.NewHTTPError(http.StatusBadRequest, "完成模式必须为 normal 或 forced")
+		}
+		before := item.Status
+		now := time.Now()
+		result := tx.Model(&model.WorkOrder{}).
+			Where("id = ? AND status = ?", item.ID, before).
+			Updates(map[string]any{"status": targetStatus, "completed_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "任务状态已变化，请刷新后重试")
+		}
+		item.Status = targetStatus
+		item.CompletedAt = &now
 		return h.createFlowLog(tx, c, item.ID, nil, nil, action, before, item.Status, 0, item.PlannedQuantity, req.Reason, "")
 	}); err != nil {
 		return err
@@ -544,16 +627,20 @@ func (h *Handler) Complete(c *echo.Context) error {
 // @Tags workorder
 // @Security BearerAuth
 // @Param id path int true "部门子任务 ID"
+// @Param body body remarkRequest true "操作人和备注参数"
 // @Success 200 {object} model.WorkOrder
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/start [post]
+// @Router /api/v1/tasks/department-tasks/{id}/start [post]
 func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
-	_ = c.Bind(&req)
-	return h.updateDepartmentTask(c, "department_start", func(item model.WorkOrder, task *model.DepartmentTask) error {
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	return h.updateDepartmentTask(c, req.OperatorEmployeeID, "department_start", func(item model.WorkOrder, task *model.DepartmentTask) error {
 		if task.Status != DepartmentTaskReceived {
 			return echo.NewHTTPError(http.StatusBadRequest, "只有已收到任务可以开始处理")
 		}
@@ -580,17 +667,18 @@ func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/partial-complete [post]
+// @Router /api/v1/tasks/department-tasks/{id}/partial-complete [post]
 func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 	var req partialCompleteRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	return h.updateDepartmentTask(c, "department_partial_complete", func(item model.WorkOrder, task *model.DepartmentTask) error {
+	return h.updateDepartmentTask(c, req.OperatorEmployeeID, "department_partial_complete", func(item model.WorkOrder, task *model.DepartmentTask) error {
 		if req.CompletedQuantity <= 0 || req.CompletedQuantity >= task.PlannedQuantity {
 			return echo.NewHTTPError(http.StatusBadRequest, "部分完成数量必须大于 0 且小于计划数量")
 		}
-		if req.CompletedQuantity < task.CompletedQuantity {
-			return echo.NewHTTPError(http.StatusBadRequest, "已完成数量不能小于当前已完成数量")
+		if req.CompletedQuantity <= task.CompletedQuantity {
+			return echo.NewHTTPError(http.StatusBadRequest, "已完成数量必须大于当前已完成数量")
 		}
 		if task.Status != DepartmentTaskReceived && task.Status != DepartmentTaskProcessing && task.Status != DepartmentTaskPartialCompleted {
 			return echo.NewHTTPError(http.StatusBadRequest, "当前子任务状态不能部分完成")
@@ -613,16 +701,20 @@ func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 // @Tags workorder
 // @Security BearerAuth
 // @Param id path int true "部门子任务 ID"
+// @Param body body remarkRequest true "操作人和备注参数"
 // @Success 200 {object} model.WorkOrder
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/complete [post]
+// @Router /api/v1/tasks/department-tasks/{id}/complete [post]
 func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
-	_ = c.Bind(&req)
-	return h.updateDepartmentTask(c, "department_complete", func(item model.WorkOrder, task *model.DepartmentTask) error {
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	return h.updateDepartmentTask(c, req.OperatorEmployeeID, "department_complete", func(item model.WorkOrder, task *model.DepartmentTask) error {
 		if task.Status != DepartmentTaskReceived && task.Status != DepartmentTaskProcessing && task.Status != DepartmentTaskPartialCompleted {
 			return echo.NewHTTPError(http.StatusBadRequest, "当前子任务状态不能完成")
 		}
@@ -645,6 +737,7 @@ func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/logs [get]
+// @Router /api/v1/tasks/{id}/logs [get]
 func (h *Handler) ListLogs(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -657,24 +750,33 @@ func (h *Handler) ListLogs(c *echo.Context) error {
 	return c.JSON(http.StatusOK, logs)
 }
 
-func (h *Handler) changeWorkOrderStatus(c *echo.Context, targetStatus string, action string, reason string, validate func(model.WorkOrder) error) error {
+func (h *Handler) changeWorkOrderStatus(c *echo.Context, operatorEmployeeID uint, targetStatus string, action string, reason string, validate func(model.WorkOrder) error) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
 	var item model.WorkOrder
-	if err := h.DB.First(&item, id).Error; err != nil {
-		return recordNotFound(err, "任务单不存在")
-	}
-	if err := validate(item); err != nil {
-		return err
-	}
-	before := item.Status
-	item.Status = targetStatus
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&item).Error; err != nil {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, operatorEmployeeID); err != nil {
 			return err
 		}
+		if err := tx.First(&item, id).Error; err != nil {
+			return recordNotFound(err, "任务单不存在")
+		}
+		if err := validate(item); err != nil {
+			return err
+		}
+		before := item.Status
+		result := tx.Model(&model.WorkOrder{}).
+			Where("id = ? AND status = ?", item.ID, before).
+			Update("status", targetStatus)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "任务状态已变化，请刷新后重试")
+		}
+		item.Status = targetStatus
 		return h.createFlowLog(tx, c, item.ID, nil, nil, action, before, item.Status, 0, item.PlannedQuantity, reason, "")
 	}); err != nil {
 		return err
@@ -682,36 +784,54 @@ func (h *Handler) changeWorkOrderStatus(c *echo.Context, targetStatus string, ac
 	return h.respondWorkOrder(c, item.ID)
 }
 
-func (h *Handler) updateDepartmentTask(c *echo.Context, action string, mutate func(model.WorkOrder, *model.DepartmentTask) error) error {
+func (h *Handler) updateDepartmentTask(c *echo.Context, operatorEmployeeID uint, action string, mutate func(model.WorkOrder, *model.DepartmentTask) error) error {
 	taskID, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
 	var task model.DepartmentTask
-	if err := h.DB.First(&task, taskID).Error; err != nil {
-		return recordNotFound(err, "部门子任务不存在")
-	}
 	var item model.WorkOrder
-	if err := h.DB.Preload("DepartmentTasks").First(&item, task.WorkOrderID).Error; err != nil {
-		return recordNotFound(err, "任务单不存在")
-	}
-	if item.Status == StatusPaused {
-		return echo.NewHTTPError(http.StatusBadRequest, "任务已暂停，部门不能继续提交进度")
-	}
-	if item.Status != StatusProcessing && item.Status != StatusPendingClose {
-		return echo.NewHTTPError(http.StatusBadRequest, "当前主任务状态不能提交部门进度")
-	}
-	if err := h.ensureDepartmentTaskAccess(c, task.DepartmentID); err != nil {
-		return err
-	}
-	beforeStatus := task.Status
-	beforeQuantity := task.CompletedQuantity
-	if err := mutate(item, &task); err != nil {
-		return err
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&task).Error; err != nil {
+	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		if _, err := operator.Resolve(c, tx, operatorEmployeeID); err != nil {
 			return err
+		}
+		if err := tx.First(&task, taskID).Error; err != nil {
+			return recordNotFound(err, "部门子任务不存在")
+		}
+		if err := tx.Preload("DepartmentTasks").First(&item, task.WorkOrderID).Error; err != nil {
+			return recordNotFound(err, "任务单不存在")
+		}
+		if item.Status == StatusPaused {
+			return echo.NewHTTPError(http.StatusBadRequest, "任务已暂停，部门不能继续提交进度")
+		}
+		if item.Status != StatusProcessing && item.Status != StatusPendingClose {
+			return echo.NewHTTPError(http.StatusBadRequest, "当前主任务状态不能提交部门进度")
+		}
+		if err := h.ensureDepartmentTaskAccess(c, task.DepartmentID); err != nil {
+			return err
+		}
+		beforeStatus := task.Status
+		beforeQuantity := task.CompletedQuantity
+		if err := mutate(item, &task); err != nil {
+			return err
+		}
+		result := tx.Model(&model.DepartmentTask{}).
+			Where("id = ? AND status = ? AND completed_quantity = ?", task.ID, beforeStatus, beforeQuantity).
+			Updates(map[string]any{
+				"status":               task.Status,
+				"completed_quantity":   task.CompletedQuantity,
+				"assignee_user_id":     task.AssigneeUserID,
+				"progress":             task.Progress,
+				"remark":               task.Remark,
+				"accepted_at":          task.AcceptedAt,
+				"partial_completed_at": task.PartialCompletedAt,
+				"completed_at":         task.CompletedAt,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "部门子任务状态已变化，请刷新后重试")
 		}
 		if action == "department_complete" {
 			var remaining int64
@@ -722,10 +842,16 @@ func (h *Handler) updateDepartmentTask(c *echo.Context, action string, mutate fu
 			}
 			if remaining == 0 && item.Status != StatusPendingClose {
 				before := item.Status
-				item.Status = StatusPendingClose
-				if err := tx.Save(&item).Error; err != nil {
-					return err
+				result := tx.Model(&model.WorkOrder{}).
+					Where("id = ? AND status = ?", item.ID, before).
+					Update("status", StatusPendingClose)
+				if result.Error != nil {
+					return result.Error
 				}
+				if result.RowsAffected != 1 {
+					return echo.NewHTTPError(http.StatusConflict, "任务状态已变化，请刷新后重试")
+				}
+				item.Status = StatusPendingClose
 				if err := h.createFlowLog(tx, c, item.ID, nil, nil, "pending_close", before, item.Status, 0, item.PlannedQuantity, "", "所有部门已完成"); err != nil {
 					return err
 				}
@@ -773,6 +899,13 @@ func (h *Handler) createFlowLog(tx *gorm.DB, c *echo.Context, workOrderID uint, 
 	if current := auth.GetCurrentUser(c); current != nil {
 		log.ActorUserID = &current.ID
 		log.ActorUsername = current.Username
+		log.ActorTerminalID = current.TerminalID
+	}
+	if identity, ok := operator.Get(c); ok {
+		log.OperatorEmployeeID = &identity.EmployeeID
+		log.OperatorEmployeeName = identity.EmployeeName
+		log.OperatorDepartmentID = &identity.DepartmentID
+		log.OperatorDepartmentName = identity.DepartmentName
 	}
 	return tx.Create(&log).Error
 }
@@ -803,6 +936,40 @@ func validateCreateRequest(req createRequest) error {
 	}
 	if strings.TrimSpace(req.Description) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "通用任务必须填写说明")
+	}
+	return nil
+}
+
+func (h *Handler) validateTargetDepartments(c *echo.Context, ids []uint) error {
+	return h.validateTargetDepartmentsDB(h.DB, c, ids)
+}
+
+func (h *Handler) validateTargetDepartmentsDB(db *gorm.DB, c *echo.Context, ids []uint) error {
+	ids = uniqueUint(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	current := auth.GetCurrentUser(c)
+	organizationID := uint(1)
+	if current != nil && current.OrganizationID != 0 {
+		organizationID = current.OrganizationID
+	}
+	var departments []model.Department
+	if err := db.WithContext(c.Request().Context()).Where("id IN ?", ids).Find(&departments).Error; err != nil {
+		return err
+	}
+	byID := make(map[uint]model.Department, len(departments))
+	for _, department := range departments {
+		byID[department.ID] = department
+	}
+	for _, id := range ids {
+		department, ok := byID[id]
+		if !ok || department.OrganizationID != organizationID {
+			return echo.NewHTTPError(http.StatusForbidden, "流转部门不属于当前组织")
+		}
+		if department.Status != model.StatusActive {
+			return echo.NewHTTPError(http.StatusConflict, "停用部门不能接收新任务")
+		}
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 
 	"bb_erp_echo/internal/auth"
@@ -29,6 +30,16 @@ func (testRoleService) ReplaceUserRoles(uint, []uint, bool) error { return nil }
 
 func (testRoleService) AssignRoleCodes(uint, []string) error { return nil }
 
+func userHandlerErrorStatus(err error) int {
+	if httpErr, ok := err.(*echo.HTTPError); ok {
+		return httpErr.Code
+	}
+	if err != nil {
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
 // TestCreateUserValidatesDepartmentTerminalAffiliations 验证创建账号时，
 // 部门和终端必须都在目标组织内，且终端归属到所选部门；失败时不写入用户。
 func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
@@ -44,6 +55,9 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 	terminalA2 := createUserTestTerminal(t, db, departmentA2.ID, "TERM-A2")
 	terminalB := createUserTestTerminal(t, db, departmentB.ID, "TERM-B")
 	current := &auth.CurrentUser{OrganizationID: organizationA.ID}
+	if status := userHandlerErrorStatus(handler.validateAffiliations(organizationA.ID, nil, &terminalA.ID)); status != http.StatusBadRequest {
+		t.Fatalf("terminal without department status=%d want=%d", status, http.StatusBadRequest)
+	}
 
 	tests := []struct {
 		name         string
@@ -66,7 +80,7 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 			username:     "terminal-mismatched",
 			departmentID: departmentA.ID,
 			terminalID:   terminalA2.ID,
-			wantStatus:   http.StatusBadRequest,
+			wantStatus:   http.StatusForbidden,
 			wantUsers:    1,
 		},
 		{
@@ -74,7 +88,7 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 			username:     "terminal-cross-org",
 			departmentID: departmentA.ID,
 			terminalID:   terminalB.ID,
-			wantStatus:   http.StatusBadRequest,
+			wantStatus:   http.StatusForbidden,
 			wantUsers:    1,
 		},
 		{
@@ -82,7 +96,7 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 			username:     "department-cross-org",
 			departmentID: departmentB.ID,
 			terminalID:   terminalB.ID,
-			wantStatus:   http.StatusBadRequest,
+			wantStatus:   http.StatusForbidden,
 			wantUsers:    1,
 		},
 	}
@@ -204,6 +218,95 @@ func TestResetUserPasswordEnforcesOrganizationAndSelfRestrictions(t *testing.T) 
 	}
 }
 
+func TestUpdateUserAffiliationRejectsDisabledDepartmentWithoutChangingTarget(t *testing.T) {
+	db := openUserTestDB(t)
+	handler := NewHandler(db, testRoleService{})
+	organization := createUserTestOrganization(t, db, "归属组织", "AFFILIATION-ORG")
+	activeDepartment := createUserTestDepartment(t, db, organization.ID, "启用部门", "AFFILIATION-ACTIVE")
+	disabledDepartment := createUserTestDepartment(t, db, organization.ID, "停用部门", "AFFILIATION-DISABLED")
+	activeTerminal := createUserTestTerminal(t, db, activeDepartment.ID, "AFFILIATION-TERM-ACTIVE")
+	disabledTerminal := createUserTestTerminal(t, db, disabledDepartment.ID, "AFFILIATION-TERM-DISABLED")
+	target := model.User{
+		Username: "affiliation-target", AccountType: model.AccountTypeDepartmentTerminal, Name: "归属目标",
+		OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash", PasswordVersion: 1,
+		DepartmentID: &activeDepartment.ID, TerminalID: &activeTerminal.ID,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("create target user: %v", err)
+	}
+	current := &auth.CurrentUser{ID: target.ID + 100, Username: "affiliation-admin", OrganizationID: organization.ID}
+
+	if err := db.Model(&model.Department{}).Where("id = ?", disabledDepartment.ID).Update("status", model.StatusDisabled).Error; err != nil {
+		t.Fatalf("disable department: %v", err)
+	}
+	rec := performUserAffiliationJSON(t, handler.UpdateUserAffiliation, target.ID, current, map[string]any{
+		"department_id": disabledDepartment.ID,
+		"terminal_id":   disabledTerminal.ID,
+	})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("disabled department affiliation status = %d, want %d; body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	var unchanged model.User
+	if err := db.First(&unchanged, target.ID).Error; err != nil {
+		t.Fatalf("reload target user: %v", err)
+	}
+	if unchanged.DepartmentID == nil || *unchanged.DepartmentID != activeDepartment.ID || unchanged.TerminalID == nil || *unchanged.TerminalID != activeTerminal.ID {
+		t.Fatalf("failed affiliation update changed target: department=%v terminal=%v", unchanged.DepartmentID, unchanged.TerminalID)
+	}
+}
+
+func TestUpdateUserAffiliationConcurrentUpdatesKeepDepartmentTerminalPair(t *testing.T) {
+	db := openUserTestDB(t)
+	handler := NewHandler(db, testRoleService{})
+	organization := createUserTestOrganization(t, db, "并发归属组织", "AFFILIATION-CONCURRENT-ORG")
+	firstDepartment := createUserTestDepartment(t, db, organization.ID, "并发部门一", "AFFILIATION-CONCURRENT-ONE")
+	secondDepartment := createUserTestDepartment(t, db, organization.ID, "并发部门二", "AFFILIATION-CONCURRENT-TWO")
+	firstTerminal := createUserTestTerminal(t, db, firstDepartment.ID, "AFFILIATION-CONCURRENT-TERM-ONE")
+	secondTerminal := createUserTestTerminal(t, db, secondDepartment.ID, "AFFILIATION-CONCURRENT-TERM-TWO")
+	target := model.User{
+		Username: "affiliation-concurrent-target", AccountType: model.AccountTypeDepartmentTerminal, Name: "并发目标",
+		OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash", PasswordVersion: 1,
+		DepartmentID: &firstDepartment.ID, TerminalID: &firstTerminal.ID,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("create concurrent target: %v", err)
+	}
+	current := &auth.CurrentUser{ID: target.ID + 100, Username: "concurrent-admin", OrganizationID: organization.ID}
+
+	type result struct{ code int }
+	results := make(chan result, 2)
+	var wait sync.WaitGroup
+	for _, pair := range [][2]uint{{firstDepartment.ID, firstTerminal.ID}, {secondDepartment.ID, secondTerminal.ID}} {
+		pair := pair
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			rec := performUserAffiliationJSON(t, handler.UpdateUserAffiliation, target.ID, current, map[string]any{
+				"department_id": pair[0],
+				"terminal_id":   pair[1],
+			})
+			results <- result{code: rec.Code}
+		}()
+	}
+	wait.Wait()
+	close(results)
+	for item := range results {
+		if item.code != http.StatusOK {
+			t.Fatalf("concurrent affiliation status = %d, want %d", item.code, http.StatusOK)
+		}
+	}
+	var final model.User
+	if err := db.First(&final, target.ID).Error; err != nil {
+		t.Fatalf("reload concurrent target: %v", err)
+	}
+	if final.DepartmentID == nil || final.TerminalID == nil {
+		t.Fatalf("concurrent affiliation cleared pair: department=%v terminal=%v", final.DepartmentID, final.TerminalID)
+	}
+	if !(((*final.DepartmentID == firstDepartment.ID) && (*final.TerminalID == firstTerminal.ID)) || ((*final.DepartmentID == secondDepartment.ID) && (*final.TerminalID == secondTerminal.ID))) {
+		t.Fatalf("concurrent affiliation left mismatched pair: department=%d terminal=%d", *final.DepartmentID, *final.TerminalID)
+	}
+}
+
 func openUserTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -274,6 +377,27 @@ func performUserJSONAtPath(t *testing.T, handler echo.HandlerFunc, id uint, curr
 		c.SetPath("/api/v1/system/users/:id/reset-password")
 		c.SetPathValues(echo.PathValues{{Name: "id", Value: itoa(id)}})
 	}
+	c.Set(auth.ContextUserKey, current)
+	if err := handler(c); err != nil {
+		e.HTTPErrorHandler(c, err)
+	}
+	return rec
+}
+
+func performUserAffiliationJSON(t *testing.T, handler echo.HandlerFunc, id uint, current *auth.CurrentUser, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal affiliation request: %v", err)
+	}
+	e := echo.New()
+	e.Validator = &userTestValidator{validate: validator.New()}
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/system/users/"+itoa(id)+"/affiliation", bytes.NewReader(payload))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/system/users/:id/affiliation")
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: itoa(id)}})
 	c.Set(auth.ContextUserKey, current)
 	if err := handler(c); err != nil {
 		e.HTTPErrorHandler(c, err)

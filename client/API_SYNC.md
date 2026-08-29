@@ -17,9 +17,13 @@
 - 登录响应同时返回 `access_token`、`refresh_token`、`expires_at` 和 `refresh_expires_at`；共用请求层会在 access token 临近/已经过期时调用 `/api/v1/auth/refresh`，轮换令牌后重试一次原请求。Web 与 Tauri 均持久化当前会话，连续 30 天未成功续期后回到登录页。
 - 退出登录调用 `/api/v1/auth/logout` 撤销 refresh token；服务端撤销失败不阻止客户端清理本地会话。修改密码会撤销该账号全部 refresh token。
 - 当前账号修改密码使用 `POST /api/v1/auth/change-password`；成功后旧 JWT 失效，Web 与 Client 都回到登录页并使用新密码登录。
+- 员工是独立档案，可属于多个部门；登录账号仍只绑定一个当前部门。部门与员工使用专用页面维护，Web 和 Tauri 共用同一套页面、权限和 API 契约。
+- 任务单及仓库/库存全部写操作先调用 `GET /api/v1/operator-employees` 加载当前账号部门的在职员工，只使用返回的 `id/name`。每次确认都必须显式提交 `operator_employee_id`，不自动选择、不跨操作记忆，成功后清空。即时库存写入把幂等键绑定到完整规范化请求快照；网络或服务端 5xx 导致结果不确定时重试复用原键，业务字段或操作人变化时才生成新键。
+- 候选接口失败、账号无部门、部门停用或无候选时禁用提交；服务端返回 `409` 表示员工停用或成员关系已变化，客户端清空原选择并重新加载。其他校验错误保留当前表单，便于修正后重试。
 - 新建生产单先通过 `GET /api/v1/warehouse/items?tab=product&q=<关键词>` 远程搜索仓库产品，选择后调用 `GET /api/v1/warehouse/items/product/:id` 获取默认仓库聚合库存；提交任务单时发送 `product_id`，`product_name` 与 `unit` 由服务端写入快照。通用任务不发送产品关联。
 - 拥有 `workorder:write` 和 `workorder:temporary-product:write` 的账号可调用 `POST /api/v1/workorder/products` 临时建立正式产品档案；请求包含必填 `name`、手填唯一 `code`、默认“个”的可改 `unit` 与可选 `spec`。新产品库存为 0，建档不会生成入库流水。
 - 产品选择和任务详情的库存采用“选择即查/打开即查 + 手动刷新”，不轮询；Web 与 Tauri 共用取消请求和请求序号保护，快速切换时旧响应不得覆盖当前产品。
+- 操作日志、任务流转和库存历史以“员工｜动作”为主要信息，同时保留登录账号与终端责任信息；所选员工是登录账号对现场责任人的申报，不等同于员工本人完成二次认证。旧记录没有员工快照时显示“历史记录未记录员工”。
 - 桌面端只负责 Rust/Tauri 壳、窗口配置、平台打包配置，不维护另一套业务 API。
 - 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本；Rust 更新引擎计算当前 EXE SHA 并向 Go 请求更新计划。Vue 只触发检查/安装并展示状态，不接触本机路径、任意下载 URL或签名决策；Web 端不显示桌面自动安装按钮。
 

@@ -28,11 +28,26 @@
               <span>请填写以下信息，带 * 为常用必填项</span>
             </div>
             <el-alert v-if="formError" id="workorder-create-error" class="form-error" :title="formError" type="error" :closable="false" show-icon/>
+            <el-alert v-if="activeKey === 'users' && !canCreateDepartmentTerminalUser" title="当前权限只能创建个人账号" description="创建部门终端账号还需要部门查看和终端查看权限。" type="info" :closable="false" show-icon />
             <template v-for="field in formSchema" :key="field.key">
             <WorkorderProductField v-if="field.kind === 'workorder-product'" />
+            <OperatorSelect
+              v-else-if="field.kind === 'operator'"
+              id="create-form-operator"
+              v-model="formState.operator_employee_id"
+              :department="operatorDirectory.department.value"
+              :employees="operatorDirectory.employees.value"
+              :loading="operatorDirectory.loading.value"
+              :unavailable-reason="operatorDirectory.unavailableReason.value"
+              :retryable="operatorDirectory.retryable.value"
+              :invalid="Boolean(formError && !formState.operator_employee_id)"
+              :validation-error="formError && !formState.operator_employee_id ? '请选择本次操作人。' : ''"
+              @load="operatorDirectory.load"
+              @retry="operatorDirectory.load(true)"
+            />
             <el-form-item v-else :label="field.label" :required="field.required">
               <el-select v-if="field.kind === 'select'" v-model="formState[field.key]" placeholder="请选择" clearable>
-                <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
+                <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value" :disabled="option.disabled"/>
               </el-select>
               <el-select v-else-if="field.kind === 'multi-select'" v-model="formState[field.key]" placeholder="请选择" multiple collapse-tags collapse-tags-tooltip>
                 <el-option v-for="option in field.options" :key="option.value" :label="option.label" :value="option.value"/>
@@ -47,7 +62,7 @@
             </template>
             <div class="form-actions">
               <el-button @click="toggleCreateForm">取消</el-button>
-              <el-button type="primary" native-type="submit" :loading="loading">保存</el-button>
+              <el-button type="primary" native-type="submit" :loading="loading" :disabled="['warehouses', 'workorder'].includes(activeKey) && Boolean(operatorDirectory.unavailableReason.value)">保存</el-button>
             </div>
           </el-form>
 
@@ -92,6 +107,16 @@
               <el-button type="primary" :loading="assignmentSaving" :disabled="!assignmentOptionsReady || assignmentSaving" @click="saveAssignment">保存配置</el-button>
               </div>
             </template>
+          </el-dialog>
+
+          <el-dialog :model-value="!!affiliationTarget" title="修正账号归属" width="min(520px, 92vw)" :close-on-click-modal="!affiliationSaving" :close-on-press-escape="!affiliationSaving" :before-close="closeUserAffiliation">
+            <el-form v-if="affiliationTarget" label-position="top" :disabled="affiliationSaving" @submit.prevent="saveUserAffiliation">
+              <p class="assignment-tip">{{ affiliationTarget.username }} · {{ affiliationTarget.name }}。个人管理账号可不绑定部门，但未绑定时不能执行任务或库存写入。</p>
+              <el-alert v-if="affiliationError" :title="affiliationError" type="error" :closable="false" show-icon />
+              <el-form-item label="所属部门"><el-select v-model="affiliationDepartmentID" clearable placeholder="不绑定部门"><el-option v-for="item in rowsFor('departments')" :key="item.id" :label="String(item.name)" :value="item.id" :disabled="item.status === 'disabled'" /></el-select></el-form-item>
+              <el-form-item label="所属终端"><el-select v-model="affiliationTerminalID" clearable :disabled="!affiliationDepartmentID" placeholder="不绑定终端"><el-option v-for="item in affiliationTerminalOptions" :key="item.id" :label="String(item.name)" :value="item.id" /></el-select></el-form-item>
+            </el-form>
+            <template #footer><div class="form-actions"><el-button :disabled="affiliationSaving" @click="closeUserAffiliation()">取消</el-button><el-button type="primary" :loading="affiliationSaving" :disabled="affiliationTarget?.account_type === 'department_terminal' && (!affiliationDepartmentID || !affiliationTerminalID)" @click="saveUserAffiliation">保存归属</el-button></div></template>
           </el-dialog>
 
           <FilterBar
@@ -573,9 +598,10 @@
                     <span v-else>{{ formatGenericCell(column, row[column]) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column v-if="hasAssignmentAction" label="配置操作" width="130" fixed="right">
+                <el-table-column v-if="hasAssignmentAction || (activeKey === 'users' && canWriteActive)" label="配置操作" width="150" fixed="right">
                   <template #default="{row}">
-                    <el-button link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+                    <el-button v-if="hasAssignmentAction" link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+                    <span v-if="activeKey === 'users' && canWriteActive" :title="canEditUserAffiliation ? '修正账号部门和终端归属' : '需要部门查看和终端查看权限'"><el-button link type="primary" :disabled="!canEditUserAffiliation" @click="openUserAffiliation(row)">账号归属</el-button></span>
                   </template>
                 </el-table-column>
               </el-table>
@@ -602,6 +628,7 @@
                 <el-button v-if="hasAssignmentAction" type="primary" plain @click="openAssignment(row)">
                   {{ assignmentConfigs[activeKey]?.buttonLabel }}
                 </el-button>
+                <el-button v-if="activeKey === 'users' && canWriteActive" type="primary" plain :disabled="!canEditUserAffiliation" :title="canEditUserAffiliation ? '' : '需要部门查看和终端查看权限'" @click="openUserAffiliation(row)">{{ canEditUserAffiliation ? '修正账号归属' : '缺少归属数据权限' }}</el-button>
               </article>
             </div>
           </DataTableShell>
@@ -617,10 +644,12 @@ import PageState from '../ui/PageState.vue'
 import StatusTag from '../ui/StatusTag.vue'
 import UpdateCenter from '../UpdateCenter.vue'
 import WorkorderProductField from './WorkorderProductField.vue'
+import OperatorSelect from '../ui/OperatorSelect.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {
   assignmentConfigs,
+  operatorDirectory,
   tokenKey,
   desktopClient,
   authRequestGeneration,
@@ -648,6 +677,12 @@ const {
   assignmentOptionsError,
   assignmentSaving,
   assignmentSaveError,
+  affiliationTarget,
+  affiliationDepartmentID,
+  affiliationTerminalID,
+  affiliationTerminalOptions,
+  affiliationSaving,
+  affiliationError,
   selectedWarehouseItem,
   warehouseDrawerVisible,
   warehouseDetail,
@@ -708,6 +743,8 @@ const {
   systemItems,
   activeModule,
   canWriteActive,
+  canEditUserAffiliation,
+  canCreateDepartmentTerminalUser,
   activePageReadonly,
   hasActiveFilters,
   filteredEmptyTitle,
@@ -778,6 +815,9 @@ const {
   retryAssignmentOptions,
   isAssignmentOptionDisabled,
   saveAssignment,
+  openUserAffiliation,
+  closeUserAffiliation,
+  saveUserAffiliation,
   switchWarehouseTab,
   resetListQuery,
   applySearch,

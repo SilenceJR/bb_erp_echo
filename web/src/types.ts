@@ -121,6 +121,43 @@ export interface BasicItem {
   [key: string]: unknown
 }
 
+export interface DepartmentSummary {
+  id: number
+  name: string
+  code?: string
+  status?: string
+}
+
+export interface EmployeeItem {
+  id: number
+  name: string
+  phone?: string
+  hire_date: string
+  birthplace?: string
+  residential_address?: string
+  birth_date: string
+  age: number
+  status: 'active' | 'disabled'
+  departments: DepartmentSummary[]
+  created_at?: string
+}
+
+export interface DepartmentItem extends DepartmentSummary {
+  status: 'active' | 'disabled'
+  employee_count: number
+  created_at?: string
+}
+
+export interface OperatorEmployee {
+  id: number
+  name: string
+}
+
+export interface OperatorEmployeesResponse {
+  department: DepartmentSummary | null
+  employees: OperatorEmployee[]
+}
+
 // 业务模块骨架接口返回结构。
 export interface SkeletonResponse {
   module: string

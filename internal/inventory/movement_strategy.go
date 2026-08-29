@@ -7,6 +7,7 @@ import (
 	"bb_erp_echo/internal/model"
 
 	"github.com/labstack/echo/v5"
+	"gorm.io/gorm"
 )
 
 // MovementStrategy 封装一种库存业务的方向和关联对象校验。
@@ -118,23 +119,24 @@ func invalidMovement(message string) error {
 
 type requestMovementValidationContext struct {
 	handler *Handler
+	db      *gorm.DB
 	user    *auth.CurrentUser
 }
 
 func (context requestMovementValidationContext) RequireSupplier(id uint) error {
-	return context.handler.requireRecord(&model.Supplier{}, id, "供应商不存在")
+	return context.handler.requireRecordDB(context.db, &model.Supplier{}, id, "供应商不存在")
 }
 
 func (context requestMovementValidationContext) RequireCustomer(id uint) error {
-	return context.handler.requireRecord(&model.Customer{}, id, "客户不存在")
+	return context.handler.requireRecordDB(context.db, &model.Customer{}, id, "客户不存在")
 }
 
 func (context requestMovementValidationContext) RequireDepartment(id uint) error {
-	return context.handler.requireRecord(&model.Department{}, id, "部门不存在")
+	return context.handler.requireRecordDB(context.db, &model.Department{}, id, "部门不存在")
 }
 
 func (context requestMovementValidationContext) ValidateOriginalDocument(id uint, itemType string, itemID uint, customerID, departmentID *uint) error {
-	return context.handler.validateOriginalDocument(id, itemType, itemID, customerID, departmentID)
+	return context.handler.validateOriginalDocumentDB(context.db, id, itemType, itemID, customerID, departmentID)
 }
 
 func (context requestMovementValidationContext) RequirePermission(code string) error {

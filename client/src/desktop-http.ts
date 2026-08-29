@@ -12,6 +12,31 @@ const fileRequestTimeoutMs = 60000
 // 比服务端默认 10 分钟下载超时多留 2 分钟，确保桌面端能收到服务端的具体校验错误。
 const serverUpdateDownloadTimeoutMs = 12 * 60 * 1000
 
+// tauri-plugin-http 需要一个显式代理配置才能关闭 reqwest 自动读取的系统代理。
+// noProxy 精确匹配当前 ERP 主机，因而占位地址不会收到任何请求。
+function directConnectionProxy(serverUrl: string) {
+  return {
+    all: {
+      url: 'http://127.0.0.1:9',
+      noProxy: new URL(serverUrl).hostname.replace(/^\[|\]$/g, ''),
+    },
+  }
+}
+
+function isPrivateServerAddress(serverUrl: string): boolean {
+  const hostname = new URL(serverUrl).hostname.toLowerCase()
+  if (hostname === 'localhost' || hostname === '[::1]' || hostname === '::1') return true
+
+  const octets = hostname.split('.').map(Number)
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return false
+  }
+  return octets[0] === 127
+      || octets[0] === 10
+      || (octets[0] === 192 && octets[1] === 168)
+      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+}
+
 // normalizeServerUrl 只接受纯 HTTP(S) 源地址，避免把路径、凭据或查询参数
 // 保存为服务地址。后续切换公网 HTTPS 时无需重新构建客户端。
 function normalizeServerUrl(value: string): string {
@@ -83,6 +108,9 @@ async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = cu
     return await tauriFetch(apiUrl(path, serverUrl), {
       ...init,
       signal: controller.signal,
+      // reqwest 0.12 在 macOS 会读取系统代理，却不会读取系统代理例外列表。
+      // ERP 的回环/私网服务必须直连，避免 127.0.0.1 等地址被代理成 HTTP 502。
+      ...(isPrivateServerAddress(serverUrl) ? {proxy: directConnectionProxy(serverUrl)} : {}),
     })
   } catch (error) {
     throw connectionError(error, serverUrl)

@@ -390,6 +390,91 @@ definitions:
     - code
     - name
     type: object
+  employee.DepartmentSummary:
+    properties:
+      code:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  employee.EmployeeResponse:
+    properties:
+      age:
+        type: integer
+      birth_date:
+        type: string
+      birthplace:
+        type: string
+      created_at:
+        type: string
+      departments:
+        items:
+          $ref: '#/definitions/employee.DepartmentSummary'
+        type: array
+      hire_date:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      organization_id:
+        type: integer
+      phone:
+        type: string
+      residential_address:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  employee.OperatorDepartment:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  employee.OperatorEmployee:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  employee.OperatorEmployeesResponse:
+    properties:
+      department:
+        $ref: '#/definitions/employee.OperatorDepartment'
+      employees:
+        items:
+          $ref: '#/definitions/employee.OperatorEmployee'
+        type: array
+    type: object
+  employee.employeeRequest:
+    properties:
+      birth_date:
+        type: string
+      birthplace:
+        type: string
+      hire_date:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      residential_address:
+        type: string
+    type: object
+  employee.employeeStatusRequest:
+    properties:
+      status:
+        type: string
+    type: object
   file.ErrorResponse:
     properties:
       code:
@@ -429,6 +514,187 @@ definitions:
       uploaded_by:
         type: integer
     type: object
+  inventory.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  inventory.documentRequest:
+    properties:
+      code:
+        type: string
+      lines:
+        items:
+          $ref: '#/definitions/inventory.lineRequest'
+        minItems: 1
+        type: array
+      operator_employee_id:
+        example: 1
+        type: integer
+      reason:
+        type: string
+      to_warehouse_id:
+        type: integer
+      type:
+        enum:
+        - inbound
+        - outbound
+        - transfer
+        type: string
+      warehouse_id:
+        type: integer
+    required:
+    - code
+    - lines
+    - operator_employee_id
+    - type
+    - warehouse_id
+    type: object
+  inventory.itemMovementRequest:
+    properties:
+      business_type:
+        enum:
+        - purchase_inbound
+        - return_rework_inbound
+        - customer_outbound
+        - department_outbound
+        type: string
+      customer_id:
+        type: integer
+      department_id:
+        type: integer
+      operator_employee_id:
+        example: 1
+        type: integer
+      original_document_id:
+        type: integer
+      quantity:
+        type: integer
+      reason:
+        type: string
+      remark:
+        type: string
+      supplier_id:
+        type: integer
+      unit_cost:
+        type: integer
+    required:
+    - business_type
+    - operator_employee_id
+    - quantity
+    type: object
+  inventory.lineRequest:
+    properties:
+      amount:
+        type: integer
+      item_id:
+        type: integer
+      item_type:
+        enum:
+        - material
+        - product
+        type: string
+      location_id:
+        type: integer
+      quantity:
+        type: integer
+      remark:
+        type: string
+      unit_cost:
+        type: integer
+    required:
+    - item_id
+    - item_type
+    - quantity
+    type: object
+  inventory.operatorActionRequest:
+    properties:
+      operator_employee_id:
+        example: 1
+        type: integer
+    required:
+    - operator_employee_id
+    type: object
+  inventory.reverseDocumentRequest:
+    properties:
+      operator_employee_id:
+        example: 1
+        type: integer
+      reason:
+        type: string
+    required:
+    - operator_employee_id
+    - reason
+    type: object
+  material.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  material.createMaterialRequest:
+    properties:
+      category:
+        example: 生产物资
+        type: string
+      code:
+        example: M-001
+        type: string
+      default_cost:
+        example: 10000
+        type: integer
+      name:
+        example: 铝材
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+      safety_stock:
+        example: 10
+        type: integer
+      spec:
+        example: 标准
+        type: string
+      unit:
+        example: 个
+        type: string
+    required:
+    - code
+    - name
+    - operator_employee_id
+    type: object
+  model.Department:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      employee_count:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      organization_id:
+        type: integer
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
   model.DepartmentTask:
     properties:
       accepted_at:
@@ -462,6 +728,135 @@ definitions:
       work_order_id:
         type: integer
     type: object
+  model.InventoryBalance:
+    properties:
+      amount:
+        type: integer
+      avg_cost:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: integer
+      item_id:
+        type: integer
+      item_type:
+        type: string
+      location_id:
+        type: integer
+      quantity:
+        type: integer
+      updated_at:
+        type: string
+      warehouse_id:
+        description: |-
+          SQLite 的 UNIQUE 复合索引会把多个 NULL 视为不同值，因此按库位是否为
+          NULL 分成两个部分唯一索引，确保默认库位和明确库位都只能有一条余额。
+        type: integer
+    type: object
+  model.InventoryLedger:
+    properties:
+      amount:
+        type: integer
+      balance_amount:
+        type: integer
+      balance_qty:
+        type: integer
+      created_at:
+        type: string
+      document_id:
+        type: integer
+      id:
+        type: integer
+      item_id:
+        type: integer
+      item_type:
+        type: string
+      line_id:
+        type: integer
+      location_id:
+        type: integer
+      quantity:
+        type: integer
+      type:
+        type: string
+      unit_cost:
+        type: integer
+      updated_at:
+        type: string
+      warehouse_id:
+        type: integer
+    type: object
+  model.Location:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      operator_department_id:
+        type: integer
+      operator_department_name:
+        type: string
+      operator_employee_id:
+        type: integer
+      operator_employee_name:
+        type: string
+      operator_terminal_id:
+        type: integer
+      operator_user_id:
+        type: integer
+      operator_username:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      warehouse_id:
+        type: integer
+    type: object
+  model.Material:
+    properties:
+      category:
+        type: string
+      code:
+        type: string
+      created_at:
+        type: string
+      default_cost:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      operator_department_id:
+        type: integer
+      operator_department_name:
+        type: string
+      operator_employee_id:
+        type: integer
+      operator_employee_name:
+        type: string
+      operator_terminal_id:
+        type: integer
+      operator_user_id:
+        type: integer
+      operator_username:
+        type: string
+      safety_stock:
+        type: integer
+      spec:
+        type: string
+      status:
+        type: string
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
   model.Product:
     properties:
       code:
@@ -474,6 +869,20 @@ definitions:
         type: integer
       name:
         type: string
+      operator_department_id:
+        type: integer
+      operator_department_name:
+        type: string
+      operator_employee_id:
+        type: integer
+      operator_employee_name:
+        type: string
+      operator_terminal_id:
+        type: integer
+      operator_user_id:
+        type: integer
+      operator_username:
+        type: string
       safety_stock:
         type: integer
       spec:
@@ -481,6 +890,60 @@ definitions:
       status:
         type: string
       unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.User:
+    properties:
+      account_type:
+        type: string
+      created_at:
+        type: string
+      department_id:
+        type: integer
+      id:
+        type: integer
+      last_login_at:
+        type: string
+      name:
+        type: string
+      organization_id:
+        type: integer
+      status:
+        type: string
+      terminal_id:
+        type: integer
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  model.Warehouse:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      operator_department_id:
+        type: integer
+      operator_department_name:
+        type: string
+      operator_employee_id:
+        type: integer
+      operator_employee_name:
+        type: string
+      operator_terminal_id:
+        type: integer
+      operator_user_id:
+        type: integer
+      operator_username:
+        type: string
+      status:
         type: string
       updated_at:
         type: string
@@ -534,6 +997,8 @@ definitions:
     properties:
       action:
         type: string
+      actor_terminal_id:
+        type: integer
       actor_user_id:
         type: integer
       actor_username:
@@ -546,6 +1011,14 @@ definitions:
         type: integer
       id:
         type: integer
+      operator_department_id:
+        type: integer
+      operator_department_name:
+        type: string
+      operator_employee_id:
+        type: integer
+      operator_employee_name:
+        type: string
       quantity_after:
         type: integer
       quantity_before:
@@ -562,6 +1035,58 @@ definitions:
         type: string
       work_order_id:
         type: integer
+    type: object
+  product.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  product.createProductRequest:
+    properties:
+      code:
+        example: P-001
+        type: string
+      default_cost:
+        example: 10000
+        type: integer
+      name:
+        example: 白色外壳
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+      safety_stock:
+        example: 10
+        type: integer
+      spec:
+        example: 标准
+        type: string
+      unit:
+        example: 个
+        type: string
+    required:
+    - code
+    - name
+    - operator_employee_id
+    type: object
+  response.ErrorBody:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
     type: object
   statistics.AuditStatistics:
     properties:
@@ -986,6 +1511,146 @@ definitions:
       update_enabled:
         type: boolean
     type: object
+  warehouse.CatalogItem:
+    properties:
+      amount:
+        type: integer
+      avg_cost:
+        type: integer
+      category:
+        type: string
+      code:
+        type: string
+      default_cost:
+        type: integer
+      id:
+        type: integer
+      item_type:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      safety_stock:
+        type: integer
+      spec:
+        type: string
+      status:
+        type: string
+      tab:
+        type: string
+      unit:
+        type: string
+    type: object
+  warehouse.CatalogItemsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/warehouse.CatalogItem'
+        type: array
+      keyword:
+        example: 外壳
+        type: string
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 20
+        type: integer
+      total:
+        example: 1
+        type: integer
+    type: object
+  warehouse.CatalogTabSpec:
+    properties:
+      category:
+        type: string
+      item_type:
+        type: string
+      key:
+        type: string
+      title:
+        type: string
+    type: object
+  warehouse.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  warehouse.createLocationRequest:
+    properties:
+      code:
+        example: A-01
+        type: string
+      name:
+        example: 一号库位
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+      warehouse_id:
+        example: 1
+        type: integer
+    required:
+    - code
+    - name
+    - operator_employee_id
+    - warehouse_id
+    type: object
+  warehouse.createWarehouseItemRequest:
+    properties:
+      code:
+        example: P-001
+        type: string
+      default_cost:
+        example: 10000
+        type: integer
+      name:
+        example: 白色外壳
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+      safety_stock:
+        example: 10
+        type: integer
+      spec:
+        example: 标准
+        type: string
+      tab:
+        example: product
+        type: string
+      unit:
+        example: 个
+        type: string
+    required:
+    - code
+    - name
+    - operator_employee_id
+    - tab
+    type: object
+  warehouse.createWarehouseRequest:
+    properties:
+      code:
+        example: MAIN
+        type: string
+      name:
+        example: 主仓库
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+    required:
+    - name
+    - operator_employee_id
+    type: object
   workorder.ErrorResponse:
     properties:
       code:
@@ -1021,8 +1686,12 @@ definitions:
     properties:
       mode:
         type: string
+      operator_employee_id:
+        type: integer
       reason:
         type: string
+    required:
+    - operator_employee_id
     type: object
   workorder.createRequest:
     properties:
@@ -1034,6 +1703,8 @@ definitions:
         type: string
       due_at:
         type: string
+      operator_employee_id:
+        type: integer
       planned_quantity:
         type: integer
       priority:
@@ -1048,18 +1719,44 @@ definitions:
         type: string
       type:
         type: string
+    required:
+    - operator_employee_id
+    type: object
+  workorder.operatorActionRequest:
+    properties:
+      operator_employee_id:
+        type: integer
+    required:
+    - operator_employee_id
     type: object
   workorder.partialCompleteRequest:
     properties:
       completed_quantity:
         type: integer
+      operator_employee_id:
+        type: integer
       remark:
         type: string
+    required:
+    - operator_employee_id
     type: object
   workorder.reasonRequest:
     properties:
+      operator_employee_id:
+        type: integer
       reason:
         type: string
+    required:
+    - operator_employee_id
+    type: object
+  workorder.remarkRequest:
+    properties:
+      operator_employee_id:
+        type: integer
+      remark:
+        type: string
+    required:
+    - operator_employee_id
     type: object
   workorder.temporaryProductRequest:
     properties:
@@ -1069,6 +1766,8 @@ definitions:
       name:
         example: 白色外壳
         type: string
+      operator_employee_id:
+        type: integer
       spec:
         example: 标准
         type: string
@@ -1078,11 +1777,16 @@ definitions:
     required:
     - code
     - name
+    - operator_employee_id
     type: object
   workorder.urgentRequest:
     properties:
+      operator_employee_id:
+        type: integer
       urgent:
         type: boolean
+    required:
+    - operator_employee_id
     type: object
 info:
   contact: {}
@@ -1848,6 +2552,788 @@ paths:
       summary: 上传业务图片
       tags:
       - files
+  /api/v1/inventory:
+    get:
+      parameters:
+      - description: 仓库 ID
+        in: query
+        name: warehouse_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.InventoryBalance'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询库存余额
+      tags:
+      - inventory
+    post:
+      consumes:
+      - application/json
+      description: 创建库存草稿单据；必须选择当前账号部门下的在职员工作为本次操作人。相同 Idempotency-Key 重试会返回首次创建结果。
+      parameters:
+      - description: 幂等键；相同键重试返回首次创建结果
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: 库存单据参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.documentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建库存草稿单据
+      tags:
+      - inventory
+  /api/v1/inventory-balances:
+    get:
+      parameters:
+      - description: 仓库 ID
+        in: query
+        name: warehouse_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.InventoryBalance'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询库存余额
+      tags:
+      - inventory
+  /api/v1/inventory-documents:
+    get:
+      description: 返回库存单据及其明细；成本字段会按当前账号权限脱敏。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询库存单据
+      tags:
+      - inventory
+    post:
+      consumes:
+      - application/json
+      description: 创建库存草稿单据；必须选择当前账号部门下的在职员工作为本次操作人。相同 Idempotency-Key 重试会返回首次创建结果。
+      parameters:
+      - description: 幂等键；相同键重试返回首次创建结果
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: 库存单据参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.documentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建库存草稿单据
+      tags:
+      - inventory
+  /api/v1/inventory-documents/{id}/post:
+    post:
+      consumes:
+      - application/json
+      description: 将草稿单据过账并写入库存余额和流水；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 库存单据 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 操作人参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.operatorActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 审核过账库存单据
+      tags:
+      - inventory
+  /api/v1/inventory-documents/{id}/reverse:
+    post:
+      consumes:
+      - application/json
+      description: 冲销已过账单据并回滚库存余额和流水；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 库存单据 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 冲销参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.reverseDocumentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 冲销已过账库存单据
+      tags:
+      - inventory
+  /api/v1/inventory-ledgers:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.InventoryLedger'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询库存流水
+      tags:
+      - inventory
+  /api/v1/locations:
+    get:
+      parameters:
+      - description: 仓库 ID
+        in: query
+        name: warehouse_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Location'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库库位
+      tags:
+      - warehouse
+    post:
+      consumes:
+      - application/json
+      description: 创建系统默认仓库下的库位；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 库位参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouse.createLocationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Location'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建仓库库位
+      tags:
+      - warehouse
+  /api/v1/material:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Material'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询物料
+      tags:
+      - material
+    post:
+      consumes:
+      - application/json
+      description: 创建物料主数据；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 物料参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/material.createMaterialRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Material'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建物料
+      tags:
+      - material
+  /api/v1/materials:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Material'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询物料
+      tags:
+      - material
+    post:
+      consumes:
+      - application/json
+      description: 创建物料主数据；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 物料参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/material.createMaterialRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Material'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/material.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建物料
+      tags:
+      - material
+  /api/v1/operator-employees:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/employee.OperatorEmployeesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 查询当前部门操作人候选
+      tags:
+      - 操作人
+  /api/v1/product:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Product'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询产品
+      tags:
+      - product
+    post:
+      consumes:
+      - application/json
+      description: 创建产品主数据；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 产品参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product.createProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Product'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建产品
+      tags:
+      - product
+  /api/v1/products:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Product'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询产品
+      tags:
+      - product
+    post:
+      consumes:
+      - application/json
+      description: 创建产品主数据；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 产品参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/product.createProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Product'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/product.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建产品
+      tags:
+      - product
   /api/v1/statistics:
     get:
       responses:
@@ -1872,6 +3358,315 @@ paths:
       summary: 查询统计报表
       tags:
       - statistics
+  /api/v1/system/departments/{id}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 部门 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Department'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 更新部门
+      tags:
+      - 部门管理
+  /api/v1/system/departments/{id}/employees:
+    get:
+      parameters:
+      - description: 部门 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 查询部门员工
+      tags:
+      - 部门管理
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 部门 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 员工 ID 列表
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 替换部门员工
+      tags:
+      - 部门管理
+  /api/v1/system/departments/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 部门 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 启用或停用部门
+      tags:
+      - 部门管理
+  /api/v1/system/employees:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 姓名、电话、籍贯或地址关键词
+        in: query
+        name: q
+        type: string
+      - description: 兼容关键词参数
+        in: query
+        name: keyword
+        type: string
+      - description: 部门 ID
+        in: query
+        name: department_id
+        type: integer
+      - description: 员工状态 active 或 disabled
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 分页查询员工档案
+      tags:
+      - 员工管理
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 员工档案
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/employee.employeeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/employee.EmployeeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 新增员工档案
+      tags:
+      - 员工管理
+  /api/v1/system/employees/{id}:
+    delete:
+      parameters:
+      - description: 员工 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 离职停用员工
+      tags:
+      - 员工管理
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 员工 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 员工档案
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/employee.employeeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/employee.EmployeeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 更新员工档案
+      tags:
+      - 员工管理
+  /api/v1/system/employees/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 员工 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 状态
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/employee.employeeStatusRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 启用或停用员工
+      tags:
+      - 员工管理
   /api/v1/system/updates/check:
     post:
       produces:
@@ -1954,6 +3749,479 @@ paths:
       summary: 查询版本与更新状态
       tags:
       - system-updates
+  /api/v1/system/users/{id}/affiliation:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 归属信息
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: 修改用户部门和终端归属
+      tags:
+      - 用户管理
+  /api/v1/tasks:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 模糊关键字
+        in: query
+        name: q
+        type: string
+      - description: 主任务状态
+        in: query
+        name: status
+        type: string
+      - description: 任务类型
+        in: query
+        name: type
+        type: string
+      - description: 流转部门 ID
+        in: query
+        name: department_id
+        type: integer
+      - description: 优先级
+        in: query
+        name: priority
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/workorder.ListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 分页查询任务单
+      tags:
+      - workorder
+    post:
+      description: 创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。
+      parameters:
+      - description: 任务单创建参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.createRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建草稿任务单
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/complete:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 完成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.completeRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 办公室确认完成任务单
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/dispatch:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 操作人参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.operatorActionRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 派发任务单
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/logs:
+    get:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.WorkOrderFlowLog'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询任务流转日志
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/pause:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 暂停原因
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.reasonRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 暂停任务单
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/resume:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 操作人参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.operatorActionRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 恢复任务单
+      tags:
+      - workorder
+  /api/v1/tasks/{id}/urgent:
+    post:
+      parameters:
+      - description: 任务单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 加急参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.urgentRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 设置或取消加急
+      tags:
+      - workorder
+  /api/v1/tasks/department-tasks/{id}/complete:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 操作人和备注参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.remarkRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门完成子任务
+      tags:
+      - workorder
+  /api/v1/tasks/department-tasks/{id}/partial-complete:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 部分完成参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.partialCompleteRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门提交部分完成数量
+      tags:
+      - workorder
+  /api/v1/tasks/department-tasks/{id}/start:
+    post:
+      parameters:
+      - description: 部门子任务 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 操作人和备注参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.remarkRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.WorkOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 部门开始处理子任务
+      tags:
+      - workorder
   /api/v1/updates/client/artifacts/{sha256}:
     get:
       parameters:
@@ -2102,6 +4370,482 @@ paths:
       summary: 查询服务端与客户端版本
       tags:
       - updates
+  /api/v1/warehouse:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Warehouse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库
+      tags:
+      - warehouse
+    post:
+      consumes:
+      - application/json
+      description: 更新系统默认仓库名称；仓库编码固定为 MAIN，必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 仓库参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouse.createWarehouseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Warehouse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新系统默认仓库
+      tags:
+      - warehouse
+  /api/v1/warehouse/items:
+    get:
+      parameters:
+      - description: 仓库标签
+        enum:
+        - product
+        - production_material
+        - regular_product
+        - daily_supply
+        in: query
+        name: tab
+        type: string
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 模糊关键字
+        in: query
+        name: q
+        type: string
+      - description: 兼容关键词参数
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/warehouse.CatalogItemsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库标签物品
+      tags:
+      - warehouse
+    post:
+      consumes:
+      - application/json
+      description: 在指定仓库标签下创建物料或产品；必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 仓库物品参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouse.createWarehouseItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/warehouse.CatalogItem'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建仓库物品
+      tags:
+      - warehouse
+  /api/v1/warehouse/items/{itemType}/{itemID}:
+    get:
+      parameters:
+      - description: 物品类型
+        enum:
+        - material
+        - product
+        in: path
+        name: itemType
+        required: true
+        type: string
+      - description: 物品 ID
+        in: path
+        name: itemID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库物品详情
+      tags:
+      - inventory
+  /api/v1/warehouse/items/{itemType}/{itemID}/movements:
+    get:
+      parameters:
+      - description: 物品类型
+        enum:
+        - material
+        - product
+        in: path
+        name: itemType
+        required: true
+        type: string
+      - description: 物品 ID
+        in: path
+        name: itemID
+        required: true
+        type: integer
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库物品出入库记录
+      tags:
+      - inventory
+    post:
+      consumes:
+      - application/json
+      description: 创建即时出入库记录并立即过账；必须选择当前账号部门下的在职员工。相同 Idempotency-Key 重试会返回首次创建结果。
+      parameters:
+      - description: 物品类型
+        enum:
+        - material
+        - product
+        in: path
+        name: itemType
+        required: true
+        type: string
+      - description: 物品 ID
+        in: path
+        name: itemID
+        required: true
+        type: integer
+      - description: 幂等键；相同键重试返回首次创建结果
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: 即时出入库参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.itemMovementRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建即时出入库记录
+      tags:
+      - inventory
+  /api/v1/warehouse/tabs:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/warehouse.CatalogTabSpec'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库分类标签
+      tags:
+      - warehouse
+  /api/v1/warehouses:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Warehouse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询仓库
+      tags:
+      - warehouse
+    post:
+      consumes:
+      - application/json
+      description: 更新系统默认仓库名称；仓库编码固定为 MAIN，必须选择当前账号部门下的在职员工。
+      parameters:
+      - description: 仓库参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouse.createWarehouseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Warehouse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新系统默认仓库
+      tags:
+      - warehouse
   /api/v1/workorder:
     get:
       parameters:
@@ -2230,6 +4974,12 @@ paths:
         name: id
         required: true
         type: integer
+      - description: 操作人参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.operatorActionRequest'
       responses:
         "200":
           description: OK
@@ -2332,6 +5082,12 @@ paths:
         name: id
         required: true
         type: integer
+      - description: 操作人参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.operatorActionRequest'
       responses:
         "200":
           description: OK
@@ -2406,6 +5162,12 @@ paths:
         name: id
         required: true
         type: integer
+      - description: 操作人和备注参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.remarkRequest'
       responses:
         "200":
           description: OK
@@ -2480,6 +5242,12 @@ paths:
         name: id
         required: true
         type: integer
+      - description: 操作人和备注参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.remarkRequest'
       responses:
         "200":
           description: OK

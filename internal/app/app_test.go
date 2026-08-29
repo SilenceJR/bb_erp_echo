@@ -360,6 +360,14 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 	if err := erp.DB.Create(&product).Error; err != nil {
 		t.Fatalf("create audit product: %v", err)
 	}
+	birth := time.Date(1990, 1, 1, 0, 0, 0, 0, time.Local)
+	operator := model.Employee{OrganizationID: 1, Name: "审计操作员工", HireDate: birth, BirthDate: birth, Status: model.StatusActive}
+	if err := erp.DB.Create(&operator).Error; err != nil {
+		t.Fatalf("create audit operator: %v", err)
+	}
+	if err := erp.DB.Create(&model.EmployeeDepartment{EmployeeID: operator.ID, DepartmentID: 1}).Error; err != nil {
+		t.Fatalf("link audit operator: %v", err)
+	}
 
 	terminalToken := erp.createTerminalUserAndLogin(t)
 	rec = erp.request(http.MethodPost, "/api/v1/tasks", terminalToken, map[string]any{
@@ -368,6 +376,7 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 		"product_id":            product.ID,
 		"planned_quantity":      int64(10000),
 		"target_department_ids": []uint{1},
+		"operator_employee_id":  operator.ID,
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("terminal task create status = %d body=%s", rec.Code, rec.Body.String())

@@ -4,6 +4,7 @@ import {useAssignment} from './useAssignment'
 import {useAuth} from './useAuth'
 import {useMold} from './useMold'
 import {useModuleData} from './useModuleData'
+import {useOperatorEmployees} from './useOperatorEmployees'
 import {useWarehouse} from './useWarehouse'
 import {useWorkorder} from './useWorkorder'
 import {ElMessage} from 'element-plus'
@@ -78,8 +79,8 @@ export function useWorkspaceController() {
 type FormField = {
   key: string
   label: string
-  kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date' | 'workorder-product' | 'workorder-quantity'
-  options?: Array<{ label: string; value: string | number }>
+  kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date' | 'workorder-product' | 'workorder-quantity' | 'operator'
+  options?: Array<{ label: string; value: string | number; disabled?: boolean }>
   required?: boolean
 }
 
@@ -141,6 +142,8 @@ const {
   loginUsernameInput,
   formError,
 } = useAuth()
+
+const operatorDirectory = useOperatorEmployees(token)
 
 let authRequestGeneration = 0
 let refreshInFlight: Promise<string> | null = null
@@ -221,13 +224,30 @@ const {
   temporaryProductSubmitting,
   temporaryProductError,
   temporaryProductForm,
+  actionDialogVisible,
+  actionKind,
+  actionTarget,
+  actionSubmitting,
+  actionError,
+  actionFieldErrors,
+  actionForm,
 } = useWorkorder()
 
 const statisticsData = ref<StatisticsDashboard | null>(null)
+const affiliationTarget = ref<BasicItem | null>(null)
+const affiliationDepartmentID = ref<number | undefined>()
+const affiliationTerminalID = ref<number | undefined>()
+const affiliationSaving = ref(false)
+const affiliationError = ref('')
+const affiliationInitial = ref({departmentID: undefined as number | undefined, terminalID: undefined as number | undefined})
+const affiliationTerminalOptions = computed(() => rowsFor('terminals').filter((item) => Number(item.department_id) === Number(affiliationDepartmentID.value)))
 watch(() => formState.department_id, (departmentID) => {
   if (activeKey.value !== 'users' || !formState.terminal_id) return
   const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(formState.terminal_id))
   if (!terminal || Number(terminal.department_id) !== Number(departmentID)) delete formState.terminal_id
+})
+watch(affiliationDepartmentID, () => {
+  if (!affiliationTerminalOptions.value.some((item) => Number(item.id) === Number(affiliationTerminalID.value))) affiliationTerminalID.value = undefined
 })
 watch(() => formState.type, (type) => {
   if (activeKey.value === 'workorder' && type !== 'production') {
@@ -253,6 +273,7 @@ const warehouseTabs = [
   {key: 'regular_product', title: '常规产品'},
   {key: 'daily_supply', title: '生活物资'},
 ]
+let confirmedWarehouseTab = 'product'
 const warehouseTabOptions = warehouseTabs.map((item) => ({label: item.title, value: item.key}))
 const movementDefinitions: MovementDefinition[] = [
   {key: 'purchase_inbound', title: '采购入库', requiredAll: ['suppliers:read']},
@@ -286,6 +307,8 @@ const businessItems = computed(() => navItems.value.filter((item) => item.group 
 const systemItems = computed(() => navItems.value.filter((item) => item.group === 'system'))
 const activeModule = computed(() => modules.find((item) => item.key === activeKey.value))
 const canWriteActive = computed(() => !!activeModule.value && canWriteModule(activeModule.value))
+const canEditUserAffiliation = computed(() => canWriteActive.value && hasPermission('system:departments:read') && hasPermission('system:terminals:read'))
+const canCreateDepartmentTerminalUser = computed(() => hasPermission('system:departments:read') && hasPermission('system:terminals:read'))
 const activePageReadonly = computed(() => {
   if (activeKey.value === 'warehouses') {
     return !hasPermission('warehouse:write') && !hasPermission('inventory:documents:write')
@@ -327,7 +350,7 @@ const genericIdentityColumns = computed(() => {
     terminals: ['name', 'code'],
     roles: ['name', 'code'],
     permissions: ['name', 'code'],
-    audits: ['actor_username', 'action'],
+    audits: ['operator_employee_name', 'action'],
     contacts: ['name', 'phone'],
   }
   const configured = preferred[activeKey.value] || [columns.value[0] || 'id', columns.value[1] || '']
@@ -513,7 +536,7 @@ const formatMovementInputQuantity = computed(() => {
 })
 const movementCanSubmit = computed(() => {
   if (!warehouseDetail.value || !warehouseQuantityAvailable.value || warehouseDetailLoading.value || warehouseDetailError.value) return false
-  if (movementSubmitting.value || decimalToScaled(movementForm.quantity) <= 0) return false
+  if (movementSubmitting.value || decimalToScaled(movementForm.quantity) <= 0 || !movementForm.operator_employee_id || operatorDirectory.unavailableReason.value) return false
   if (movementIsOutbound.value && expectedStockQuantity.value < 0) return false
   if (movementMode.value === 'purchase_inbound') return Boolean(movementForm.supplier_id)
   if (movementMode.value === 'customer_outbound') return Boolean(movementForm.customer_id)
@@ -640,7 +663,7 @@ const formSchema = computed<FormField[]>(() => {
           required: true,
           options: [
             {label: '个人账号', value: 'personal'},
-            {label: '部门终端账号', value: 'department_terminal'},
+            {label: canCreateDepartmentTerminalUser.value ? '部门终端账号' : '部门终端账号（需要部门和终端查看权限）', value: 'department_terminal', disabled: !canCreateDepartmentTerminalUser.value},
           ],
         },
         {key: 'name', label: '姓名/终端名', required: true},
@@ -676,6 +699,7 @@ const formSchema = computed<FormField[]>(() => {
         {key: 'spec', label: '规格'},
         {key: 'safety_stock', label: '安全库存'},
         ...(hasPermission('cost:view') ? [{key: 'default_cost', label: '默认成本（元）'}] : []),
+        {key: 'operator_employee_id', label: '本次操作人', kind: 'operator', required: true},
       ]
     case 'molds':
       return [
@@ -721,6 +745,7 @@ const formSchema = computed<FormField[]>(() => {
         },
         {key: 'target_department_ids', label: '流转部门', kind: 'multi-select', options: departmentOptions, required: true},
         {key: 'description', label: '说明', kind: 'textarea', required: formState.type === 'general'},
+        {key: 'operator_employee_id', label: '本次操作人', kind: 'operator', required: true},
       ]
     default:
       return []
@@ -771,6 +796,9 @@ async function switchModule(key: string) {
     panelMessage.value = '你的账号暂无该功能权限'
     activeKey.value = 'dashboard'
     return
+  }
+  if (showCreateForm.value && createFormDirty()) {
+    try { await appMessageBox.confirm('当前表单尚未保存，确认离开？', '放弃修改', {type: 'warning'}) } catch { return }
   }
   if (warehouseDrawerVisible.value) {
     const canClose = await requestWarehouseClose()
@@ -920,7 +948,55 @@ async function saveAssignment() {
   }
 }
 
-function switchWarehouseTab(key: string) {
+function openUserAffiliation(row: any) {
+  if (!canEditUserAffiliation.value) {
+    ElMessage.warning('修正账号归属需要部门查看和终端查看权限。')
+    return
+  }
+  affiliationTarget.value = row
+  affiliationDepartmentID.value = row.department_id ? Number(row.department_id) : undefined
+  affiliationTerminalID.value = row.terminal_id ? Number(row.terminal_id) : undefined
+  affiliationInitial.value = {departmentID: affiliationDepartmentID.value, terminalID: affiliationTerminalID.value}
+  affiliationError.value = ''
+}
+
+async function closeUserAffiliation(done?: () => void) {
+  if (affiliationSaving.value) return
+  if (affiliationDepartmentID.value !== affiliationInitial.value.departmentID || affiliationTerminalID.value !== affiliationInitial.value.terminalID) {
+    try { await appMessageBox.confirm('账号归属修改尚未保存，确认关闭？', '放弃修改', {type: 'warning'}) } catch { return }
+  }
+  affiliationError.value = ''
+  if (done) done(); else affiliationTarget.value = null
+}
+
+async function saveUserAffiliation() {
+  if (!affiliationTarget.value || affiliationSaving.value) return
+  affiliationSaving.value = true
+  affiliationError.value = ''
+  try {
+    await request(`/api/v1/system/users/${affiliationTarget.value.id}/affiliation`, {method: 'PATCH', body: {department_id: affiliationDepartmentID.value || null, terminal_id: affiliationTerminalID.value || null}}, token.value)
+    const changedCurrentUser = Number(affiliationTarget.value.id) === Number(currentUser.value?.id)
+    affiliationTarget.value = null
+    await loadActiveModule()
+    if (changedCurrentUser) await loadMe()
+    ElMessage.success('账号归属已更新')
+  } catch (error) { affiliationError.value = error instanceof Error ? error.message : '账号归属保存失败' } finally { affiliationSaving.value = false }
+}
+
+async function switchWarehouseTab(key: string) {
+  const previous = confirmedWarehouseTab
+  if (key === previous) return
+  if (showCreateForm.value && loading.value) {
+    activeWarehouseTab.value = previous
+    return
+  }
+  if (showCreateForm.value && createFormDirty()) {
+    try { await appMessageBox.confirm('仓库新增表单尚未保存，切换分类将放弃当前内容。', '切换仓库分类？', {type: 'warning'}) } catch {
+      activeWarehouseTab.value = previous
+      return
+    }
+  }
+  confirmedWarehouseTab = key
   activeWarehouseTab.value = key
   resetListQuery()
   clearForm()
@@ -1307,7 +1383,13 @@ async function createItem() {
     return
   }
   formError.value = validateActiveForm()
-  if (formError.value) return
+  if (formError.value) {
+    if (['warehouses', 'workorder'].includes(activeKey.value) && !formState.operator_employee_id) {
+      await nextTick()
+      document.getElementById('create-form-operator')?.focus()
+    }
+    return
+  }
   loading.value = true
   panelMessage.value = ''
   try {
@@ -1317,6 +1399,7 @@ async function createItem() {
       method: isSupplierEdit ? 'PATCH' : 'POST',
       body: normalizedForm(),
     }, token.value)
+    if (['warehouses', 'workorder'].includes(activeKey.value)) operatorDirectory.invalidate()
     if (['roles', 'permissions'].includes(item.key)) delete assignmentOptionsCache[item.key]
     clearForm()
     await preloadBaseData()
@@ -1327,6 +1410,7 @@ async function createItem() {
     editingSupplier.value = null
     showCreateForm.value = false
   } catch (error) {
+    if (['warehouses', 'workorder'].includes(activeKey.value) && operatorDirectory.handleSubmitError(error)) formState.operator_employee_id = undefined
     formError.value = error instanceof Error ? error.message : '保存失败'
     panelMessage.value = formError.value
   } finally {
@@ -1381,6 +1465,7 @@ function validateActiveForm(): string {
   if (activeKey.value === 'users') {
     if (!currentUser.value?.organization_id) return '当前登录身份缺少组织信息，请重新登录后再试。'
     if (String(formState.password || '').length < 8) return '密码至少需要 8 个字符。'
+    if (formState.account_type === 'department_terminal' && !canCreateDepartmentTerminalUser.value) return '创建部门终端账号需要部门查看和终端查看权限。'
     if (formState.account_type === 'department_terminal') {
       const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(formState.terminal_id))
       if (!terminal || Number(terminal.department_id) !== Number(formState.department_id)) {
@@ -1408,10 +1493,16 @@ function clearForm() {
   formError.value = ''
 }
 
-function toggleCreateForm() {
+async function toggleCreateForm() {
+  if (showCreateForm.value && loading.value) return
+  const formDirty = createFormDirty()
+  if (showCreateForm.value && formDirty) {
+    try { await appMessageBox.confirm('当前表单尚未保存，确认关闭？', '放弃修改', {type: 'warning'}) } catch { return }
+  }
   editingSupplier.value = null
   clearForm()
   showCreateForm.value = !showCreateForm.value
+  if (showCreateForm.value && ['warehouses', 'workorder'].includes(activeKey.value)) void operatorDirectory.load(true)
   if (showCreateForm.value && activeKey.value === 'workorder') {
     formState.type = 'production'
     formState.priority = 'normal'
@@ -1420,6 +1511,14 @@ function toggleCreateForm() {
     invalidateWorkorderProductSearch()
     closeTemporaryProductDialog()
   }
+}
+
+function createFormDirty(): boolean {
+  return Object.entries(formState).some(([key, value]) => {
+    if (activeKey.value === 'workorder' && ((key === 'type' && value === 'production') || (key === 'priority' && value === 'normal'))) return false
+    if (editingSupplier.value && value === editingSupplier.value[key]) return false
+    return Array.isArray(value) ? value.length > 0 : value !== '' && value !== undefined && value !== null
+  })
 }
 
 function editSupplier(item: any) {
@@ -1446,7 +1545,7 @@ function inferColumns(data: BasicItem[], item: ModuleItem): string[] {
     products: ['id', 'name', 'code', 'unit', 'spec', 'safety_stock', 'status'],
     molds: ['id', 'code', 'name', 'status', 'current_location', 'storage_location', 'cavity_count', 'mold_material', 'steel', 'maintenance_cycle_days', 'next_maintenance_at'],
     permissions: ['id', 'name', 'code', 'object', 'action'],
-    audits: ['id', 'actor_username', 'account_type', 'person_name', 'department_id', 'terminal_id', 'action', 'object', 'result', 'created_at'],
+    audits: ['id', 'operator_employee_name', 'operator_department_name', 'actor_username', 'terminal_id', 'action', 'object', 'result', 'created_at'],
   }
   const inferred = preferred[item.key] || Object.keys(data[0] || {})
   if (!hasPermission('cost:view')) {
@@ -1493,6 +1592,7 @@ function isGenericStatusColumn(column: string): boolean {
 }
 
 function formatGenericCell(column: string, value: unknown): string {
+  if (column === 'operator_employee_name' && !value) return '历史记录未记录员工'
   if (column === 'account_type') {
     if (value === 'personal') return '个人账号'
     if (value === 'department_terminal') return '部门终端账号'
@@ -1519,7 +1619,7 @@ function permissionDomainKey(option: BasicItem): string {
   const objectPath = String(option.object || '').toLowerCase()
   const candidates = [codePrefix, objectPath.replace(/^\/api\/v1\//, '').split('/')[0]]
   const aliases: Record<string, string> = {
-    system: 'system', users: 'system', roles: 'system', permissions: 'system', audits: 'system', updates: 'system', departments: 'system', terminals: 'system',
+    system: 'system', users: 'system', roles: 'system', permissions: 'system', audits: 'system', updates: 'system', departments: 'system', employees: 'system', terminals: 'system',
     warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'warehouse', products: 'warehouse',
     workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers', contacts: 'customers',
     supplier: 'suppliers', suppliers: 'suppliers', statistics: 'statistics', cost: 'cost',
@@ -1580,6 +1680,7 @@ const columnLabels: Record<string, string> = {
   cavity_count: '穴数', mold_material: '成型材料', steel: '钢材', maintenance_cycle_days: '保养周期',
   next_maintenance_at: '下次保养', object: '对象', action: '操作', actor_username: '操作账号',
   actor_account_type: '账号类型', person_name: '操作人', result: '结果', created_at: '操作时间',
+  operator_employee_name: '操作员工', operator_department_name: '操作部门',
 }
 
 function columnLabel(column: string): string {
@@ -1953,6 +2054,7 @@ function startMovement(mode: string) {
   showQuickSupplier.value = false
   clearMovementForm()
   movementFormError.value = ''
+  void operatorDirectory.load(true)
   if (mode === 'return_rework_inbound') {
     movementForm.source_type = hasPermission('customers:read') ? 'customer' : 'department'
   }
@@ -1986,7 +2088,12 @@ function resetMovementSource() {
 
 function clearMovementForm() {
   for (const key of Object.keys(movementForm)) delete movementForm[key]
+  movementRequestSnapshot = ''
+  movementRequestIdempotencyKey = ''
 }
+
+let movementRequestSnapshot = ''
+let movementRequestIdempotencyKey = ''
 
 async function submitMovement() {
   if (movementSubmitting.value) return
@@ -2008,6 +2115,7 @@ async function submitMovement() {
   const body: Record<string, unknown> = {
     business_type: movementMode.value,
     quantity,
+    operator_employee_id: Number(movementForm.operator_employee_id),
     reason: movementForm.reason || '',
     remark: movementForm.reason || '',
   }
@@ -2017,25 +2125,35 @@ async function submitMovement() {
   if (movementMode.value === 'purchase_inbound' && movementForm.unit_cost) {
     body.unit_cost = moneyToCents(movementForm.unit_cost)
   }
+  const requestSnapshot = JSON.stringify(body)
+  if (!movementRequestIdempotencyKey || movementRequestSnapshot !== requestSnapshot) {
+    movementRequestSnapshot = requestSnapshot
+    movementRequestIdempotencyKey = createIdempotencyKey()
+  }
   movementSubmitting.value = true
   movementFormError.value = ''
   try {
     await request(`/api/v1/warehouse/items/${item.item_type}/${item.id}/movements`, {
       method: 'POST',
-      headers: {'Idempotency-Key': createIdempotencyKey()},
+      headers: {'Idempotency-Key': movementRequestIdempotencyKey},
       body,
     }, token.value)
     movementMode.value = ''
     showQuickSupplier.value = false
     clearMovementForm()
+    operatorDirectory.invalidate()
     await Promise.all([loadActiveModule(), loadWarehouseItemDetail(), loadItemMovements()])
     const refreshed = rows.value.find((row) => row.id === item.id && row.item_type === item.item_type)
     if (refreshed) selectedWarehouseItem.value = refreshed
     panelMessage.value = '库存已更新'
     ElMessage.success('库存已更新')
   } catch (error) {
+    if (operatorDirectory.handleSubmitError(error)) delete movementForm.operator_employee_id
+    if (error instanceof ApiError && error.status < 500) {
+      movementRequestSnapshot = ''
+      movementRequestIdempotencyKey = ''
+    }
     movementFormError.value = error instanceof Error ? error.message : '办理失败，请检查填写内容后重试。'
-    ElMessage.error(movementFormError.value)
   } finally {
     movementSubmitting.value = false
   }
@@ -2218,8 +2336,11 @@ function openTemporaryProductDialog() {
   temporaryProductForm.code = ''
   temporaryProductForm.unit = '个'
   temporaryProductForm.spec = ''
+  temporaryProductForm.operator_employee_id = undefined
+  formState.operator_employee_id = undefined
   temporaryProductError.value = ''
   temporaryProductDialogVisible.value = true
+  void operatorDirectory.load(true)
 }
 
 function closeTemporaryProductDialog() {
@@ -2240,13 +2361,17 @@ async function createTemporaryProduct() {
     temporaryProductError.value = '请填写产品名称、产品编码和单位。'
     return
   }
+  if (!temporaryProductForm.operator_employee_id || operatorDirectory.unavailableReason.value) {
+    temporaryProductError.value = operatorDirectory.unavailableReason.value || '请选择本次操作人。'
+    return
+  }
   invalidateWorkorderProductSearch()
   temporaryProductSubmitting.value = true
   temporaryProductError.value = ''
   try {
     const created = await request<BasicItem>('/api/v1/workorder/products', {
       method: 'POST',
-      body: {name, code, unit, spec: temporaryProductForm.spec.trim()},
+      body: {name, code, unit, spec: temporaryProductForm.spec.trim(), operator_employee_id: Number(temporaryProductForm.operator_employee_id)},
     }, token.value)
     const product = normalizeWorkorderProductDetail(created)
     if (!isWorkorderProductionCreateFormActive()) return
@@ -2255,9 +2380,11 @@ async function createTemporaryProduct() {
     formState.product_id = Number(product.id)
     workorderProductStock.value = product
     temporaryProductDialogVisible.value = false
+    operatorDirectory.invalidate()
     ElMessage.success('产品档案已新增并选中，初始库存为 0。')
     await loadWorkorderProductStock()
   } catch (error) {
+    if (operatorDirectory.handleSubmitError(error)) temporaryProductForm.operator_employee_id = undefined
     temporaryProductError.value = error instanceof Error ? error.message : '临时产品建档失败，请检查编码后重试。'
   } finally {
     temporaryProductSubmitting.value = false
@@ -2387,57 +2514,153 @@ async function loadWorkOrderLogs() {
 }
 
 async function dispatchWorkOrder() {
-  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/dispatch`, {}, '任务已派发')
+  openWorkOrderAction('dispatch')
 }
 
 async function pauseWorkOrder() {
-  const reason = await promptText('暂停原因', '请输入暂停原因')
-  if (!reason) return
-  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/pause`, {reason}, '任务已暂停')
+  openWorkOrderAction('pause')
 }
 
 async function resumeWorkOrder() {
-  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/resume`, {}, '任务已恢复')
+  openWorkOrderAction('resume')
 }
 
 async function toggleWorkOrderUrgent() {
-  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/urgent`, {
-    urgent: selectedWorkOrder.value?.priority !== 'urgent',
-  }, selectedWorkOrder.value?.priority === 'urgent' ? '已取消加急' : '已设为加急')
+  openWorkOrderAction('urgent')
 }
 
 async function completeWorkOrder(mode: 'normal' | 'forced') {
-  let reason = ''
-  if (mode === 'forced') {
-    reason = await promptText('强制完成原因', '请输入强制完成原因')
-    if (!reason) return
-  } else {
-    try {
-      await appMessageBox.confirm('确认该任务单正常完成？', '确认完成', {type: 'success'})
-    } catch {
-      return
-    }
-  }
-  await runWorkOrderAction(`/api/v1/workorder/${selectedWorkOrder.value?.id}/complete`, {mode, reason}, mode === 'normal' ? '任务已正常完成' : '任务已强制完成')
+  openWorkOrderAction(mode === 'normal' ? 'complete_normal' : 'complete_forced')
 }
 
 async function startDepartmentTask(task: BasicItem) {
-  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/start`, {}, '已开始处理')
+  openWorkOrderAction('department_start', task)
 }
 
 async function partialCompleteDepartmentTask(task: BasicItem) {
-  const quantity = await promptText('部分完成数量', `请输入已完成数量，计划 ${formatQuantity(task.planned_quantity)}`)
-  if (!quantity) return
-  const remark = await promptText('备注', '可填写本次完成说明', false)
-  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/partial-complete`, {
-    completed_quantity: decimalToScaled(quantity),
-    remark,
-  }, '部分完成已提交')
+  openWorkOrderAction('department_partial_complete', task)
 }
 
 async function completeDepartmentTask(task: BasicItem) {
-  const remark = await promptText('完成备注', '可填写完成说明', false)
-  await runWorkOrderAction(`/api/v1/workorder/department-tasks/${task.id}/complete`, {remark}, '部门任务已完成')
+  openWorkOrderAction('department_complete', task)
+}
+
+function openWorkOrderAction(kind: string, target: BasicItem | null = null) {
+  actionKind.value = kind
+  actionTarget.value = target
+  actionForm.operator_employee_id = undefined
+  actionForm.reason = ''
+  actionForm.remark = ''
+  actionForm.completed_quantity = ''
+  actionError.value = ''
+  Object.assign(actionFieldErrors, {operator: '', reason: '', quantity: ''})
+  actionDialogVisible.value = true
+  void operatorDirectory.load(true)
+}
+
+async function closeWorkOrderAction(done?: () => void) {
+  if (actionSubmitting.value) return
+  if (actionForm.operator_employee_id || actionForm.reason || actionForm.remark || actionForm.completed_quantity) {
+    try { await appMessageBox.confirm('本次任务操作尚未提交，确认关闭？', '放弃操作', {type: 'warning'}) } catch { return }
+  }
+  actionTarget.value = null
+  actionForm.operator_employee_id = undefined
+  actionError.value = ''
+  Object.assign(actionFieldErrors, {operator: '', reason: '', quantity: ''})
+  if (done) done(); else actionDialogVisible.value = false
+}
+
+async function submitWorkOrderAction() {
+  if (actionSubmitting.value || !selectedWorkOrder.value) return
+  if (!actionForm.operator_employee_id || operatorDirectory.unavailableReason.value) {
+    if (operatorDirectory.unavailableReason.value) actionError.value = operatorDirectory.unavailableReason.value
+    else actionFieldErrors.operator = '请选择本次操作人。'
+    await nextTick()
+    document.getElementById('workorder-action-operator')?.focus()
+    return
+  }
+  const id = Number(selectedWorkOrder.value.id)
+  const taskID = Number(actionTarget.value?.id || 0)
+  let path = ''
+  let success = ''
+  const body: Record<string, unknown> = {operator_employee_id: Number(actionForm.operator_employee_id)}
+  switch (actionKind.value) {
+    case 'dispatch': path = `/api/v1/workorder/${id}/dispatch`; success = '任务已派发'; break
+    case 'pause': path = `/api/v1/workorder/${id}/pause`; body.reason = actionForm.reason.trim(); success = '任务已暂停'; break
+    case 'resume': path = `/api/v1/workorder/${id}/resume`; success = '任务已恢复'; break
+    case 'urgent': path = `/api/v1/workorder/${id}/urgent`; body.urgent = selectedWorkOrder.value.priority !== 'urgent'; success = body.urgent ? '已设为加急' : '已取消加急'; break
+    case 'complete_normal': path = `/api/v1/workorder/${id}/complete`; body.mode = 'normal'; body.reason = ''; success = '任务已正常完成'; break
+    case 'complete_forced': path = `/api/v1/workorder/${id}/complete`; body.mode = 'forced'; body.reason = actionForm.reason.trim(); success = '任务已强制完成'; break
+    case 'department_start': path = `/api/v1/workorder/department-tasks/${taskID}/start`; success = '已开始处理'; break
+    case 'department_partial_complete': path = `/api/v1/workorder/department-tasks/${taskID}/partial-complete`; body.remark = actionForm.remark.trim(); success = '部分完成已提交'; break
+    case 'department_complete': path = `/api/v1/workorder/department-tasks/${taskID}/complete`; body.remark = actionForm.remark.trim(); success = '部门任务已完成'; break
+  }
+  if (!path) return
+  if (['pause', 'complete_forced'].includes(actionKind.value) && !String(body.reason || '').trim()) {
+    actionFieldErrors.reason = '请填写原因。'
+    await nextTick()
+    document.getElementById('workorder-action-reason')?.focus()
+    return
+  }
+  if (actionKind.value === 'department_partial_complete') {
+    const quantityInput = actionForm.completed_quantity.trim()
+    if (!quantityInput) {
+      actionFieldErrors.quantity = '请输入累计完成数量。'
+      await nextTick()
+      document.getElementById('workorder-action-quantity')?.focus()
+      return
+    }
+    if (!/^\d+(\.\d{1,4})?$/.test(quantityInput)) {
+      actionFieldErrors.quantity = '请输入正数，最多保留 4 位小数。'
+      await nextTick()
+      document.getElementById('workorder-action-quantity')?.focus()
+      return
+    }
+    const quantity = decimalToScaled(quantityInput)
+    const planned = Number(actionTarget.value?.planned_quantity || 0)
+    const completed = Number(actionTarget.value?.completed_quantity || 0)
+    if (quantity <= 0 || quantity >= planned) {
+      actionFieldErrors.quantity = '累计完成数量必须大于 0 且小于计划数量。'
+      await nextTick()
+      document.getElementById('workorder-action-quantity')?.focus()
+      return
+    }
+    if (quantity <= completed) {
+      actionFieldErrors.quantity = '累计完成数量必须大于当前已完成数量。'
+      await nextTick()
+      document.getElementById('workorder-action-quantity')?.focus()
+      return
+    }
+    body.completed_quantity = quantity
+  }
+  actionSubmitting.value = true
+  actionError.value = ''
+  try {
+    selectedWorkOrder.value = await request<BasicItem>(path, {method: 'POST', body}, token.value)
+    await Promise.all([loadActiveModule(), loadWorkOrderLogs()])
+    panelMessage.value = success
+    actionDialogVisible.value = false
+    actionTarget.value = null
+    actionForm.operator_employee_id = undefined
+    Object.assign(actionFieldErrors, {operator: '', reason: '', quantity: ''})
+    operatorDirectory.invalidate()
+    ElMessage.success(success)
+  } catch (error) {
+    if (operatorDirectory.handleSubmitError(error)) actionForm.operator_employee_id = undefined
+    actionError.value = error instanceof Error ? error.message : '任务操作失败'
+  } finally {
+    actionSubmitting.value = false
+  }
+}
+
+async function closeTemporaryProductWithGuard(done?: () => void) {
+  if (temporaryProductSubmitting.value) return
+  const dirty = Boolean(temporaryProductForm.name || temporaryProductForm.code || temporaryProductForm.spec || temporaryProductForm.operator_employee_id || temporaryProductForm.unit !== '个')
+  if (dirty) {
+    try { await appMessageBox.confirm('临时产品信息尚未保存，确认关闭？', '放弃修改', {type: 'warning'}) } catch { return }
+  }
+  temporaryProductError.value = ''
+  if (done) done(); else temporaryProductDialogVisible.value = false
 }
 
 async function runWorkOrderAction(path: string, body: Record<string, unknown>, successMessage: string) {
@@ -2732,6 +2955,7 @@ onBeforeUnmount(() => {
 
   return {
     assignmentConfigs,
+    operatorDirectory,
     tokenKey,
     desktopClient,
     authRequestGeneration,
@@ -2812,6 +3036,13 @@ onBeforeUnmount(() => {
     temporaryProductDialogVisible,
     temporaryProductSubmitting,
     temporaryProductError,
+    actionDialogVisible,
+    actionKind,
+    actionTarget,
+    actionSubmitting,
+    actionError,
+    actionFieldErrors,
+    actionForm,
     moldDetailDrawerVisible,
     selectedMoldDetail,
     selectedMoldID,
@@ -2820,6 +3051,12 @@ onBeforeUnmount(() => {
     moldActionSubmitting,
     moldActionError,
     statisticsData,
+    affiliationTarget,
+    affiliationDepartmentID,
+    affiliationTerminalID,
+    affiliationTerminalOptions,
+    affiliationSaving,
+    affiliationError,
     selectedMoldMaintenanceState,
     selectedMoldAlertType,
     warehouseTabs,
@@ -2833,6 +3070,8 @@ onBeforeUnmount(() => {
     systemItems,
     activeModule,
     canWriteActive,
+    canEditUserAffiliation,
+    canCreateDepartmentTerminalUser,
     activePageReadonly,
     hasActiveFilters,
     filteredEmptyTitle,
@@ -2903,6 +3142,9 @@ onBeforeUnmount(() => {
     retryAssignmentOptions,
     isAssignmentOptionDisabled,
     saveAssignment,
+    openUserAffiliation,
+    closeUserAffiliation,
+    saveUserAffiliation,
     switchWarehouseTab,
     resetListQuery,
     applySearch,
@@ -2994,6 +3236,7 @@ onBeforeUnmount(() => {
     loadWorkorderProductStock,
     openTemporaryProductDialog,
     closeTemporaryProductDialog,
+    closeTemporaryProductWithGuard,
     createTemporaryProduct,
     loadWorkorderDrawerProductStock,
     openWorkOrder,
@@ -3011,6 +3254,9 @@ onBeforeUnmount(() => {
     startDepartmentTask,
     partialCompleteDepartmentTask,
     completeDepartmentTask,
+    openWorkOrderAction,
+    closeWorkOrderAction,
+    submitWorkOrderAction,
     runWorkOrderAction,
     promptText,
     promptTextWithDefault,

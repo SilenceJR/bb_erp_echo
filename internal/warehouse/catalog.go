@@ -19,13 +19,15 @@ const (
 
 // CatalogItemInput 是仓库标签页下统一的物品录入请求。
 type CatalogItemInput struct {
-	Tab         string `json:"tab" validate:"required"`
-	Name        string `json:"name" validate:"required"`
-	Code        string `json:"code" validate:"required"`
-	Unit        string `json:"unit"`
-	Spec        string `json:"spec"`
-	SafetyStock int64  `json:"safety_stock"`
-	DefaultCost int64  `json:"default_cost"`
+	Tab                string `json:"tab" validate:"required"`
+	Name               string `json:"name" validate:"required"`
+	Code               string `json:"code" validate:"required"`
+	Unit               string `json:"unit"`
+	Spec               string `json:"spec"`
+	SafetyStock        int64  `json:"safety_stock"`
+	DefaultCost        int64  `json:"default_cost"`
+	OperatorEmployeeID uint   `json:"operator_employee_id"`
+	operatorSnapshot   model.OperatorSnapshot
 }
 
 // CatalogItem 是仓库标签页统一返回结构。
@@ -121,6 +123,7 @@ func createCatalogItem(db *gorm.DB, input CatalogItemInput) (CatalogItem, error)
 		product := model.Product{
 			Name: input.Name, Code: input.Code, Unit: input.Unit, Spec: input.Spec,
 			SafetyStock: input.SafetyStock, DefaultCost: input.DefaultCost, Status: model.StatusActive,
+			OperatorSnapshot: input.operatorSnapshot,
 		}
 		if err := db.Create(&product).Error; err != nil {
 			return CatalogItem{}, err
@@ -130,6 +133,7 @@ func createCatalogItem(db *gorm.DB, input CatalogItemInput) (CatalogItem, error)
 	material := model.Material{
 		Name: input.Name, Code: input.Code, Category: spec.Category, Unit: input.Unit, Spec: input.Spec,
 		SafetyStock: input.SafetyStock, DefaultCost: input.DefaultCost, Status: model.StatusActive,
+		OperatorSnapshot: input.operatorSnapshot,
 	}
 	if err := db.Create(&material).Error; err != nil {
 		return CatalogItem{}, err

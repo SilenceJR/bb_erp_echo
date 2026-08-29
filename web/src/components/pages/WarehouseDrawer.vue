@@ -103,6 +103,16 @@
             <el-form-item :label="movementMode === 'return_rework_inbound' ? '返工原因' : '备注'" :required="movementMode === 'return_rework_inbound'">
               <el-input v-model.trim="movementForm.reason" type="textarea" :rows="2" placeholder="补充业务说明"/>
             </el-form-item>
+            <OperatorSelect
+              v-model="movementForm.operator_employee_id"
+              :department="operatorDirectory.department.value"
+              :employees="operatorDirectory.employees.value"
+              :loading="operatorDirectory.loading.value"
+              :unavailable-reason="operatorDirectory.unavailableReason.value"
+              :retryable="operatorDirectory.retryable.value"
+              @load="operatorDirectory.load"
+              @retry="operatorDirectory.load(true)"
+            />
             <aside class="movement-confirm-summary" aria-label="本次办理摘要">
               <strong>本次办理摘要</strong>
               <dl>
@@ -110,6 +120,7 @@
                 <div><dt>类型</dt><dd>{{ movementTitle }}</dd></div>
                 <div><dt>对象</dt><dd>{{ movementCounterpartyLabel }}</dd></div>
                 <div><dt>数量</dt><dd>{{ formatMovementInputQuantity }} {{ selectedWarehouseItem.unit }}</dd></div>
+                <div><dt>操作人</dt><dd>{{ operatorDirectory.employees.value.find((item) => item.id === Number(movementForm.operator_employee_id))?.name || '尚未选择' }}</dd></div>
               </dl>
             </aside>
             <div class="form-actions movement-submit-bar">
@@ -132,7 +143,7 @@
             <div v-else-if="itemMovements.length" class="movement-list">
               <article v-for="item in displayedItemMovements" :key="item.id">
                 <span class="movement-kind">{{ businessTypeLabel(item.business_type) }}</span>
-                <div><strong>{{ movementQuantity(item) }}</strong><small>{{ item.code }} · {{ formatDate(item.posted_at) }}</small></div>
+                <div><strong>{{ item.posted_by_employee_name || item.created_by_employee_name || '历史记录未记录员工' }} · {{ movementQuantity(item) }}</strong><small>{{ item.posted_by || item.created_by ? `登录账号#${item.posted_by || item.created_by}` : '历史账号未记录' }}{{ item.posted_by_terminal_id || item.created_by_terminal_id ? ` · 终端#${item.posted_by_terminal_id || item.created_by_terminal_id}` : '' }} · {{ item.code }} · {{ formatDate(item.posted_at || item.created_at) }}</small></div>
               </article>
             </div>
             <p v-else class="drawer-empty">暂无出入库记录</p>
@@ -147,9 +158,11 @@
 <script setup lang="ts">
 import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
+import OperatorSelect from '../ui/OperatorSelect.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {
+  operatorDirectory,
   token,
   selectedWarehouseItem,
   warehouseDrawerVisible,

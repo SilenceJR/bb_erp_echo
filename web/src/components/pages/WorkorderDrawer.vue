@@ -108,13 +108,14 @@
             <div v-else-if="workorderLogs.length" class="movement-list">
               <article v-for="item in workorderLogs" :key="item.id">
                 <span class="movement-kind">{{ workorderActionLabel(item.action) }}</span>
-                <div><strong>{{ item.actor_username || '系统' }}</strong><small>{{ item.remark || item.reason || `${item.status_before || '-'} → ${item.status_after || '-'}` }} · {{ formatDate(item.created_at) }}</small></div>
+                <div><strong>{{ item.operator_employee_name || '历史记录未记录员工' }}</strong><small>{{ item.actor_username || '系统账号' }}{{ item.actor_terminal_id ? ` · 终端#${item.actor_terminal_id}` : '' }} · {{ item.remark || item.reason || `${item.status_before || '-'} → ${item.status_after || '-'}` }} · {{ formatDate(item.created_at) }}</small></div>
               </article>
             </div>
             <p v-else class="drawer-empty">暂无流转日志</p>
           </section>
         </div>
       </el-drawer>
+      <WorkorderActionDialog />
 
 </template>
 
@@ -123,6 +124,7 @@ import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
 import StatusTag from '../ui/StatusTag.vue'
 import WorkorderStockCard from './WorkorderStockCard.vue'
+import WorkorderActionDialog from './WorkorderActionDialog.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {

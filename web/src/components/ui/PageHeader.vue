@@ -100,6 +100,7 @@ const emit = defineEmits<{
 
   .ui-page-header__actions :deep(.el-button) {
     width: 100%;
+    min-height: 44px;
   }
 }
 </style>

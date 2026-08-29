@@ -233,11 +233,21 @@ q=关键字
 ```text
 GET  /api/v1/system/departments
 POST /api/v1/system/departments
+PUT  /api/v1/system/departments/:id
+PATCH /api/v1/system/departments/:id/status
+GET  /api/v1/system/departments/:id/employees
+PUT  /api/v1/system/departments/:id/employees
+GET  /api/v1/system/employees
+POST /api/v1/system/employees
+PUT  /api/v1/system/employees/:id
+PATCH /api/v1/system/employees/:id/status
+DELETE /api/v1/system/employees/:id
 GET  /api/v1/system/terminals
 POST /api/v1/system/terminals
 GET  /api/v1/system/users
 POST /api/v1/system/users
 PATCH /api/v1/system/users/:id/status
+PATCH /api/v1/system/users/:id/affiliation
 POST /api/v1/system/users/:id/reset-password
 POST /api/v1/system/users/:id/roles
 GET  /api/v1/system/roles
@@ -248,9 +258,14 @@ GET  /api/v1/system/audits
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
 GET  /api/v1/system/updates/server/download
+GET  /api/v1/operator-employees
 ```
 
-以上 GET 列表接口均支持 `page`、`page_size`、`q`。
+员工是独立业务档案，不等同于登录账号。员工可属于零个或多个部门；部门成员关系通过 `PUT /api/v1/system/departments/:id/employees` 以 `employee_ids` 数组原子替换。员工列表支持 `page`、`page_size`、`q`、`department_id` 和 `status`，返回按 `Asia/Shanghai` 当前日期计算的周岁和所属部门摘要。员工 `DELETE` 仅停用档案，可通过状态接口恢复；部门也只启停、不物理删除。停用部门不能新增成员、绑定账号或执行业务写入。
+
+部门成员配置同时要求 `system:departments:write` 和 `system:employees:read`；员工档案使用 `system:employees:read/write`。管理员可通过用户归属接口修正账号的部门和终端。`GET /api/v1/operator-employees` 与完整员工档案权限分离，只返回当前账号部门及在职候选员工的 `id/name`。
+
+任务单及仓库/库存写请求统一要求 `operator_employee_id`。服务端在业务事务内重新读取当前账号并校验账号部门、部门状态、员工状态、组织和成员关系：缺字段返回 `400`，无部门或越权返回 `403`，员工/部门停用或成员关系失效返回 `409`。任务与库存状态流转使用带原状态及旧完成数量条件的更新，验证失败、并发状态冲突或关系刚失效均不产生部分业务写入。历史记录同时保留登录账号、终端、所选操作员工及请求时部门快照；旧数据不补造员工。操作员工是当前登录账号对现场责任人的申报，不等同于员工本人完成 PIN、刷卡或二次认证；追责时必须同时查看不可替代的登录账号和终端信息。带 `Idempotency-Key` 的库存请求只有在接口范围、账号/组织、规范化请求内容和操作员工都与首次请求一致时才返回原结果，任一差异均返回 `409`。旧数据库启动时会把同名普通索引显式升级为非空部分唯一索引；发现历史非空重复键时阻断启动并报告键和数量，不会静默删除数据。
 
 ## 版本与更新
 
@@ -364,7 +379,7 @@ GET  /api/v1/inventory
 POST /api/v1/inventory
 ```
 
-首版按单仓库使用，`/api/v1/warehouses` 只返回一个默认仓库。仓库内物品采用标签策略统一管理：
+首版按单仓库使用，`/api/v1/warehouses` 只返回初始化阶段创建的默认仓库。系统编码固定为 `MAIN`，更新接口只允许修改名称；请求省略 `code` 或传 `MAIN`，传入其他编码返回 `400`，避免库存被拆到两个仓库。仓库内物品采用标签策略统一管理：
 
 ```text
 product              产品，写入 products 表
@@ -383,7 +398,8 @@ daily_supply         生活物资，写入 materials 表且 category=生活物�
   "unit": "kg",
   "spec": "通用",
   "safety_stock": 100000,
-  "default_cost": 250
+  "default_cost": 250,
+  "operator_employee_id": 12
 }
 ```
 
@@ -399,9 +415,12 @@ Web/Tauri 入库数量支持直接输入 `0–999999999` 范围内、最多 4 �
   "supplier_id": 1,
   "quantity": 1000000,
   "unit_cost": 250,
-  "reason": "采购到货"
+  "reason": "采购到货",
+  "operator_employee_id": 12
 }
 ```
+
+同一 `Idempotency-Key` 只有在接口范围、登录账号、组织、操作员工及规范化业务请求内容全部一致时才返回首次结果；跨接口复用，或物品、数量、单价、供应商/客户/部门、原因等任一字段不同，均返回 `409`，不会静默复用旧单据。
 
 `business_type` 支持：
 
@@ -412,7 +431,7 @@ customer_outbound      客户出库，customer_id 必填
 department_outbound    部门出库，department_id 必填
 ```
 
-退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。旧库存单据接口继续保留，用于历史兼容和冲销。
+退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。旧库存单据接口继续保留，用于历史兼容和冲销。即时出入库的创建和立即过账使用同一操作员工；库存单据创建、过账、冲销可以分别选择员工，并分别保存员工与部门快照。
 
 ## 图片文件接口
 
@@ -511,7 +530,8 @@ GET  /api/v1/workorder/:id/logs
   "due_at": "2026-08-10",
   "priority": "normal",
   "target_department_ids": [2, 3],
-  "description": "注塑后流转到包装"
+  "description": "注塑后流转到包装",
+  "operator_employee_id": 12
 }
 ```
 
@@ -528,13 +548,14 @@ GET  /api/v1/workorder/:id/logs
   "name": "白色外壳",
   "code": "P-001",
   "spec": "标准",
-  "unit": "个"
+  "unit": "个",
+  "operator_employee_id": 12
 }
 ```
 
 `name`、`code` 必填，`spec` 可选，`unit` 缺省为 `个`；编码重复返回 `409`。创建成功返回标准 `model.Product`，前端可立即用返回的 ID 选中产品并查询库存。
 
-派发后系统自动把每个目标部门子任务置为 `received`，主任务置为 `processing`。部门可执行开始处理、部分完成和完成；全部部门完成后主任务自动进入 `pending_close`。办公室正常完成必须在 `pending_close` 执行；强制完成可在 `processing`、`paused`、`pending_close` 执行，但必须填写原因。
+派发、暂停、恢复、加急、正常/强制完成，以及部门开始、部分完成、完成的 JSON 请求体都必须携带 `operator_employee_id`；强制完成还必须填写原因。部门部分完成提交的是累计完成数量，必须严格大于当前累计值且小于计划数量，重复提交相同累计值返回 `400`。派发后系统自动把每个目标部门子任务置为 `received`，主任务置为 `processing`。部门可执行开始处理、部分完成和完成；全部部门完成后主任务自动进入 `pending_close`。流转日志保存操作员工、当前账号部门、登录账号和终端快照，员工改名、调部门或停用不会改写历史。
 
 兼容旧路径：
 

@@ -22,7 +22,14 @@ export function useWorkorder() {
   const temporaryProductDialogVisible = ref(false)
   const temporaryProductSubmitting = ref(false)
   const temporaryProductError = ref('')
-  const temporaryProductForm = reactive({name: '', code: '', unit: '个', spec: ''})
+  const temporaryProductForm = reactive({name: '', code: '', unit: '个', spec: '', operator_employee_id: undefined as number | undefined})
+  const actionDialogVisible = ref(false)
+  const actionKind = ref('')
+  const actionTarget = ref<BasicItem | null>(null)
+  const actionSubmitting = ref(false)
+  const actionError = ref('')
+  const actionFieldErrors = reactive({operator: '', reason: '', quantity: ''})
+  const actionForm = reactive({operator_employee_id: undefined as number | undefined, reason: '', remark: '', completed_quantity: ''})
   return {
     selectedWorkOrder,
     workorderDrawerVisible,
@@ -44,5 +51,12 @@ export function useWorkorder() {
     temporaryProductSubmitting,
     temporaryProductError,
     temporaryProductForm,
+    actionDialogVisible,
+    actionKind,
+    actionTarget,
+    actionSubmitting,
+    actionError,
+    actionFieldErrors,
+    actionForm,
   }
 }

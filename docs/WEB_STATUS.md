@@ -1,11 +1,13 @@
 # Web 与 Tauri Client 端进度与维护规范
 
-> 基准日期：2026-08-27
+> 基准日期：2026-08-29
 > 适用范围：`web/` Vue Web 应用、`client/` Tauri 桌面壳及两者共用的前端源码
+>
+> 当前整体仍处于测试阶段，未确认正式业务数据；交互和 API 以目标流程为准，不为未投入使用的旧页面或旧字段保留双轨实现。桌面更新与已生成发布包之间的兼容契约仍单独维护。
 
 ## 1. 状态结论
 
-Web 模块化代码改造、统一弹窗样式改造以及 Tauri Client 对共用源码的构建接入已经完成，Web 与 Tauri Client 的生产构建均已通过。
+Web 模块化代码改造、员工与部门专用页面、业务操作人选择、统一弹窗样式以及 Tauri Client 对共用源码的构建接入已经完成。构建与运行态结论以第 5 节为准。
 
 完整浏览器运行态验收尚未完成，尤其是需要真实 Go API、登录账号和业务数据的流程。业务专属 CSS 仍有一部分保留在 `web/src/styles.css`，用于维持跨页面、跨子组件和响应式样式的一致性；后续可以继续按组件拆分，但不应直接删除全局规则。
 
@@ -21,21 +23,24 @@ Web 模块化代码改造、统一弹窗样式改造以及 Tauri Client 对共�
 | 应用壳层与导航 | 已完成 | 顶栏、侧边栏、移动端抽屉导航独立于 `AppWorkspace.vue`，继续使用 `activeKey`。 |
 | 首页仪表盘 | 已完成 | 首页指标、快捷入口、业务分组和更新提示拆至 `DashboardPage.vue`。 |
 | 通用资料模块 | 已完成 | 列表、分页、搜索、筛选、新增、编辑和空状态由 `ModulePage.vue` 编排。 |
+| 部门与员工 | 已完成 | 系统设置按部门、员工档案、用户账号、终端排列；支持员工桌面表格/移动卡片、筛选、Drawer 编辑与启停，以及部门编辑、启停和多人原子配置。 |
 | 统计报表 | 已完成 | 统计数据加载和展示已纳入模块页与工作台控制器。 |
 | 库存模块 | 已完成 | 库存详情、流水、出入库、快速新增供应商、直接输入最多 4 位小数的入库校准数量和关闭未提交表单确认已拆至库存抽屉及 `useWarehouse` 状态组合式函数。 |
 | 模具模块 | 已完成 | 详情、借出、归还、维修、保养、履历和请求过期保护已拆至模具抽屉及 `useMold` 状态组合式函数。 |
-| 任务单模块 | 已完成 | 生产单从仓库产品远程搜索选择，可按独立权限临时建档；新建页和任务详情支持聚合库存即时查询、手动刷新及请求过期保护。历史无 `product_id` 任务保留名称快照，不显示伪造库存。办公室操作、部门子任务和流转日志继续由任务单抽屉及 `useWorkorder` 状态组合式函数承载。 |
+| 任务单模块 | 已完成 | 创建、临时产品、办公室动作和部门动作均在完整确认表单中显式选择本次操作人；日志以员工为主、账号/终端为次级信息。原有产品关联与库存查询流程保持。 |
+| 操作人组件 | 已完成 | 只加载当前账号部门的最小员工候选，不自动选择或跨操作记忆；无部门、无员工、加载失败和 409 关系失效均阻止提交并给出原因。 |
 | 角色与账号权限 | 已完成 | 权限配置、角色分配、选项缓存、权限禁用规则由 `useAssignment` 管理。 |
 | 图片管理 | 已完成 | `ImageGallery.vue` 支持一次选择多张图片并通过共用请求层批量提交；删除确认继续使用统一弹窗封装。 |
 | Web/Tauri 复用 | 已完成 | `client/src/main.ts` 继续直接复用 `web/src/main.ts`、同一套业务组件和认证续期逻辑。 |
-| Client HTTP 传输 | 已完成 | Tauri 通过 `desktop-http.ts` 注入 Rust HTTP 传输，业务请求继续使用共用的 `HttpTransport` 抽象。 |
+| Client HTTP 传输 | 已完成 | Tauri 通过 `desktop-http.ts` 注入 Rust HTTP 传输；回环/私网 ERP 服务强制直连，公网 HTTPS 保留系统代理，业务请求继续使用共用的 `HttpTransport` 抽象。 |
 | Client 服务器地址 | 已完成 | 首次默认地址、登录页设置、顶栏设置和保存后的地址优先级遵循 `client/API_SYNC.md`。 |
 | Client 更新入口 | 已完成 | Vue 仅展示更新状态并触发桌面更新流程；版本、EXE 哈希、签名和本机路径由 Tauri/Rust 负责。 |
 | Client Tauri 构建配置 | 已完成 | `tauri.conf.json` 保持 Web 产物作为 `frontendDist`，窗口、CSP、更新器和安装模式继续由 Client 管理。 |
 | MessageBox 样式 | 已完成 | 显式引入 Element Plus MessageBox 样式，补充遮罩、居中、不透明卡片、层级、按钮和移动端宽度规则。 |
+| 日期选择器样式 | 已完成 | 已移除污染 Element Plus 日期、月份和年份面板的无作用域原生表格规则；日期弹层不再被强制扩展到 720px。 |
 | 业务 CSS 全量下沉 | 待完成 | 当前仍有较多跨组件基础和页面样式位于 `web/src/styles.css`，后续拆分需要配合 `:deep`、子组件样式和响应式规则验证。 |
 | 浏览器全流程验收 | 待完成 | 需要启动 Go API 并使用测试账号完成登录、权限、库存、模具、任务单和图片流程。 |
-| 功能分支与提交 | 待完成 | 当前修复在 `codex/fix-start-system-client-path` 分支，尚待提交、远端推送和合并。 |
+| 功能分支与提交 | 待完成 | 当前员工与操作人责任链位于 `codex/employee-operator-tracking` 分支，工作区尚未提交、远端推送或合并。 |
 | Client 桌面运行态 | 待完成 | 需要在 macOS、Windows 10/11 真机完成登录、窗口、服务器切换、弹窗和更新流程验收。 |
 | Client 安装包验证 | 待完成 | 需要执行 `npm run desktop:build`，并完成正式版 Windows 安装、升级、回滚和断网场景验证；RC/手动构建使用独立便携客户端 Artifact，确认 EXE 与 `bb-erp-portable.json` 同目录即可启动；全量便携包必须确认 `启动系统.bat` 能从 `client\bb_erp_client.exe` 启动客户端。 |
 
@@ -52,6 +57,9 @@ web/src/components/app/
 web/src/components/pages/
   DashboardPage.vue     首页仪表盘
   ModulePage.vue        通用资料、库存列表、统计和系统页面
+  DepartmentPage.vue    部门编辑、启停和成员管理
+  EmployeePage.vue      员工筛选、桌面表格和移动卡片
+  WorkorderActionDialog.vue  任务动作统一确认表单
   ServerSettingsDialog.vue
   WarehouseDrawer.vue   库存详情、流水和出入库办理
   MoldDrawer.vue        模具详情和生命周期操作
@@ -66,6 +74,9 @@ web/src/composables/
   useWarehouse.ts            库存详情和出入库表单状态
   useMold.ts                 模具详情和生命周期状态
   useWorkorder.ts            任务详情和日志状态
+  useEmployeeDirectory.ts    员工档案列表和编辑状态
+  useDepartments.ts          部门及成员配置状态
+  useOperatorEmployees.ts    当前部门操作人候选状态
   useAppMessageBox.ts        统一 confirm/prompt 入口
   workspaceContext.ts        页面与工作台之间的类型化注入键
 
@@ -88,13 +99,14 @@ client/
 
 ### 4.2 API、权限和字段
 
-- 不修改现有 API 路径、权限编码、请求方法和后端字段格式。
+- 部门与员工页面遵循 `system:departments:*`、`system:employees:*` 权限；部门成员配置同时需要部门写权限和员工读权限。
 - `warehouse_records` 是库存单据视图，`warehouses` 是库存主数据列表；两者的路径映射集中维护在工作台控制器中。
 - 前端权限判断只负责隐藏不可用导航和操作，后端仍是最终授权边界。
 - `cost:view` 缺失时不得主动展示平均成本、单价、金额和余额金额等成本字段。
 - 数量按万分之一固定精度传输，金额和单价按分传输；转换集中在 API 边界，避免浮点计算误差。
 - 生产单提交 `product_id`，产品名称和单位由服务端按产品主数据写入快照；通用任务不提交产品关联。产品库存只用于计划参考，不阻止创建。
 - 任务单内临时产品建档调用 `POST /api/v1/workorder/products`，入口同时检查 `workorder:write` 与 `workorder:temporary-product:write`；新档案库存为 0，不产生入库流水。
+- 任务单和仓库/库存写操作统一提交 `operator_employee_id`；选择成功后清空，普通校验错误保留表单，`409` 时清空并刷新候选。
 - 入库数量输入框允许直接输入最多 4 位小数的校准值；浏览器兼容性降级不得改变 API 的四位定点传输格式。
 - 图片权限继承产品、模具、任务单或部门子任务的业务权限，不单独创建一套图片权限。
 
@@ -113,14 +125,18 @@ client/
 - MessageBox 必须保留 `bb-message-box` 自定义类，以便统一控制遮罩、居中、背景、边框、阴影和移动端布局。
 - 新增弹窗场景时，应验证键盘关闭、焦点回收、遮罩点击策略和移动端按钮换行。
 
-### 4.5 注释和文档
+### 4.5 全局样式
+
+- 全局样式不得使用无作用域的 `table`、`th`、`td` 布局规则；原生业务表格必须使用明确业务类，避免污染 Element Plus 的日期、月份、年份及表格组件。
+
+### 4.6 注释和文档
 
 - 公共组合式函数、组件入口和上下文类型使用 JSDoc 说明用途与约束。
 - 实现注释重点解释“为什么”，包括 API 字段映射、权限原因、请求取消/序号保护、固定精度和状态清理。
 - 不写与代码重复的注释；接口名称、字段名和命令保持英文原文，说明文字使用中文。
 - 修改 Web API、运行方式或用户可见交互时，同步检查 `docs/API.md`、`client/API_SYNC.md` 和本文件。
 
-### 4.6 Tauri Client
+### 4.7 Tauri Client
 
 - `client/src/main.ts` 只负责注入桌面传输并复用 Web 入口，不复制页面和业务 API。
 - Web 请求只能依赖 `HttpTransport` 抽象，不能在业务组件中直接判断浏览器或 Tauri 平台。
@@ -149,6 +165,32 @@ cd client && npm run build
 
 Web 与 Tauri 共用源码的类型检查及生产构建均通过；Vite 仅保留既有的大分块体积提示。真实账号权限矩阵、产品搜索/临时建档接口、快速切换竞态和 320–1280px 浏览器/Tauri 运行态仍需连接最新 Go 服务验收。
 
+2026-08-29 员工与操作人责任链变更已执行并通过：
+
+```bash
+cd web && npm run build
+cd client && npm run build
+cd client/src-tauri && cargo check --locked
+git diff --check
+```
+
+隔离数据库的浏览器运行态已验证真实登录、员工新增与年龄、部门成员保存、仓库新增表单只显示当前部门员工、仓库建档与操作人成功后清空、无部门账号禁用提交、任务创建以及脏表单关闭确认。320、390、768、920、1280px 已检查页面横向溢出；未完成 Tauri/macOS/Windows 真机窗口、触屏和屏幕阅读器验收，这些项目不得由静态构建替代。
+
+macOS 已使用隔离数据库和 `VITE_API_BASE_URL` 成功启动 Tauri 开发窗口，Rust 客户端进程保持运行且未出现启动错误；当前自动化环境无法读取原生窗口控件，因此未把登录、权限矩阵和业务点击流程标记为 Tauri 交互验收完成。Windows 10/11 真机仍待外部验收。
+
+独立 UI 审查提出的成员请求过期覆盖、加载重试、409 过期操作人、员工只读详情、账号归属权限组合、脏表单关闭保护、库存历史次级责任信息、即时库存幂等重试、员工筛选竞态及部分完成精度校验均已修正。即时库存仅在规范化请求快照变化时换用新幂等键；网络或 5xx 结果不确定时复用原键。修正后 Web 与 Tauri 共用源码再次通过类型检查和生产构建，最终独立复验结论见本分支交付记录。
+
+2026-08-29 Client 502 与日期弹层回归已执行并通过：
+
+```bash
+cd web && npm run build
+cd client && npm run build
+cd client/src-tauri && cargo check --locked
+git diff --check
+```
+
+本机 `GET http://127.0.0.1:8080/health` 直连返回 `200`。在启用 macOS 系统代理时，reqwest 默认请求复现 `502 Bad Gateway`，对当前 ERP 主机应用显式 `noProxy` 后返回 `200 OK`；Client 对回环和 RFC1918 私网地址启用这一限定策略。日期弹层修复前实测面板宽 `322px`、内部日期表格宽 `720px` 且表头为 `sticky`；移除全局原生表格规则后，日期和年份表格均为 `292px`、右侧溢出 `0px`、表头恢复 `static`。该几何验证使用本地浏览器环境，Safari 截图对应的样式根因已消除，但仍需在 Safari 实机复查缩放、键盘和 WebKit 合成表现。
+
 构建结果包括：
 
 - Web：`vue-tsc --noEmit` 和 Vite 构建通过。
@@ -159,11 +201,12 @@ Web 与 Tauri 共用源码的类型检查及生产构建均通过；Vite 仅保�
 
 尚未完成：
 
-- 真实浏览器中的登录、登出、服务器设置、移动端导航和权限隐藏验收。
+- 生产配置下的完整浏览器登录、登出、服务器设置、移动端导航和权限矩阵验收（本次隔离数据关键链路已通过）。
 - 分页、搜索、筛选、通用新增/编辑、角色权限配置的真实 API 交互验收。
 - 库存出入库、未提交表单关闭确认、模具生命周期、任务单流转、图片删除的真实 API 交互验收。
 - 桌面宽度和移动宽度下 MessageBox 的视觉截图及键盘焦点验收。
-- Tauri Client 在 macOS、Windows 10/11 的真实窗口、HTTP 传输、服务器地址保存和更新入口验收。
+- Tauri Client 在 macOS、Windows 10/11 的真实窗口、服务器地址保存和更新入口验收（本次已完成 macOS reqwest 直连行为 smoke，尚未替代真实客户端点击验收）。
+- Safari 实机的日期、月份、年份面板及 100%/125%/200% 缩放、键盘焦点验收。
 - Windows 正式版安装包、NSIS/便携版升级、断网、损坏资源、不可写目录和回滚验收；RC/手动便携客户端 Artifact 的独立启动验收。
 
 ## 6. 后续工作顺序
@@ -172,13 +215,13 @@ Web 与 Tauri 共用源码的类型检查及生产构建均通过；Vite 仅保�
 2. 修复验收中发现的交互或响应式问题，并再次运行 Web/Client 构建。
 3. 在不改变视觉结果的前提下，将 `styles.css` 中的业务专属规则逐步移动到对应组件的 `<style scoped>`，共用规则保留在设计系统或基础组件中。
 4. 在 Windows 10/11 完成安装包、升级和回滚测试，并把结果记录到发布验收文档。
-5. 解决本地 Git 分支权限问题后创建 `codex/web-modularization-dialog` 等功能分支，再进行提交和合并。
+5. 当前功能验证完成后，在 `codex/employee-operator-tracking` 分支按代码、文档和验证证据一起提交；是否推送或合并由维护者确认。
 
 ## 7. 范围边界
 
-- 本次记录覆盖 Web 结构、交互样式、Tauri Client 复用边界、构建和验收状态。
-- 不调整 Go 后端接口、权限定义、数据库结构或业务数据格式。
-- 不把工作区已有的 `.codex`、`README.md`、`docs/USER_GUIDE.md`、`output/` 等无关变更纳入本次状态结论。
+- 本次记录覆盖员工/部门页面、操作人责任链、Web 结构、交互样式、Tauri Client 复用边界、构建和验收状态。
+- 对应 Go API、权限和数据库快照字段以 `docs/API.md` 与 `docs/BACKEND_STATUS.md` 为准；前端不保留与当前目标流程冲突的旧字段分支。
+- `.codex` 个人代理配置和临时构建输出不属于业务交付；README、用户指南和 API/状态文档属于本次同步范围。
 ### 2026-08-29 正式发布 CI 第 59 次重试问题记录
 
 - Go、Web、Tauri 前端、Rust 和 Windows 打包均通过；发布作业在 manifest 资源文件校验阶段失败。

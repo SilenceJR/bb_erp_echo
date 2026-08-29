@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
@@ -90,11 +92,11 @@ func TestInventoryInboundWeightedAverageAndCostTrim(t *testing.T) {
 func TestItemDetailAggregatesDefaultWarehouseLocations(t *testing.T) {
 	db := openInventoryTestDB(t)
 	handler := NewHandler(db)
-	warehouse := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
-	product := model.Product{Name: "聚合产品", Code: "P-AGGREGATE", Unit: "个", Status: model.StatusActive}
-	if err := db.Create(&warehouse).Error; err != nil {
-		t.Fatalf("seed warehouse: %v", err)
+	var warehouse model.Warehouse
+	if err := db.Where("code = ?", "MAIN").First(&warehouse).Error; err != nil {
+		t.Fatalf("find default warehouse: %v", err)
 	}
+	product := model.Product{Name: "聚合产品", Code: "P-AGGREGATE", Unit: "个", Status: model.StatusActive}
 	if err := db.Create(&product).Error; err != nil {
 		t.Fatalf("seed product: %v", err)
 	}
@@ -222,6 +224,155 @@ func TestItemMovementsPostImmediatelyAndAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestInventoryIdempotencyRejectsDifferentRequestAndScope(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	material := model.Material{Name: "幂等物料", Code: "IDEMP-MAT", Unit: "个", Status: model.StatusActive}
+	supplier := model.Supplier{Name: "幂等供应商", Code: "IDEMP-SUP", Status: model.StatusActive}
+	if err := db.Create(&material).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&supplier).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	documentBody := map[string]any{
+		"code":         "IDEMP-DOC",
+		"type":         typeInbound,
+		"warehouse_id": uint(1),
+		"lines": []map[string]any{{
+			"item_type": itemMaterial,
+			"item_id":   material.ID,
+			"quantity":  int64(10000),
+		}},
+	}
+	const key = "same-business-key"
+	if rec := performInventoryDocumentJSON(t, handler, documentBody, key, 1); rec.Code != http.StatusCreated {
+		t.Fatalf("first document status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := performInventoryDocumentJSON(t, handler, documentBody, key, 1); rec.Code != http.StatusOK {
+		t.Fatalf("same document status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	documentBody["lines"].([]map[string]any)[0]["quantity"] = int64(20000)
+	if rec := performInventoryDocumentJSON(t, handler, documentBody, key, 1); rec.Code != http.StatusConflict {
+		t.Fatalf("different quantity status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	movementBody := map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      int64(10000),
+		"supplier_id":   supplier.ID,
+	}
+	if rec := performItemMovementJSON(t, handler, material, movementBody, key, []string{"suppliers:read"}); rec.Code != http.StatusConflict {
+		t.Fatalf("cross-scope status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInventoryDocumentIdempotencyKeyIsPartialUnique(t *testing.T) {
+	db := openInventoryTestDB(t)
+	first := model.InventoryDocument{Code: "IDEMP-EMPTY-1", Type: typeInbound, Status: documentDraft, WarehouseID: 1}
+	second := model.InventoryDocument{Code: "IDEMP-EMPTY-2", Type: typeInbound, Status: documentDraft, WarehouseID: 1}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first empty key document: %v", err)
+	}
+	if err := db.Create(&second).Error; err != nil {
+		t.Fatalf("empty idempotency keys should remain reusable: %v", err)
+	}
+
+	first = model.InventoryDocument{Code: "IDEMP-KEY-1", Type: typeInbound, Status: documentDraft, WarehouseID: 1, IdempotencyKey: "same-key"}
+	second = model.InventoryDocument{Code: "IDEMP-KEY-2", Type: typeInbound, Status: documentDraft, WarehouseID: 1, IdempotencyKey: "same-key"}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create keyed document: %v", err)
+	}
+	if err := db.Create(&second).Error; err == nil || !isUniqueConstraintError(err) {
+		t.Fatalf("duplicate non-empty idempotency key error = %v, want unique constraint", err)
+	}
+}
+
+func TestInventoryBalanceLocationNilIsUnique(t *testing.T) {
+	db := openInventoryTestDB(t)
+	first := model.InventoryBalance{WarehouseID: 1, ItemType: itemMaterial, ItemID: 1}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first default-location balance: %v", err)
+	}
+	duplicateDefault := model.InventoryBalance{WarehouseID: 1, ItemType: itemMaterial, ItemID: 1}
+	if err := db.Create(&duplicateDefault).Error; err == nil || !isUniqueConstraintError(err) {
+		t.Fatalf("duplicate default-location balance error = %v, want unique constraint", err)
+	}
+
+	locationOne := model.Location{WarehouseID: 1, Code: "UNIQUE-A", Name: "库位 A", Status: model.StatusActive}
+	locationTwo := model.Location{WarehouseID: 1, Code: "UNIQUE-B", Name: "库位 B", Status: model.StatusActive}
+	if err := db.Create(&locationOne).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&locationTwo).Error; err != nil {
+		t.Fatal(err)
+	}
+	withLocation := model.InventoryBalance{WarehouseID: 1, LocationID: &locationOne.ID, ItemType: itemMaterial, ItemID: 1}
+	if err := db.Create(&withLocation).Error; err != nil {
+		t.Fatalf("create explicit-location balance: %v", err)
+	}
+	duplicateLocation := model.InventoryBalance{WarehouseID: 1, LocationID: &locationOne.ID, ItemType: itemMaterial, ItemID: 1}
+	if err := db.Create(&duplicateLocation).Error; err == nil || !isUniqueConstraintError(err) {
+		t.Fatalf("duplicate explicit-location balance error = %v, want unique constraint", err)
+	}
+	differentLocation := model.InventoryBalance{WarehouseID: 1, LocationID: &locationTwo.ID, ItemType: itemMaterial, ItemID: 1}
+	if err := db.Create(&differentLocation).Error; err != nil {
+		t.Fatalf("different-location balance should be allowed: %v", err)
+	}
+}
+
+func TestCreateDocumentIdempotencyIsSerializedForConcurrentSameKey(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	body := map[string]any{
+		"code":                 "CONCURRENT-IDEMP",
+		"type":                 typeInbound,
+		"warehouse_id":         1,
+		"operator_employee_id": 1,
+		"lines": []map[string]any{{
+			"item_type": itemMaterial,
+			"item_id":   1,
+			"quantity":  10000,
+		}},
+	}
+	const key = "concurrent-same-key"
+	responses := make(chan *httptest.ResponseRecorder, 2)
+	var wait sync.WaitGroup
+	for range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			responses <- performInventoryDocumentJSON(t, handler, body, key, 1)
+		}()
+	}
+	wait.Wait()
+	close(responses)
+
+	created := 0
+	returned := 0
+	for rec := range responses {
+		switch rec.Code {
+		case http.StatusCreated:
+			created++
+		case http.StatusOK:
+			returned++
+		default:
+			t.Fatalf("concurrent idempotent create status = %d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	if created != 1 || returned != 1 {
+		t.Fatalf("concurrent responses created=%d returned=%d, want one each", created, returned)
+	}
+	var count int64
+	if err := db.Model(&model.InventoryDocument{}).Where("idempotency_key = ?", key).Count(&count).Error; err != nil {
+		t.Fatalf("count keyed documents: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("keyed document count = %d, want 1", count)
+	}
+}
+
 // TestItemMovementAcceptsFourDecimalInboundQuantity 验证采购入库支持按四位定点精度
 // 直接提交校准数量，避免界面输入的 999.0000 被后端截断或改变。
 func TestItemMovementAcceptsFourDecimalInboundQuantity(t *testing.T) {
@@ -325,8 +476,27 @@ func openInventoryTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Warehouse{}, &model.Location{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
+	if err := db.AutoMigrate(&model.Warehouse{}, &model.Location{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.Employee{}, &model.EmployeeDepartment{}, &model.User{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
+	}
+	department := model.Department{Name: "测试部门", Code: "TEST-DEPT", OrganizationID: 1, Status: model.StatusActive}
+	if err := db.Create(&department).Error; err != nil {
+		t.Fatalf("seed department: %v", err)
+	}
+	birth := time.Date(1990, 1, 1, 0, 0, 0, 0, time.Local)
+	operator := model.Employee{OrganizationID: 1, Name: "测试操作人", HireDate: birth, BirthDate: birth, Status: model.StatusActive}
+	if err := db.Create(&operator).Error; err != nil {
+		t.Fatalf("seed operator: %v", err)
+	}
+	if err := db.Create(&model.EmployeeDepartment{EmployeeID: operator.ID, DepartmentID: department.ID}).Error; err != nil {
+		t.Fatalf("link operator: %v", err)
+	}
+	account := model.User{Username: "tester", AccountType: model.AccountTypePersonal, Name: "测试账号", OrganizationID: 1, DepartmentID: &department.ID, Status: model.StatusActive, PasswordHash: "test"}
+	if err := db.Create(&account).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := db.Create(&model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}).Error; err != nil {
+		t.Fatalf("seed default warehouse: %v", err)
 	}
 	return db
 }
@@ -336,6 +506,12 @@ func performItemMovementJSON(t *testing.T, handler *Handler, item any, body any,
 	e := echo.New()
 	e.Validator = &testValidator{validate: validator.New()}
 	raw, _ := json.Marshal(body)
+	if requestBody, ok := body.(map[string]any); ok {
+		if _, exists := requestBody["operator_employee_id"]; !exists {
+			requestBody["operator_employee_id"] = uint(1)
+		}
+		raw, _ = json.Marshal(requestBody)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/warehouse/items/:itemType/:itemID/movements", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotencyKey)
@@ -355,7 +531,8 @@ func performItemMovementJSON(t *testing.T, handler *Handler, item any, body any,
 		{Name: "itemType", Value: itemTypeValue},
 		{Name: "itemID", Value: strconv.FormatUint(uint64(itemID), 10)},
 	})
-	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, Permissions: permissions})
+	departmentID := uint(1)
+	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, DepartmentID: &departmentID, Permissions: permissions})
 	if err := handler.CreateItemMovement(c); err != nil {
 		e.HTTPErrorHandler(c, err)
 	}
@@ -368,9 +545,17 @@ func performInventoryJSON(t *testing.T, handler echo.HandlerFunc, method string,
 	e.Validator = &testValidator{validate: validator.New()}
 	var payload *bytes.Reader
 	if body == nil {
-		payload = bytes.NewReader(nil)
+		body = map[string]any{"operator_employee_id": uint(1)}
+		raw, _ := json.Marshal(body)
+		payload = bytes.NewReader(raw)
 	} else {
 		raw, _ := json.Marshal(body)
+		if requestBody, ok := body.(map[string]any); ok {
+			if _, exists := requestBody["operator_employee_id"]; !exists {
+				requestBody["operator_employee_id"] = uint(1)
+			}
+			raw, _ = json.Marshal(requestBody)
+		}
 		payload = bytes.NewReader(raw)
 	}
 	req := httptest.NewRequest(method, path, payload)
@@ -390,12 +575,36 @@ func performInventoryJSON(t *testing.T, handler echo.HandlerFunc, method string,
 		}
 		c.SetPathValues(pathValues)
 	}
-	current := &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1}
+	departmentID := uint(1)
+	current := &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, DepartmentID: &departmentID}
 	if costView {
 		current.Permissions = []string{role.CostViewCode}
 	}
 	c.Set(auth.ContextUserKey, current)
 	if err := handler(c); err != nil {
+		e.HTTPErrorHandler(c, err)
+	}
+	return rec
+}
+
+func performInventoryDocumentJSON(t *testing.T, handler *Handler, body map[string]any, idempotencyKey string, departmentID uint) *httptest.ResponseRecorder {
+	t.Helper()
+	e := echo.New()
+	e.Validator = &testValidator{validate: validator.New()}
+	if _, exists := body["operator_employee_id"]; !exists {
+		body["operator_employee_id"] = uint(1)
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal document body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/inventory-documents", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: 1, Username: "tester", OrganizationID: 1, DepartmentID: &departmentID})
+	if err := handler.CreateDocument(c); err != nil {
 		e.HTTPErrorHandler(c, err)
 	}
 	return rec

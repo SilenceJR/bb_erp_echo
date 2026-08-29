@@ -27,6 +27,7 @@ func newAssignmentTestService(t *testing.T) *Service {
 		&model.Permission{},
 		&model.UserRole{},
 		&model.RolePermission{},
+		&model.Warehouse{},
 	); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}

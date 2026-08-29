@@ -19,6 +19,7 @@ import (
 	"bb_erp_echo/internal/customer"
 	"bb_erp_echo/internal/database"
 	"bb_erp_echo/internal/department"
+	"bb_erp_echo/internal/employee"
 	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/frontend"
 	"bb_erp_echo/internal/inventory"
@@ -138,8 +139,19 @@ func New() (*App, error) {
 		return nil, err
 	}
 
+	// 旧库可能已经有幂等键普通索引；先检查并升级，避免 AutoMigrate
+	// 在重复历史 key 上直接创建唯一索引而丢失可操作的诊断信息。
+	if err := database.EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
+		return nil, fmt.Errorf("preflight inventory document idempotency index: %w", err)
+	}
 	if err := db.AutoMigrate(model.AllModels()...); err != nil {
 		return nil, fmt.Errorf("auto migrate database: %w", err)
+	}
+	if err := database.EnsureEmployeeDepartmentConsistency(db); err != nil {
+		return nil, fmt.Errorf("check employee department consistency: %w", err)
+	}
+	if err := database.EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
+		return nil, fmt.Errorf("upgrade inventory document idempotency index: %w", err)
 	}
 
 	enforcer, err := role.NewEnforcer()
@@ -238,6 +250,7 @@ func (a *App) registerRoutes() error {
 
 	system := protected.Group("/system", auditMiddleware)
 	department.NewHandler(a.DB).RegisterRoutes(system, require)
+	employee.NewHandler(a.DB).RegisterRoutes(system, protected, require)
 	user.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	role.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	audit.NewHandler(a.DB).RegisterRoutes(system, require)

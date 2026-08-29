@@ -7,7 +7,58 @@ Content-Type: application/json
   "password": "admin123456"
 }
 
-> {% client.global.set("token", response.body.access_token); client.global.set("refresh_token", response.body.refresh_token); %}
+> {% client.global.set("token", response.body.access_token); client.global.set("refresh_token", response.body.refresh_token); client.global.set("current_user_id", response.body.user.id); %}
+
+### 创建当前账号业务部门
+POST http://127.0.0.1:8080/api/v1/system/departments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "测试办公室",
+  "code": "TEST-OFFICE"
+}
+
+> {% client.global.set("operator_department_id", response.body.id); %}
+
+### 把当前账号绑定到业务部门
+PATCH http://127.0.0.1:8080/api/v1/system/users/{{current_user_id}}/affiliation
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "department_id": {{operator_department_id}},
+  "terminal_id": null
+}
+
+### 创建测试操作员工
+POST http://127.0.0.1:8080/api/v1/system/employees
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "测试操作员",
+  "phone": "13800000000",
+  "hire_date": "2026-08-01",
+  "birthplace": "广东",
+  "residential_address": "深圳市",
+  "birth_date": "1990-01-01"
+}
+
+> {% client.global.set("operator_employee_id", response.body.id); %}
+
+### 配置当前部门员工
+PUT http://127.0.0.1:8080/api/v1/system/departments/{{operator_department_id}}/employees
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "employee_ids": [{{operator_employee_id}}]
+}
+
+### 查询当前部门操作人候选
+GET http://127.0.0.1:8080/api/v1/operator-employees
+Authorization: Bearer {{token}}
 
 ### 自动续期并轮换 refresh token
 POST http://127.0.0.1:8080/api/v1/auth/refresh
@@ -79,7 +130,8 @@ Authorization: Bearer {{token}}
 
 {
   "name": "主仓",
-  "code": "WH-001"
+  "code": "MAIN",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 > {% client.global.set("warehouse_id", response.body.id); %}
@@ -104,7 +156,8 @@ Authorization: Bearer {{token}}
   "unit": "kg",
   "spec": "通用",
   "safety_stock": 100000,
-  "default_cost": 250
+  "default_cost": 250,
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 > {% client.global.set("material_id", response.body.id); %}
@@ -121,7 +174,8 @@ Authorization: Bearer {{token}}
   "unit": "个",
   "spec": "图片接口链路",
   "safety_stock": 10,
-  "default_cost": 100
+  "default_cost": 100,
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 > {% client.global.set("product_id", response.body.id); %}
@@ -222,6 +276,7 @@ Idempotency-Key: demo-in-001
   "type": "inbound",
   "warehouse_id": {{warehouse_id}},
   "reason": "期初入库",
+  "operator_employee_id": {{operator_employee_id}},
   "lines": [
     {
       "item_type": "material",
@@ -239,7 +294,23 @@ POST http://127.0.0.1:8080/api/v1/inventory-documents/{{inventory_document_id}}/
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
-{}
+{
+  "operator_employee_id": {{operator_employee_id}}
+}
+
+### 从物品详情即时办理部门出库（创建与过账记录同一操作员工）
+POST http://127.0.0.1:8080/api/v1/warehouse/items/material/{{material_id}}/movements
+Content-Type: application/json
+Authorization: Bearer {{token}}
+Idempotency-Key: demo-department-out-001
+
+{
+  "business_type": "department_outbound",
+  "quantity": 10000,
+  "department_id": {{operator_department_id}},
+  "reason": "测试领用",
+  "operator_employee_id": {{operator_employee_id}}
+}
 
 ### 查询库存余额
 GET http://127.0.0.1:8080/api/v1/inventory-balances
@@ -352,6 +423,24 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("white_pack_department_id", response.body.id); %}
 
+### 将测试员工加入注塑部门
+PUT http://127.0.0.1:8080/api/v1/system/departments/{{injection_department_id}}/employees
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "employee_ids": [{{operator_employee_id}}]
+}
+
+### 将测试员工加入白壳包装部门
+PUT http://127.0.0.1:8080/api/v1/system/departments/{{white_pack_department_id}}/employees
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "employee_ids": [{{operator_employee_id}}]
+}
+
 ### 创建生产任务单
 POST http://127.0.0.1:8080/api/v1/workorder
 Content-Type: application/json
@@ -360,13 +449,13 @@ Authorization: Bearer {{token}}
 {
   "code": "WO-001",
   "type": "production",
-  "product_name": "白色外壳",
+  "product_id": {{product_id}},
   "planned_quantity": 1000000,
-  "unit": "个",
   "due_at": "2026-08-10",
   "priority": "normal",
   "target_department_ids": [{{injection_department_id}}, {{white_pack_department_id}}],
-  "description": "注塑后流转到白壳包装"
+  "description": "注塑后流转到白壳包装",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 > {% client.global.set("workorder_id", response.body.id); client.global.set("department_task_id", response.body.department_tasks[0].id); %}
@@ -380,16 +469,59 @@ POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/dispatch
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
-{}
+{
+  "operator_employee_id": {{operator_employee_id}}
+}
 
 > {% client.global.set("department_task_id", response.body.department_tasks[0].id); client.global.set("department_task_id_2", response.body.department_tasks[1].id); %}
+
+### 暂停任务单
+POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/pause
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "reason": "等待现场确认",
+  "operator_employee_id": {{operator_employee_id}}
+}
+
+### 恢复任务单
+POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/resume
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "operator_employee_id": {{operator_employee_id}}
+}
+
+### 标记任务单加急
+POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/urgent
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "urgent": true,
+  "operator_employee_id": {{operator_employee_id}}
+}
+
+### 切换当前账号到注塑部门
+PATCH http://127.0.0.1:8080/api/v1/system/users/{{current_user_id}}/affiliation
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "department_id": {{injection_department_id}},
+  "terminal_id": null
+}
 
 ### 部门开始处理
 POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id}}/start
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
-{}
+{
+  "operator_employee_id": {{operator_employee_id}}
+}
 
 ### 部门部分完成
 POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id}}/partial-complete
@@ -398,7 +530,8 @@ Authorization: Bearer {{token}}
 
 {
   "completed_quantity": 500000,
-  "remark": "注塑完成一半"
+  "remark": "注塑完成一半",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 ### 部门完成
@@ -407,25 +540,48 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "remark": "注塑完成"
+  "remark": "注塑完成",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 ### 第二部门完成
+PATCH http://127.0.0.1:8080/api/v1/system/users/{{current_user_id}}/affiliation
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "department_id": {{white_pack_department_id}},
+  "terminal_id": null
+}
+
+### 完成第二部门任务
 POST http://127.0.0.1:8080/api/v1/workorder/department-tasks/{{department_task_id_2}}/complete
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "remark": "白壳包装完成"
+  "remark": "白壳包装完成",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 ### 办公室确认正常完成
+PATCH http://127.0.0.1:8080/api/v1/system/users/{{current_user_id}}/affiliation
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "department_id": {{operator_department_id}},
+  "terminal_id": null
+}
+
+### 正常完成主任务
 POST http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/complete
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "mode": "normal"
+  "mode": "normal",
+  "operator_employee_id": {{operator_employee_id}}
 }
 
 ### 查询任务流转日志

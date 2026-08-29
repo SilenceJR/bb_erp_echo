@@ -32,13 +32,12 @@ func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 			return
 		}
 
-		status := http.StatusInternalServerError
+		status := StatusFromError(err)
 		code := "INTERNAL_ERROR"
 		message := "服务器内部错误"
 
 		var httpError *echo.HTTPError
 		if errors.As(err, &httpError) {
-			status = httpError.Code
 			code = strings.ToUpper(strings.ReplaceAll(http.StatusText(status), " ", "_"))
 			if httpError.Message != "" {
 				message = httpError.Message
@@ -52,7 +51,6 @@ func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 			PublicMessage() string
 		}
 		if errors.As(err, &businessError) {
-			status = businessError.StatusCode()
 			code = businessError.Code()
 			message = businessError.PublicMessage()
 		}
@@ -66,6 +64,25 @@ func ErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 
 		_ = c.JSON(status, ErrorBody{Code: code, Message: message, RequestID: requestID})
 	}
+}
+
+// StatusFromError 返回统一错误处理器最终会写出的 HTTP 状态码。
+func StatusFromError(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+	var businessError interface {
+		error
+		StatusCode() int
+	}
+	if errors.As(err, &businessError) {
+		return businessError.StatusCode()
+	}
+	var httpError *echo.HTTPError
+	if errors.As(err, &httpError) {
+		return httpError.Code
+	}
+	return http.StatusInternalServerError
 }
 
 // Skeleton 返回模块骨架占位响应。

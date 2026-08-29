@@ -109,6 +109,8 @@ flowchart TB
     classDef boundary fill:#f3e5f5,stroke:#8e44ad,color:#3d1f4d
 ~~~
 
+`desktop-http` 对 `localhost`、回环地址和 RFC1918 私网 Go 服务强制直连，避免系统代理误接管本地业务请求；公网 HTTPS 服务仍保留系统代理能力。这一差异只存在于桌面传输层，共用业务页面和 API 路径不感知。
+
 ### 4.1 Web 和 Client 的区别
 
 | 对比项 | Web 浏览器 | Tauri Client |
@@ -234,7 +236,7 @@ sequenceDiagram
 
     user->>shared: 输入新服务地址并点击测试
     shared->>bridge: 请求测试 /health
-    bridge->>rust: 发送 HTTP 请求
+    bridge->>rust: 发送 HTTP 请求；回环或私网地址强制直连
     rust->>server: 访问 Go 服务健康检查
     alt 服务可连接
         server-->>rust: 返回健康

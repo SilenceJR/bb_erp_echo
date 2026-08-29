@@ -7,6 +7,9 @@ import (
 )
 
 const (
+	// DefaultWarehouseCode 是系统默认仓库的固定编码。
+	DefaultWarehouseCode = "MAIN"
+
 	// AccountTypePersonal 表示个人账号，审计日志会记录具体责任人。
 	AccountTypePersonal = "personal"
 	// AccountTypeDepartmentTerminal 表示部门公共终端账号，审计日志只记录部门和终端。
@@ -28,6 +31,20 @@ type BaseModel struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// OperatorSnapshot 保存最近一次业务写入的双重责任快照。
+//
+// 基础资料建档和仓库配置也必须在业务事务内留下操作员工记录，不能只依赖
+// 请求结束后的审计中间件；因此这些字段与对应业务行一起提交或回滚。
+type OperatorSnapshot struct {
+	OperatorUserID         *uint  `json:"operator_user_id,omitempty" gorm:"index"`
+	OperatorUsername       string `json:"operator_username,omitempty" gorm:"size:80;index"`
+	OperatorTerminalID     *uint  `json:"operator_terminal_id,omitempty" gorm:"index"`
+	OperatorEmployeeID     *uint  `json:"operator_employee_id,omitempty" gorm:"index"`
+	OperatorEmployeeName   string `json:"operator_employee_name,omitempty" gorm:"size:120"`
+	OperatorDepartmentID   *uint  `json:"operator_department_id,omitempty" gorm:"index"`
+	OperatorDepartmentName string `json:"operator_department_name,omitempty" gorm:"size:120"`
+}
+
 // Organization 是 ERP 的组织边界，当前用于公司级数据隔离。
 type Organization struct {
 	BaseModel
@@ -43,6 +60,35 @@ type Department struct {
 	Name           string `json:"name" gorm:"size:120;not null"`
 	Code           string `json:"code" gorm:"size:60;not null;index"`
 	Status         string `json:"status" gorm:"size:30;not null;default:active"`
+	EmployeeCount  int64  `json:"employee_count" gorm:"-"`
+}
+
+// Employee 是独立于登录账号的员工档案。
+//
+// 员工可以同时属于多个部门；部门关系由 EmployeeDepartment 维护。
+// Age 不落库，由接口按出生日期和 Asia/Shanghai 当前日期动态计算。
+type Employee struct {
+	BaseModel
+	OrganizationID     uint         `json:"organization_id" gorm:"not null;index"`
+	Name               string       `json:"name" gorm:"size:120;not null"`
+	Phone              string       `json:"phone" gorm:"size:60"`
+	HireDate           time.Time    `json:"hire_date" gorm:"type:date;not null"`
+	Birthplace         string       `json:"birthplace" gorm:"size:120"`
+	ResidentialAddress string       `json:"residential_address" gorm:"size:255"`
+	BirthDate          time.Time    `json:"birth_date" gorm:"type:date;not null"`
+	Status             string       `json:"status" gorm:"size:30;not null;default:active;index"`
+	Departments        []Department `json:"departments,omitempty" gorm:"many2many:employee_departments;joinForeignKey:EmployeeID;joinReferences:DepartmentID"`
+}
+
+// EmployeeDepartment 是员工与部门的多对多关系，不设置主部门。
+type EmployeeDepartment struct {
+	ID           uint       `json:"id" gorm:"primaryKey"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	EmployeeID   uint       `json:"employee_id" gorm:"not null;index:idx_employee_department,unique"`
+	DepartmentID uint       `json:"department_id" gorm:"not null;index:idx_employee_department,unique"`
+	Employee     Employee   `json:"-" gorm:"foreignKey:EmployeeID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Department   Department `json:"-" gorm:"foreignKey:DepartmentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 // Terminal 是车间、仓库等公共电脑或设备终端。
@@ -101,25 +147,29 @@ type RolePermission struct {
 // PersonName 固定为 UnknownPerson，避免虚构具体操作人。
 type AuditLog struct {
 	BaseModel
-	RequestID      string `json:"request_id" gorm:"size:80;index"`
-	ActorUserID    *uint  `json:"actor_user_id" gorm:"index"`
-	ActorUsername  string `json:"actor_username" gorm:"size:80;index"`
-	AccountType    string `json:"account_type" gorm:"size:40;index"`
-	OrganizationID *uint  `json:"organization_id" gorm:"index"`
-	DepartmentID   *uint  `json:"department_id" gorm:"index"`
-	TerminalID     *uint  `json:"terminal_id" gorm:"index"`
-	PersonName     string `json:"person_name" gorm:"size:120"`
-	Object         string `json:"object" gorm:"size:120;index"`
-	Action         string `json:"action" gorm:"size:60;index"`
-	Method         string `json:"method" gorm:"size:20"`
-	Path           string `json:"path" gorm:"size:255"`
-	Status         int    `json:"status"`
-	RemoteIP       string `json:"remote_ip" gorm:"size:80"`
-	UserAgent      string `json:"user_agent" gorm:"size:255"`
-	Result         string `json:"result" gorm:"size:40"`
+	RequestID              string `json:"request_id" gorm:"size:80;index"`
+	ActorUserID            *uint  `json:"actor_user_id" gorm:"index"`
+	ActorUsername          string `json:"actor_username" gorm:"size:80;index"`
+	AccountType            string `json:"account_type" gorm:"size:40;index"`
+	OrganizationID         *uint  `json:"organization_id" gorm:"index"`
+	DepartmentID           *uint  `json:"department_id" gorm:"index"`
+	TerminalID             *uint  `json:"terminal_id" gorm:"index"`
+	PersonName             string `json:"person_name" gorm:"size:120"`
+	OperatorEmployeeID     *uint  `json:"operator_employee_id" gorm:"index"`
+	OperatorEmployeeName   string `json:"operator_employee_name" gorm:"size:120"`
+	OperatorDepartmentID   *uint  `json:"operator_department_id" gorm:"index"`
+	OperatorDepartmentName string `json:"operator_department_name" gorm:"size:120"`
+	Object                 string `json:"object" gorm:"size:120;index"`
+	Action                 string `json:"action" gorm:"size:60;index"`
+	Method                 string `json:"method" gorm:"size:20"`
+	Path                   string `json:"path" gorm:"size:255"`
+	Status                 int    `json:"status"`
+	RemoteIP               string `json:"remote_ip" gorm:"size:80"`
+	UserAgent              string `json:"user_agent" gorm:"size:255"`
+	Result                 string `json:"result" gorm:"size:40"`
 }
 
-// Customer 是客户模块骨架模型，后续承载客户档案。
+// Customer 是客户档案主模型，并维护该客户的联系人关系。
 type Customer struct {
 	BaseModel
 	Name     string    `json:"name" gorm:"size:160;not null"`
@@ -140,7 +190,7 @@ type Supplier struct {
 	Status  string `json:"status" gorm:"size:30;not null;default:active"`
 }
 
-// Contact 是联系人模块骨架模型，后续可关联客户。
+// Contact 是客户联系人模型，并维护联系人的电话明细。
 type Contact struct {
 	BaseModel
 	CustomerID uint           `json:"customer_id" gorm:"not null;index"`
@@ -148,11 +198,10 @@ type Contact struct {
 	Phones     []ContactPhone `json:"phones" gorm:"foreignKey:ContactID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
-// ContactPhone 是联系人电话明细表。
+// ContactPhone 是联系人电话明细表，支持一个联系人维护多个号码。
 //
 // 业务说明：
-// 一个联系人可能有手机、座机、微信同号等多个联系方式。
-// 电话拆成明细表后，后续可以单独维护主号码、号码类型和唯一性规则。
+// 一个联系人可以维护手机、座机、微信同号等多个联系方式，并标记主号码。
 type ContactPhone struct {
 	BaseModel
 	ContactID uint   `json:"contact_id" gorm:"not null;index"`
@@ -161,21 +210,23 @@ type ContactPhone struct {
 	Primary   bool   `json:"primary" gorm:"not null;default:false"`
 }
 
-// Warehouse 是仓库模块骨架模型。
+// Warehouse 是单仓库模式下的仓库配置模型，MAIN 编码代表系统默认仓库。
 type Warehouse struct {
 	BaseModel
-	Name   string `json:"name" gorm:"size:120;not null"`
-	Code   string `json:"code" gorm:"size:60;not null;uniqueIndex"`
-	Status string `json:"status" gorm:"size:30;not null;default:active"`
+	Name             string `json:"name" gorm:"size:120;not null"`
+	Code             string `json:"code" gorm:"size:60;not null;uniqueIndex"`
+	Status           string `json:"status" gorm:"size:30;not null;default:active"`
+	OperatorSnapshot `gorm:"embedded"`
 }
 
-// Location 是仓库内的库位。
+// Location 是默认仓库内的库位档案，并保存最近一次业务操作责任快照。
 type Location struct {
 	BaseModel
-	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index"`
-	Code        string `json:"code" gorm:"size:80;not null;index:idx_location_code,unique"`
-	Name        string `json:"name" gorm:"size:120;not null"`
-	Status      string `json:"status" gorm:"size:30;not null;default:active"`
+	WarehouseID      uint   `json:"warehouse_id" gorm:"not null;index"`
+	Code             string `json:"code" gorm:"size:80;not null;index:idx_location_code,unique"`
+	Name             string `json:"name" gorm:"size:120;not null"`
+	Status           string `json:"status" gorm:"size:30;not null;default:active"`
+	OperatorSnapshot `gorm:"embedded"`
 }
 
 // InventoryBalance 是仓库库位下某个物料或产品的当前结存。
@@ -183,39 +234,43 @@ type Location struct {
 // 数量使用 4 位定点整数，金额使用分，避免浮点误差影响库存和成本。
 type InventoryBalance struct {
 	BaseModel
-	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index:idx_inventory_balance,unique"`
-	LocationID  *uint  `json:"location_id" gorm:"index:idx_inventory_balance,unique"`
-	ItemType    string `json:"item_type" gorm:"size:30;not null;index:idx_inventory_balance,unique"`
-	ItemID      uint   `json:"item_id" gorm:"not null;index:idx_inventory_balance,unique"`
+	// SQLite 的 UNIQUE 复合索引会把多个 NULL 视为不同值，因此按库位是否为
+	// NULL 分成两个部分唯一索引，确保默认库位和明确库位都只能有一条余额。
+	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index:idx_inventory_balance_with_location,unique,where:location_id IS NOT NULL,priority:1;index:idx_inventory_balance_without_location,unique,where:location_id IS NULL,priority:1"`
+	LocationID  *uint  `json:"location_id" gorm:"index:idx_inventory_balance_with_location,unique,where:location_id IS NOT NULL,priority:2"`
+	ItemType    string `json:"item_type" gorm:"size:30;not null;index:idx_inventory_balance_with_location,unique,where:location_id IS NOT NULL,priority:3;index:idx_inventory_balance_without_location,unique,where:location_id IS NULL,priority:2"`
+	ItemID      uint   `json:"item_id" gorm:"not null;index:idx_inventory_balance_with_location,unique,where:location_id IS NOT NULL,priority:4;index:idx_inventory_balance_without_location,unique,where:location_id IS NULL,priority:3"`
 	Quantity    int64  `json:"quantity" gorm:"not null;default:0"`
 	AvgCost     int64  `json:"avg_cost" gorm:"not null;default:0"`
 	Amount      int64  `json:"amount" gorm:"not null;default:0"`
 }
 
-// Material 是物料模块骨架模型。
+// Material 是物料主数据模型，记录分类、库存单位、安全库存和成本属性。
 type Material struct {
 	BaseModel
-	Name         string `json:"name" gorm:"size:160;not null"`
-	Code         string `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Category     string `json:"category" gorm:"size:60"`
-	Unit         string `json:"unit" gorm:"size:30;not null;default:个"`
-	Spec         string `json:"spec" gorm:"size:160"`
-	SafetyStock  int64  `json:"safety_stock" gorm:"not null;default:0"`
-	CostViewable bool   `json:"-" gorm:"-"`
-	DefaultCost  int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
-	Status       string `json:"status" gorm:"size:30;not null;default:active"`
+	Name             string `json:"name" gorm:"size:160;not null"`
+	Code             string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Category         string `json:"category" gorm:"size:60"`
+	Unit             string `json:"unit" gorm:"size:30;not null;default:个"`
+	Spec             string `json:"spec" gorm:"size:160"`
+	SafetyStock      int64  `json:"safety_stock" gorm:"not null;default:0"`
+	CostViewable     bool   `json:"-" gorm:"-"`
+	DefaultCost      int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
+	Status           string `json:"status" gorm:"size:30;not null;default:active"`
+	OperatorSnapshot `gorm:"embedded"`
 }
 
-// Product 是产品模块骨架模型。
+// Product 是产品主数据模型，记录生产单和库存业务使用的规格、单位及成本属性。
 type Product struct {
 	BaseModel
-	Name        string `json:"name" gorm:"size:160;not null"`
-	Code        string `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Unit        string `json:"unit" gorm:"size:30;not null;default:个"`
-	Spec        string `json:"spec" gorm:"size:160"`
-	SafetyStock int64  `json:"safety_stock" gorm:"not null;default:0"`
-	DefaultCost int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
-	Status      string `json:"status" gorm:"size:30;not null;default:active"`
+	Name             string `json:"name" gorm:"size:160;not null"`
+	Code             string `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Unit             string `json:"unit" gorm:"size:30;not null;default:个"`
+	Spec             string `json:"spec" gorm:"size:160"`
+	SafetyStock      int64  `json:"safety_stock" gorm:"not null;default:0"`
+	DefaultCost      int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
+	Status           string `json:"status" gorm:"size:30;not null;default:active"`
+	OperatorSnapshot `gorm:"embedded"`
 }
 
 // InventoryDocument 是库存业务单据表。
@@ -223,24 +278,43 @@ type Product struct {
 // 业务规则：草稿可以修改；审核过账后只能冲销，不能直接编辑。
 type InventoryDocument struct {
 	BaseModel
-	Code               string                  `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Type               string                  `json:"type" gorm:"size:30;not null;index"`
-	Status             string                  `json:"status" gorm:"size:30;not null;default:draft;index"`
-	WarehouseID        uint                    `json:"warehouse_id" gorm:"not null;index"`
-	ToWarehouseID      *uint                   `json:"to_warehouse_id" gorm:"index"`
-	Reason             string                  `json:"reason" gorm:"size:255"`
-	BusinessType       string                  `json:"business_type" gorm:"size:40;index"`
-	SupplierID         *uint                   `json:"supplier_id" gorm:"index"`
-	CustomerID         *uint                   `json:"customer_id" gorm:"index"`
-	DepartmentID       *uint                   `json:"department_id" gorm:"index"`
-	OriginalDocumentID *uint                   `json:"original_document_id" gorm:"index"`
-	IdempotencyKey     string                  `json:"idempotency_key" gorm:"size:120;index"`
-	CreatedBy          uint                    `json:"created_by" gorm:"index"`
-	PostedBy           *uint                   `json:"posted_by" gorm:"index"`
-	PostedAt           *time.Time              `json:"posted_at"`
-	ReversedBy         *uint                   `json:"reversed_by" gorm:"index"`
-	ReversedAt         *time.Time              `json:"reversed_at"`
-	Lines              []InventoryDocumentLine `json:"lines" gorm:"foreignKey:DocumentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Code                      string                  `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Type                      string                  `json:"type" gorm:"size:30;not null;index"`
+	Status                    string                  `json:"status" gorm:"size:30;not null;default:draft;index"`
+	WarehouseID               uint                    `json:"warehouse_id" gorm:"not null;index"`
+	ToWarehouseID             *uint                   `json:"to_warehouse_id" gorm:"index"`
+	Reason                    string                  `json:"reason" gorm:"size:255"`
+	BusinessType              string                  `json:"business_type" gorm:"size:40;index"`
+	SupplierID                *uint                   `json:"supplier_id" gorm:"index"`
+	CustomerID                *uint                   `json:"customer_id" gorm:"index"`
+	DepartmentID              *uint                   `json:"department_id" gorm:"index"`
+	OriginalDocumentID        *uint                   `json:"original_document_id" gorm:"index"`
+	IdempotencyKey            string                  `json:"idempotency_key" gorm:"size:120;uniqueIndex:idx_inventory_documents_idempotency_key,where:idempotency_key <> ''"`
+	IdempotencyScope          string                  `json:"-" gorm:"size:80;index"`
+	IdempotencyAccountID      uint                    `json:"-" gorm:"index"`
+	IdempotencyOrganizationID uint                    `json:"-" gorm:"index"`
+	IdempotencyRequestHash    string                  `json:"-" gorm:"size:64;index"`
+	CreatedBy                 uint                    `json:"created_by" gorm:"index"`
+	CreatedByEmployeeID       *uint                   `json:"created_by_employee_id" gorm:"index"`
+	CreatedByEmployeeName     string                  `json:"created_by_employee_name" gorm:"size:120"`
+	CreatedByDepartmentID     *uint                   `json:"created_by_department_id" gorm:"index"`
+	CreatedByDepartmentName   string                  `json:"created_by_department_name" gorm:"size:120"`
+	CreatedByTerminalID       *uint                   `json:"created_by_terminal_id" gorm:"index"`
+	PostedBy                  *uint                   `json:"posted_by" gorm:"index"`
+	PostedByEmployeeID        *uint                   `json:"posted_by_employee_id" gorm:"index"`
+	PostedByEmployeeName      string                  `json:"posted_by_employee_name" gorm:"size:120"`
+	PostedByDepartmentID      *uint                   `json:"posted_by_department_id" gorm:"index"`
+	PostedByDepartmentName    string                  `json:"posted_by_department_name" gorm:"size:120"`
+	PostedByTerminalID        *uint                   `json:"posted_by_terminal_id" gorm:"index"`
+	PostedAt                  *time.Time              `json:"posted_at"`
+	ReversedBy                *uint                   `json:"reversed_by" gorm:"index"`
+	ReversedByEmployeeID      *uint                   `json:"reversed_by_employee_id" gorm:"index"`
+	ReversedByEmployeeName    string                  `json:"reversed_by_employee_name" gorm:"size:120"`
+	ReversedByDepartmentID    *uint                   `json:"reversed_by_department_id" gorm:"index"`
+	ReversedByDepartmentName  string                  `json:"reversed_by_department_name" gorm:"size:120"`
+	ReversedByTerminalID      *uint                   `json:"reversed_by_terminal_id" gorm:"index"`
+	ReversedAt                *time.Time              `json:"reversed_at"`
+	Lines                     []InventoryDocumentLine `json:"lines" gorm:"foreignKey:DocumentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 // InventoryDocumentLine 是库存单据明细行。
@@ -319,18 +393,23 @@ type DepartmentTask struct {
 // WorkOrderFlowLog 记录任务单和部门子任务的流转审计。
 type WorkOrderFlowLog struct {
 	BaseModel
-	WorkOrderID      uint   `json:"work_order_id" gorm:"not null;index"`
-	DepartmentTaskID *uint  `json:"department_task_id" gorm:"index"`
-	DepartmentID     *uint  `json:"department_id" gorm:"index"`
-	ActorUserID      *uint  `json:"actor_user_id" gorm:"index"`
-	ActorUsername    string `json:"actor_username" gorm:"size:80;index"`
-	Action           string `json:"action" gorm:"size:60;not null;index"`
-	StatusBefore     string `json:"status_before" gorm:"size:40"`
-	StatusAfter      string `json:"status_after" gorm:"size:40"`
-	QuantityBefore   int64  `json:"quantity_before" gorm:"not null;default:0"`
-	QuantityAfter    int64  `json:"quantity_after" gorm:"not null;default:0"`
-	Reason           string `json:"reason" gorm:"size:500"`
-	Remark           string `json:"remark" gorm:"size:500"`
+	WorkOrderID            uint   `json:"work_order_id" gorm:"not null;index"`
+	DepartmentTaskID       *uint  `json:"department_task_id" gorm:"index"`
+	DepartmentID           *uint  `json:"department_id" gorm:"index"`
+	ActorUserID            *uint  `json:"actor_user_id" gorm:"index"`
+	ActorUsername          string `json:"actor_username" gorm:"size:80;index"`
+	ActorTerminalID        *uint  `json:"actor_terminal_id" gorm:"index"`
+	OperatorEmployeeID     *uint  `json:"operator_employee_id" gorm:"index"`
+	OperatorEmployeeName   string `json:"operator_employee_name" gorm:"size:120"`
+	OperatorDepartmentID   *uint  `json:"operator_department_id" gorm:"index"`
+	OperatorDepartmentName string `json:"operator_department_name" gorm:"size:120"`
+	Action                 string `json:"action" gorm:"size:60;not null;index"`
+	StatusBefore           string `json:"status_before" gorm:"size:40"`
+	StatusAfter            string `json:"status_after" gorm:"size:40"`
+	QuantityBefore         int64  `json:"quantity_before" gorm:"not null;default:0"`
+	QuantityAfter          int64  `json:"quantity_after" gorm:"not null;default:0"`
+	Reason                 string `json:"reason" gorm:"size:500"`
+	Remark                 string `json:"remark" gorm:"size:500"`
 }
 
 // AllModels 返回需要由 GORM AutoMigrate 管理的全部模型。
@@ -341,6 +420,8 @@ func AllModels() []any {
 	return []any{
 		&Organization{},
 		&Department{},
+		&Employee{},
+		&EmployeeDepartment{},
 		&Terminal{},
 		&User{},
 		&RefreshSession{},

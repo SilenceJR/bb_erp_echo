@@ -9,7 +9,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
-	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/operator"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -33,8 +33,24 @@ type itemMovementRequest struct {
 	OriginalDocumentID *uint  `json:"original_document_id"`
 	Reason             string `json:"reason"`
 	Remark             string `json:"remark"`
+	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required" example:"1"`
 }
 
+// GetItemDetail 查询仓库物品详情和当前结存。
+// @Summary 查询仓库物品详情
+// @Tags inventory
+// @Security BearerAuth
+// @Produce json
+// @Param itemType path string true "物品类型" Enums(material,product)
+// @Param itemID path int true "物品 ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/warehouse/items/{itemType}/{itemID} [get]
 func (h *Handler) GetItemDetail(c *echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
@@ -72,6 +88,23 @@ func (h *Handler) GetItemDetail(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+// ListItemMovements 分页查询仓库物品的库存单据。
+// @Summary 查询仓库物品出入库记录
+// @Tags inventory
+// @Security BearerAuth
+// @Produce json
+// @Param itemType path string true "物品类型" Enums(material,product)
+// @Param itemID path int true "物品 ID"
+// @Param page query int false "页码"
+// @Param page_size query int false "每页条数"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/warehouse/items/{itemType}/{itemID}/movements [get]
 func (h *Handler) ListItemMovements(c *echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
@@ -102,58 +135,113 @@ func (h *Handler) ListItemMovements(c *echo.Context) error {
 	})
 }
 
+// CreateItemMovement 创建即时出入库记录并立即过账。
+// @Summary 创建即时出入库记录
+// @Description 创建即时出入库记录并立即过账；必须选择当前账号部门下的在职员工。相同 Idempotency-Key 重试会返回首次创建结果。
+// @Tags inventory
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param itemType path string true "物品类型" Enums(material,product)
+// @Param itemID path int true "物品 ID"
+// @Param Idempotency-Key header string false "幂等键；相同键重试返回首次创建结果"
+// @Param body body itemMovementRequest true "即时出入库参数"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/warehouse/items/{itemType}/{itemID}/movements [post]
 func (h *Handler) CreateItemMovement(c *echo.Context) error {
 	itemType, itemID, err := itemParams(c)
 	if err != nil {
 		return err
 	}
-	if _, err := h.loadItem(itemType, itemID); err != nil {
-		return err
-	}
 	var req itemMovementRequest
-	if err := request.BindAndValidate(c, &req); err != nil {
-		return err
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "请求 JSON 格式错误")
 	}
-	if req.Quantity <= 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "数量必须大于 0")
+	idempotencyKey := normalizeIdempotencyKey(c.Request().Header.Get("Idempotency-Key"))
+	if idempotencyKey != "" && auth.GetCurrentUser(c) == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
 	}
-	if req.Quantity > maxMovementQuantity {
-		return echo.NewHTTPError(http.StatusBadRequest, "数量不能超过 999999999")
-	}
-	strategy, ok := h.movementStrategies[req.BusinessType]
-	if !ok {
-		return echo.NewHTTPError(http.StatusBadRequest, "不支持的出入库业务类型")
-	}
-	validationContext := requestMovementValidationContext{handler: h, user: auth.GetCurrentUser(c)}
-	if err := strategy.Validate(validationContext, req, itemType, itemID); err != nil {
-		return err
-	}
-	idempotencyKey := c.Request().Header.Get("Idempotency-Key")
-	if idempotencyKey != "" {
-		var existing model.InventoryDocument
-		if err := h.DB.Preload("Lines").Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
-			return c.JSON(http.StatusOK, trimDocument(existing, hasCostView(c)))
+	metadata := newIdempotencyMetadata(c, idempotencyScopeCreateItemMovement, itemMovementRequestHash(req, itemType, itemID))
+	var doc model.InventoryDocument
+	duplicate := false
+	err = h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
+		// 即使是幂等重放也必须在同一事务内重新确认当前员工关系，
+		// 不能让旧请求快照绕过停用或移除成员的校验。
+		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
+			return err
 		}
-	}
-	warehouse, err := h.defaultWarehouse()
-	if err != nil {
-		return err
-	}
-	current := auth.GetCurrentUser(c)
-	doc := model.InventoryDocument{
-		Code: fmt.Sprintf("INV-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()),
-		Type: strategy.Direction(), BusinessType: req.BusinessType, Status: documentDraft, WarehouseID: warehouse.ID,
-		SupplierID: req.SupplierID, CustomerID: req.CustomerID, DepartmentID: req.DepartmentID,
-		OriginalDocumentID: req.OriginalDocumentID, Reason: req.Reason, IdempotencyKey: idempotencyKey,
-		Lines: []model.InventoryDocumentLine{{ItemType: itemType, ItemID: itemID, Quantity: req.Quantity, UnitCost: req.UnitCost, Remark: req.Remark}},
-	}
-	if current != nil {
-		doc.CreatedBy = current.ID
-	}
-	if req.UnitCost > 0 {
-		doc.Lines[0].Amount = scaledAmount(req.Quantity, req.UnitCost)
-	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if idempotencyKey != "" {
+			existing, found, err := findIdempotentDocument(tx, idempotencyKey, metadata)
+			if err != nil {
+				return err
+			}
+			if found {
+				doc = existing
+				duplicate = true
+				return nil
+			}
+		}
+		if err := c.Validate(&req); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "请求参数校验失败")
+		}
+		if req.Quantity <= 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "数量必须大于 0")
+		}
+		if req.Quantity > maxMovementQuantity {
+			return echo.NewHTTPError(http.StatusBadRequest, "数量不能超过 999999999")
+		}
+		strategy, ok := h.movementStrategies[req.BusinessType]
+		if !ok {
+			return echo.NewHTTPError(http.StatusBadRequest, "不支持的出入库业务类型")
+		}
+		identity, ok := operator.Get(c)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, "操作员工校验状态丢失")
+		}
+		if _, err := h.loadItemDB(tx, itemType, itemID); err != nil {
+			return err
+		}
+		validationContext := requestMovementValidationContext{handler: h, db: tx, user: auth.GetCurrentUser(c)}
+		if err := strategy.Validate(validationContext, req, itemType, itemID); err != nil {
+			return err
+		}
+		warehouse, err := h.defaultWarehouseDB(tx)
+		if err != nil {
+			return err
+		}
+		current := auth.GetCurrentUser(c)
+		doc = model.InventoryDocument{
+			Code: fmt.Sprintf("INV-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()),
+			Type: strategy.Direction(), BusinessType: req.BusinessType, Status: documentDraft, WarehouseID: warehouse.ID,
+			SupplierID: req.SupplierID, CustomerID: req.CustomerID, DepartmentID: req.DepartmentID,
+			OriginalDocumentID: req.OriginalDocumentID, Reason: req.Reason, IdempotencyKey: idempotencyKey,
+			Lines: []model.InventoryDocumentLine{{ItemType: itemType, ItemID: itemID, Quantity: req.Quantity, UnitCost: req.UnitCost, Remark: req.Remark}},
+		}
+		if idempotencyKey != "" {
+			doc.IdempotencyScope = metadata.scope
+			doc.IdempotencyAccountID = metadata.accountID
+			doc.IdempotencyOrganizationID = metadata.organizationID
+			doc.IdempotencyRequestHash = metadata.requestHash
+		}
+		if current != nil {
+			doc.CreatedBy = current.ID
+		}
+		doc.CreatedByEmployeeID = &identity.EmployeeID
+		doc.CreatedByEmployeeName = identity.EmployeeName
+		doc.CreatedByDepartmentID = &identity.DepartmentID
+		doc.CreatedByDepartmentName = identity.DepartmentName
+		if current != nil {
+			doc.CreatedByTerminalID = current.TerminalID
+		}
+		if req.UnitCost > 0 {
+			doc.Lines[0].Amount = scaledAmount(req.Quantity, req.UnitCost)
+		}
 		if err := tx.Create(&doc).Error; err != nil {
 			return err
 		}
@@ -165,9 +253,29 @@ func (h *Handler) CreateItemMovement(c *echo.Context) error {
 		if current != nil {
 			doc.PostedBy = &current.ID
 		}
+		doc.PostedByEmployeeID = &identity.EmployeeID
+		doc.PostedByEmployeeName = identity.EmployeeName
+		doc.PostedByDepartmentID = &identity.DepartmentID
+		doc.PostedByDepartmentName = identity.DepartmentName
+		if current != nil {
+			doc.PostedByTerminalID = current.TerminalID
+		}
 		return tx.Save(&doc).Error
-	}); err != nil {
+	})
+	if err != nil {
+		if idempotencyKey != "" && isUniqueConstraintError(err) {
+			existing, found, lookupErr := findIdempotentDocument(h.DB.WithContext(c.Request().Context()), idempotencyKey, metadata)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if found {
+				return idempotencyConflictResponse(c, existing)
+			}
+		}
 		return err
+	}
+	if duplicate {
+		return c.JSON(http.StatusOK, trimDocument(doc, hasCostView(c)))
 	}
 	if err := h.DB.Preload("Lines").First(&doc, doc.ID).Error; err != nil {
 		return err
@@ -176,8 +284,12 @@ func (h *Handler) CreateItemMovement(c *echo.Context) error {
 }
 
 func (h *Handler) validateOriginalDocument(id uint, itemType string, itemID uint, customerID, departmentID *uint) error {
+	return h.validateOriginalDocumentDB(h.DB, id, itemType, itemID, customerID, departmentID)
+}
+
+func (h *Handler) validateOriginalDocumentDB(db *gorm.DB, id uint, itemType string, itemID uint, customerID, departmentID *uint) error {
 	var doc model.InventoryDocument
-	if err := h.DB.Preload("Lines").First(&doc, id).Error; err != nil {
+	if err := db.Preload("Lines").First(&doc, id).Error; err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "原出库记录不存在")
 	}
 	if doc.Type != typeOutbound || doc.Status != documentPosted || !sameOptionalID(doc.CustomerID, customerID) || !sameOptionalID(doc.DepartmentID, departmentID) {
@@ -192,28 +304,43 @@ func (h *Handler) validateOriginalDocument(id uint, itemType string, itemID uint
 }
 
 func (h *Handler) loadItem(itemType string, id uint) (any, error) {
+	return h.loadItemDB(h.DB, itemType, id)
+}
+
+func (h *Handler) loadItemDB(db *gorm.DB, itemType string, id uint) (any, error) {
 	if itemType == itemMaterial {
 		var item model.Material
-		if err := h.DB.First(&item, id).Error; err != nil {
+		if err := db.First(&item, id).Error; err != nil {
 			return nil, itemNotFound(err)
 		}
 		return item, nil
 	}
 	var item model.Product
-	if err := h.DB.First(&item, id).Error; err != nil {
+	if err := db.First(&item, id).Error; err != nil {
 		return nil, itemNotFound(err)
 	}
 	return item, nil
 }
 
 func (h *Handler) defaultWarehouse() (model.Warehouse, error) {
-	item := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
-	err := h.DB.FirstOrCreate(&item, model.Warehouse{Code: item.Code}).Error
+	return h.defaultWarehouseDB(h.DB)
+}
+
+func (h *Handler) defaultWarehouseDB(db *gorm.DB) (model.Warehouse, error) {
+	var item model.Warehouse
+	err := db.Where("code = ?", model.DefaultWarehouseCode).First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return item, echo.NewHTTPError(http.StatusInternalServerError, "默认仓库未初始化")
+	}
 	return item, err
 }
 
 func (h *Handler) requireRecord(value any, id uint, message string) error {
-	if err := h.DB.First(value, id).Error; err != nil {
+	return h.requireRecordDB(h.DB, value, id, message)
+}
+
+func (h *Handler) requireRecordDB(db *gorm.DB, value any, id uint, message string) error {
+	if err := db.First(value, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return echo.NewHTTPError(http.StatusBadRequest, message)
 		}

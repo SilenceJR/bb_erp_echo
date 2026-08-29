@@ -86,5 +86,16 @@ const emit = defineEmits<{
     padding-top: var(--bb-space-2);
     border-top: 1px solid var(--bb-border-subtle);
   }
+
+  .ui-filter-bar :deep(.el-input__wrapper),
+  .ui-filter-bar :deep(.el-select__wrapper),
+  .ui-filter-bar :deep(.el-button) {
+    min-height: 44px;
+  }
+
+  .ui-filter-bar :deep(.el-button) {
+    width: 100%;
+    margin: 0;
+  }
 }
 </style>

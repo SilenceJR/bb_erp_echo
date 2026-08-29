@@ -5,6 +5,8 @@
       <AppWorkspace v-else>
         <template #page>
           <DashboardPage v-if="activeKey === 'dashboard'" />
+          <DepartmentPage v-else-if="activeKey === 'departments'" />
+          <EmployeePage v-else-if="activeKey === 'employees'" />
           <ModulePage v-else />
         </template>
         <template #overlays>
@@ -21,6 +23,8 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import AppWorkspace from './components/app/AppWorkspace.vue'
 import LoginScreen from './components/app/LoginScreen.vue'
 import DashboardPage from './components/pages/DashboardPage.vue'
+import DepartmentPage from './components/pages/DepartmentPage.vue'
+import EmployeePage from './components/pages/EmployeePage.vue'
 import DetailPanels from './components/pages/DetailPanels.vue'
 import ModulePage from './components/pages/ModulePage.vue'
 import {useWorkspaceController} from './composables/useWorkspaceController'
