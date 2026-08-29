@@ -2,8 +2,11 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,49 +14,114 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"bb_erp_echo/internal/update"
 )
 
+type updaterMetadata struct {
+	Version       string `json:"version"`
+	ServerVersion string `json:"server_version"`
+	ManifestURL   string `json:"manifest_url"`
+}
+
+var errAlreadyUpToDate = errors.New("server is already up to date")
+
+const maxServerPackageSize = int64(512 << 20)
+
 func main() {
 	var manifestURL string
 	var packagePath string
+	var packageSignature string
 	var installDir string
 	var serviceName string
 	var currentVersion string
 
 	flag.StringVar(&manifestURL, "manifest-url", "", "update-manifest.json URL from GitHub, Gitee, or intranet")
 	flag.StringVar(&packagePath, "package", "", "local server zip package path")
-	flag.StringVar(&installDir, "install-dir", ".", "server install directory")
+	flag.StringVar(&packageSignature, "package-signature", "", "base64 Minisign signature for a local server zip package")
+	interactive := len(os.Args) == 1
+	flag.StringVar(&installDir, "install-dir", executableDirectory(), "server install directory")
 	flag.StringVar(&serviceName, "service", "", "optional Windows service name")
 	flag.StringVar(&currentVersion, "current-version", "", "current server version")
 	flag.Parse()
 
-	if err := run(manifestURL, packagePath, installDir, serviceName, currentVersion); err != nil {
-		fmt.Fprintln(os.Stderr, "upgrade failed:", err)
+	output, closeLog, logPath, logErr := openUpgradeLog(installDir)
+	if logErr != nil {
+		fmt.Fprintln(os.Stderr, "warning: create updater log:", logErr)
+	}
+	err := runWithProgress(manifestURL, packagePath, packageSignature, installDir, serviceName, currentVersion, output)
+	if err != nil {
+		fmt.Fprintln(output, "upgrade failed:", err)
+	} else {
+		fmt.Fprintln(output, "upgrade completed")
+	}
+	if logPath != "" {
+		fmt.Fprintln(output, "log file:", logPath)
+	}
+	closeLog()
+	if interactive {
+		fmt.Fprintln(os.Stdout, "Press Enter to close this window.")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+	if err != nil {
 		os.Exit(1)
 	}
-	fmt.Println("upgrade completed")
 }
 
-func run(manifestURL string, packagePath string, installDir string, serviceName string, currentVersion string) error {
+func runWithProgress(manifestURL string, packagePath string, packageSignature string, installDir string, serviceName string, currentVersion string, output io.Writer) error {
+	if output == nil {
+		output = io.Discard
+	}
 	installDir, err := filepath.Abs(installDir)
 	if err != nil {
 		return fmt.Errorf("resolve install dir: %w", err)
 	}
+	releaseLock, err := acquireUpgradeLock(installDir)
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+	if packagePath == "" && manifestURL == "" {
+		metadata, metadataErr := loadUpdaterMetadata(installDir)
+		if metadataErr != nil {
+			return fmt.Errorf("no -package or -manifest-url was supplied and installed version metadata is unavailable: %w", metadataErr)
+		}
+		manifestURL = metadata.ManifestURL
+		if currentVersion == "" {
+			currentVersion = metadata.ServerVersion
+		}
+		if currentVersion == "" {
+			currentVersion = metadata.Version
+		}
+	}
+	downloadedPackage := false
+	expectedVersion := ""
 	if packagePath == "" {
-		packagePath, err = downloadServerPackage(manifestURL, currentVersion)
+		fmt.Fprintln(output, "[1/6] Downloading and verifying the server package...")
+		packagePath, expectedVersion, err = downloadServerPackage(manifestURL, currentVersion, filepath.Join(installDir, "update-public.key"))
 		if err != nil {
+			if errors.Is(err, errAlreadyUpToDate) {
+				fmt.Fprintln(output, err)
+				return nil
+			}
 			return err
 		}
+		downloadedPackage = true
 	}
 	packagePath, err = filepath.Abs(packagePath)
 	if err != nil {
 		return fmt.Errorf("resolve package path: %w", err)
 	}
+	if downloadedPackage {
+		defer os.Remove(packagePath)
+	} else if err := verifyLocalServerPackage(packagePath, packageSignature, filepath.Join(installDir, "update-public.key")); err != nil {
+		return err
+	}
 
+	fmt.Fprintln(output, "[2/6] Extracting and validating the server package...")
 	tmpDir, err := os.MkdirTemp("", "bb-erp-upgrade-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
@@ -71,19 +139,32 @@ func run(manifestURL string, packagePath string, installDir string, serviceName 
 	if _, err := os.Stat(filepath.Join(sourceDir, "bb-erp-server.exe")); err != nil {
 		return fmt.Errorf("server package does not contain bb-erp-server.exe: %w", err)
 	}
-	if err := validateServerPackage(sourceDir); err != nil {
+	if err := validateServerPackage(sourceDir, expectedVersion); err != nil {
 		return err
 	}
+	if serviceName != "" {
+		if err := validateWindowsServiceTarget(serviceName, installDir); err != nil {
+			return err
+		}
+	}
 
-	wasRunning, err := serverRunning(serviceName)
+	wasRunning, err := serverRunning(serviceName, installDir)
 	if err != nil {
 		return fmt.Errorf("inspect current server state: %w", err)
 	}
-	if err := stopServer(serviceName); err != nil {
+	backupRoot := filepath.Join(installDir, "backups")
+	if err := os.MkdirAll(backupRoot, 0o755); err != nil {
+		return fmt.Errorf("create backup root: %w", err)
+	}
+	backupDir, err := os.MkdirTemp(backupRoot, time.Now().Format("20060102-150405")+"-*")
+	if err != nil {
+		return fmt.Errorf("create unique backup directory: %w", err)
+	}
+	fmt.Fprintln(output, "[3/6] Stopping the current server...")
+	if err := stopServer(serviceName, installDir); err != nil {
 		return err
 	}
-
-	backupDir := filepath.Join(installDir, "backups", time.Now().Format("20060102-150405"))
+	fmt.Fprintln(output, "[4/6] Backing up the current deployment to", backupDir)
 	if err := backupServerFiles(installDir, backupDir); err != nil {
 		if wasRunning {
 			if restartErr := startServer(serviceName, installDir); restartErr != nil {
@@ -93,20 +174,81 @@ func run(manifestURL string, packagePath string, installDir string, serviceName 
 		}
 		return err
 	}
+	fmt.Fprintln(output, "[5/6] Installing the verified server files...")
 	if err := replaceServerFiles(sourceDir, installDir); err != nil {
 		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
 	}
+	fmt.Fprintln(output, "[6/6] Starting and verifying the updated server...")
 	if err := startServer(serviceName, installDir); err != nil {
 		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
 	}
 	return nil
 }
 
-func validateServerPackage(sourceDir string) error {
-	serverPath := filepath.Join(sourceDir, "bb-erp-server.exe")
-	serverInfo, err := os.Stat(serverPath)
-	if err != nil || !serverInfo.Mode().IsRegular() || serverInfo.Size() == 0 {
-		return fmt.Errorf("server package contains an invalid bb-erp-server.exe")
+func executableDirectory() string {
+	executable, err := os.Executable()
+	if err == nil {
+		if absolute, absErr := filepath.Abs(executable); absErr == nil {
+			return filepath.Dir(absolute)
+		}
+	}
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return workingDir
+}
+
+func openUpgradeLog(installDir string) (io.Writer, func(), string, error) {
+	absoluteDir, err := filepath.Abs(installDir)
+	if err != nil {
+		return os.Stdout, func() {}, "", err
+	}
+	logDir := filepath.Join(absoluteDir, "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return os.Stdout, func() {}, "", err
+	}
+	file, err := os.CreateTemp(logDir, "server-updater-"+time.Now().Format("20060102-150405")+"-*.log")
+	if err != nil {
+		return os.Stdout, func() {}, "", err
+	}
+	logPath := file.Name()
+	return io.MultiWriter(os.Stdout, file), func() { _ = file.Close() }, logPath, nil
+}
+
+func readUpdaterMetadata(installDir string) (updaterMetadata, error) {
+	path := filepath.Join(installDir, "version.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return updaterMetadata{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	var metadata updaterMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return updaterMetadata{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	metadata.ManifestURL = strings.TrimSpace(metadata.ManifestURL)
+	metadata.ServerVersion = strings.TrimSpace(metadata.ServerVersion)
+	metadata.Version = strings.TrimSpace(metadata.Version)
+	return metadata, nil
+}
+
+func loadUpdaterMetadata(installDir string) (updaterMetadata, error) {
+	metadata, err := readUpdaterMetadata(installDir)
+	if err != nil {
+		return updaterMetadata{}, err
+	}
+	if metadata.ManifestURL == "" {
+		return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url", filepath.Join(installDir, "version.json"))
+	}
+	return metadata, nil
+}
+
+func validateServerPackage(sourceDir, expectedVersion string) error {
+	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat"} {
+		info, err := os.Stat(filepath.Join(sourceDir, name))
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			return fmt.Errorf("server package contains an invalid %s", name)
+		}
 	}
 	keyPath := filepath.Join(sourceDir, "update-public.key")
 	keyInfo, err := os.Stat(keyPath)
@@ -116,37 +258,110 @@ func validateServerPackage(sourceDir string) error {
 	if _, err := update.LoadSignedManifestVerifier("", keyPath); err != nil {
 		return fmt.Errorf("validate server package update-public.key: %w", err)
 	}
+	metadata, err := readUpdaterMetadata(sourceDir)
+	if err != nil {
+		return fmt.Errorf("validate server package version.json: %w", err)
+	}
+	if metadata.ServerVersion == "" && metadata.Version == "" {
+		return fmt.Errorf("validate server package version.json: version is empty")
+	}
+	packageVersion := metadata.ServerVersion
+	if packageVersion == "" {
+		packageVersion = metadata.Version
+	}
+	if expectedVersion != "" && update.CompareVersions(packageVersion, expectedVersion) != 0 {
+		return fmt.Errorf("validate server package version.json: package=%s manifest=%s", packageVersion, expectedVersion)
+	}
 	return nil
 }
 
-func downloadServerPackage(manifestURL string, currentVersion string) (string, error) {
+func downloadServerPackage(manifestURL string, currentVersion string, trustedPublicKeyPath string) (string, string, error) {
 	if manifestURL == "" {
-		return "", fmt.Errorf("either -package or -manifest-url is required")
+		return "", "", fmt.Errorf("either -package or -manifest-url is required")
 	}
 	manager := update.NewManagerForURL(manifestURL)
 	manifest, err := manager.FetchManifest()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if currentVersion != "" && update.CompareVersions(manifest.Server.Version, currentVersion) <= 0 {
-		return "", fmt.Errorf("server is already up to date: current=%s latest=%s", currentVersion, manifest.Server.Version)
+		return "", "", fmt.Errorf("%w: current=%s latest=%s", errAlreadyUpToDate, currentVersion, manifest.Server.Version)
 	}
 	if manifest.Server.URL == "" {
-		return "", fmt.Errorf("manifest server.url is empty")
+		return "", "", fmt.Errorf("manifest server.url is empty")
 	}
-	path := filepath.Join(os.TempDir(), "bb-erp-server-windows.zip")
-	if err := downloadFile(manifest.Server.URL, path); err != nil {
-		return "", err
+	if manifest.Server.Size <= 0 || manifest.Server.Size > maxServerPackageSize || !validSHA256(manifest.Server.SHA256) || strings.TrimSpace(manifest.Server.Signature) == "" {
+		return "", "", fmt.Errorf("manifest server package must declare a size within 1..%d, SHA-256 and Minisign signature", maxServerPackageSize)
 	}
-	if manifest.Server.SHA256 != "" {
-		if err := verifySHA256(path, manifest.Server.SHA256); err != nil {
-			return "", err
-		}
+	verifier, err := update.LoadSignedManifestVerifier("", trustedPublicKeyPath)
+	if err != nil {
+		return "", "", fmt.Errorf("load installed trusted update public key: %w", err)
 	}
-	return path, nil
+	if verifier == nil {
+		return "", "", fmt.Errorf("installed trusted update public key is not configured")
+	}
+	temporary, err := os.CreateTemp("", "bb-erp-server-windows-*.zip")
+	if err != nil {
+		return "", "", fmt.Errorf("create temporary server package: %w", err)
+	}
+	path := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("close temporary server package: %w", err)
+	}
+	if err := downloadFile(manifest.Server.URL, path, manifest.Server.Size, manifest.Server.SHA256); err != nil {
+		_ = os.Remove(path)
+		return "", "", err
+	}
+	if err := verifier.VerifyFile(path, manifest.Server.Signature); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("verify server package with installed trusted public key: %w", err)
+	}
+	return path, manifest.Server.Version, nil
 }
 
-func stopServer(serviceName string) error {
+func verifyLocalServerPackage(packagePath, signature, trustedPublicKeyPath string) error {
+	info, err := os.Stat(packagePath)
+	if err != nil {
+		return fmt.Errorf("inspect local server package: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxServerPackageSize {
+		return fmt.Errorf("local server package size %d is outside the allowed range 1..%d", info.Size(), maxServerPackageSize)
+	}
+	if strings.TrimSpace(signature) == "" {
+		return errors.New("local server package requires -package-signature from the signed release manifest")
+	}
+	verifier, err := update.LoadSignedManifestVerifier("", trustedPublicKeyPath)
+	if err != nil {
+		return fmt.Errorf("load installed trusted update public key: %w", err)
+	}
+	if verifier == nil {
+		return errors.New("installed trusted update public key is not configured")
+	}
+	if err := verifier.VerifyFile(packagePath, signature); err != nil {
+		return fmt.Errorf("verify local server package with installed trusted public key: %w", err)
+	}
+	return nil
+}
+
+func validateWindowsServiceTarget(serviceName, installDir string) error {
+	target, err := filepath.Abs(filepath.Join(installDir, "bb-erp-server.exe"))
+	if err != nil {
+		return fmt.Errorf("resolve installed server executable: %w", err)
+	}
+	const script = `$service=Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $args[0] } | Select-Object -First 1; if (-not $service) { Write-Error "service not found"; exit 2 }; $raw=$service.PathName.Trim(); if ($raw.StartsWith('"')) { $exe=$raw.Split('"')[1] } elseif ($raw -match '^(.*?[.]exe)(?:\s|$)') { $exe=$Matches[1] } else { Write-Error "cannot parse service executable path"; exit 3 }; [IO.Path]::GetFullPath($exe)`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script, serviceName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("validate Windows service %q executable: %w: %s", serviceName, err, strings.TrimSpace(string(output)))
+	}
+	actual := strings.TrimSpace(string(output))
+	if !strings.EqualFold(filepath.Clean(actual), filepath.Clean(target)) {
+		return fmt.Errorf("Windows service %q points to %q, expected %q", serviceName, actual, target)
+	}
+	return nil
+}
+
+func stopServer(serviceName, installDir string) error {
 	if serviceName != "" {
 		stopErr := exec.Command("sc.exe", "stop", serviceName).Run()
 		deadline := time.Now().Add(30 * time.Second)
@@ -167,10 +382,27 @@ func stopServer(serviceName string) error {
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
-	killErr := exec.Command("taskkill.exe", "/F", "/IM", "bb-erp-server.exe").Run()
+	pids, err := serverProcessIDs(installDir)
+	if err != nil {
+		return fmt.Errorf("locate server process for install directory: %w", err)
+	}
+	serviceNames, err := windowsServicesForProcessIDs(pids)
+	if err != nil {
+		return fmt.Errorf("inspect Windows Service ownership: %w", err)
+	}
+	if len(serviceNames) > 0 {
+		return fmt.Errorf("server process is managed by Windows Service %q; rerun with -service or set BB_ERP_WINDOWS_SERVICE_NAME", strings.Join(serviceNames, ","))
+	}
+	var killErr error
+	for _, pid := range pids {
+		output, err := exec.Command("taskkill.exe", "/F", "/T", "/PID", strconv.FormatUint(uint64(pid), 10)).CombinedOutput()
+		if err != nil {
+			killErr = fmt.Errorf("taskkill PID %d: %w: %s", pid, err, strings.TrimSpace(string(output)))
+		}
+	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		running, err := serverProcessRunning()
+		running, err := serverProcessRunning(installDir)
 		if err != nil {
 			if killErr != nil {
 				return fmt.Errorf("stop server process: %v; query process state: %w", killErr, err)
@@ -231,7 +463,7 @@ func startServer(serviceName string, installDir string) error {
 		<-timer.C
 	case <-timer.C:
 	}
-	running, err := serverProcessRunning()
+	running, err := serverProcessRunning(installDir)
 	if err != nil {
 		if cmd.ProcessState == nil {
 			_ = cmd.Process.Kill()
@@ -250,11 +482,11 @@ func startServer(serviceName string, installDir string) error {
 	return fmt.Errorf("server did not remain running after launcher completed")
 }
 
-func serverRunning(serviceName string) (bool, error) {
+func serverRunning(serviceName, installDir string) (bool, error) {
 	if serviceName != "" {
 		return serviceState(serviceName, "RUNNING")
 	}
-	return serverProcessRunning()
+	return serverProcessRunning(installDir)
 }
 
 func serviceState(serviceName, state string) (bool, error) {
@@ -265,12 +497,46 @@ func serviceState(serviceName, state string) (bool, error) {
 	return strings.Contains(strings.ToUpper(string(output)), state), nil
 }
 
-func serverProcessRunning() (bool, error) {
-	output, err := exec.Command("tasklist.exe", "/NH", "/FI", "IMAGENAME eq bb-erp-server.exe").CombinedOutput()
+func serverProcessRunning(installDir string) (bool, error) {
+	pids, err := serverProcessIDs(installDir)
+	return len(pids) > 0, err
+}
+
+func serverProcessIDs(installDir string) ([]uint32, error) {
+	target, err := filepath.Abs(filepath.Join(installDir, "bb-erp-server.exe"))
 	if err != nil {
-		return false, fmt.Errorf("tasklist.exe: %w: %s", err, strings.TrimSpace(string(output)))
+		return nil, err
 	}
-	return strings.Contains(strings.ToLower(string(output)), "bb-erp-server.exe"), nil
+	const script = `$target=[IO.Path]::GetFullPath($args[0]); Get-CimInstance Win32_Process -Filter "Name='bb-erp-server.exe'" | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -eq $target } | ForEach-Object { $_.ProcessId }`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script, target).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("query exact server process path: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	var pids []uint32
+	for _, line := range strings.Fields(string(output)) {
+		pid, parseErr := strconv.ParseUint(strings.TrimSpace(line), 10, 32)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse server process id %q: %w", line, parseErr)
+		}
+		pids = append(pids, uint32(pid))
+	}
+	return pids, nil
+}
+
+func windowsServicesForProcessIDs(pids []uint32) ([]string, error) {
+	if len(pids) == 0 {
+		return nil, nil
+	}
+	values := make([]string, 0, len(pids))
+	for _, pid := range pids {
+		values = append(values, strconv.FormatUint(uint64(pid), 10))
+	}
+	const script = `$ids=$args[0].Split(',') | ForEach-Object { [uint32]$_ }; Get-CimInstance Win32_Service | Where-Object { $_.ProcessId -in $ids } | ForEach-Object { $_.Name }`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script, strings.Join(values, ",")).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("query service process ownership: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return strings.Fields(string(output)), nil
 }
 
 func backupServerFiles(installDir string, backupDir string) error {
@@ -280,7 +546,7 @@ func backupServerFiles(installDir string, backupDir string) error {
 	// Keep the rollback snapshot self-contained. Runtime configuration is supplied
 	// through environment variables and must be backed up by the deployment system,
 	// not copied into an upgrade archive.
-	for _, name := range []string{"bb-erp-server.exe", "web", "data", "static", "updates", "logs", "update-public.key"} {
+	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "web", "data", "static", "updates", "logs", "update-public.key", "version.json"} {
 		source := filepath.Join(installDir, name)
 		if _, err := os.Stat(source); err != nil {
 			if os.IsNotExist(err) && name != "bb-erp-server.exe" {
@@ -302,6 +568,15 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 	if err := replaceFileSafely(filepath.Join(sourceDir, "update-public.key"), filepath.Join(installDir, "update-public.key")); err != nil {
 		return fmt.Errorf("replace update-public.key: %w", err)
 	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "version.json"), filepath.Join(installDir, "version.json")); err != nil {
+		return fmt.Errorf("replace version.json: %w", err)
+	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-updater.exe"), filepath.Join(installDir, "bb-erp-updater.pending.exe")); err != nil {
+		return fmt.Errorf("stage next updater executable: %w", err)
+	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-upgrade-runner.bat"), filepath.Join(installDir, "bb-erp-upgrade-runner.pending.bat")); err != nil {
+		return fmt.Errorf("stage next updater runner: %w", err)
+	}
 	webSource := filepath.Join(sourceDir, "web")
 	if _, err := os.Stat(webSource); err == nil {
 		if err := replaceDirectorySafely(webSource, filepath.Join(installDir, "web")); err != nil {
@@ -317,7 +592,7 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 }
 
 func recoverFailedUpgrade(serviceName, installDir, backupDir string, restartPrevious bool, cause error) error {
-	_ = stopServer(serviceName)
+	_ = stopServer(serviceName, installDir)
 	restoreErr := restoreServerFiles(backupDir, installDir)
 	if restoreErr != nil {
 		return fmt.Errorf("upgrade failed (%v); restore backup failed: %w", cause, restoreErr)
@@ -332,7 +607,11 @@ func recoverFailedUpgrade(serviceName, installDir, backupDir string, restartPrev
 }
 
 func restoreServerFiles(backupDir, installDir string) error {
-	for _, name := range []string{"bb-erp-server.exe", "update-public.key", "web"} {
+	for _, name := range []string{
+		"bb-erp-server.exe",
+		"bb-erp-updater.pending.exe", "bb-erp-upgrade-runner.pending.bat",
+		"update-public.key", "version.json", "web",
+	} {
 		source := filepath.Join(backupDir, name)
 		target := filepath.Join(installDir, name)
 		info, err := os.Stat(source)
@@ -450,11 +729,25 @@ func swapPreparedPath(stagedPath, target string) error {
 }
 
 func extractZip(path string, dest string) error {
+	const (
+		maxArchiveEntries = 10_000
+		maxExpandedBytes  = uint64(1 << 30)
+	)
 	reader, err := zip.OpenReader(path)
 	if err != nil {
 		return fmt.Errorf("open zip: %w", err)
 	}
 	defer reader.Close()
+	if len(reader.File) > maxArchiveEntries {
+		return fmt.Errorf("zip contains too many entries: got %d max %d", len(reader.File), maxArchiveEntries)
+	}
+	var expandedBytes uint64
+	for _, item := range reader.File {
+		if item.UncompressedSize64 > maxExpandedBytes-expandedBytes {
+			return fmt.Errorf("zip expanded size exceeds %d bytes", maxExpandedBytes)
+		}
+		expandedBytes += item.UncompressedSize64
+	}
 	for _, item := range reader.File {
 		target := filepath.Join(dest, item.Name)
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) {
@@ -520,8 +813,9 @@ func writeFile(target string, reader io.Reader, mode os.FileMode) error {
 	return err
 }
 
-func downloadFile(url string, path string) error {
-	res, err := http.Get(url)
+func downloadFile(url string, path string, expectedSize int64, expectedSHA256 string) error {
+	client := &http.Client{Timeout: 15 * time.Minute}
+	res, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("download package: %w", err)
 	}
@@ -533,9 +827,32 @@ func downloadFile(url string, path string) error {
 	if err != nil {
 		return fmt.Errorf("create package file: %w", err)
 	}
-	defer file.Close()
-	_, err = io.Copy(file, res.Body)
-	return err
+	hash := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(res.Body, expectedSize+1))
+	closeErr := file.Close()
+	if copyErr != nil {
+		return fmt.Errorf("write package file: %w", copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close package file: %w", closeErr)
+	}
+	if written != expectedSize {
+		return fmt.Errorf("package size mismatch: got %d want %d", written, expectedSize)
+	}
+	gotSHA256 := hex.EncodeToString(hash.Sum(nil))
+	if !strings.EqualFold(gotSHA256, strings.TrimSpace(expectedSHA256)) {
+		return fmt.Errorf("sha256 mismatch: got %s", gotSHA256)
+	}
+	return nil
+}
+
+func validSHA256(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 func verifySHA256(path string, want string) error {
@@ -551,6 +868,17 @@ func verifySHA256(path string, want string) error {
 	got := hex.EncodeToString(hash.Sum(nil))
 	if !strings.EqualFold(got, strings.TrimSpace(want)) {
 		return fmt.Errorf("sha256 mismatch: got %s", got)
+	}
+	return nil
+}
+
+func verifyFileSize(path string, want int64) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.Size() != want {
+		return fmt.Errorf("package size mismatch: got %d want %d", info.Size(), want)
 	}
 	return nil
 }

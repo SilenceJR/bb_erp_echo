@@ -19,12 +19,14 @@ client_dir="${TAURI_CLIENT_DIR:-client}"
 layout_version="${RELEASE_LAYOUT_VERSION:-1}"
 portable_file="${RELEASE_PORTABLE_FILE:?RELEASE_PORTABLE_FILE is required}"
 nsis_file="${RELEASE_NSIS_FILE:?RELEASE_NSIS_FILE is required}"
+server_file="${RELEASE_SERVER_FILE:?RELEASE_SERVER_FILE is required}"
 delta_manifest="${DELTA_CLI_MANIFEST:-client/src-tauri/Cargo.toml}"
 updater_public_key="${TAURI_UPDATER_PUBLIC_KEY:?TAURI_UPDATER_PUBLIC_KEY is required}"
 
 test -s "$manifest"
 test -s "$portable_file"
 test -s "$nsis_file"
+test -s "$server_file"
 command -v jq >/dev/null
 command -v curl >/dev/null
 command -v sha256sum >/dev/null
@@ -62,8 +64,10 @@ portable_hash="$(file_hash "$portable_file")"
 portable_size="$(file_size "$portable_file")"
 nsis_hash="$(file_hash "$nsis_file")"
 nsis_size="$(file_size "$nsis_file")"
+server_signature="$(sign_file "$server_file")"
 portable_signature="$(sign_file "$portable_file")"
 nsis_signature="$(sign_file "$nsis_file")"
+test -n "$server_signature"
 test -n "$portable_signature"
 test -n "$nsis_signature"
 
@@ -168,8 +172,8 @@ payload_signature="$(sign_file "$payload_file")"
 test -n "$payload_signature"
 
 tmp_manifest="$work_dir/update-manifest.json"
-jq --arg payload "$payload_b64" --arg signature "$payload_signature" \
-  '.client_update_v2 = {payload:$payload, signature:$signature}' \
+jq --arg server_signature "$server_signature" --arg payload "$payload_b64" --arg signature "$payload_signature" \
+  '.server.signature = $server_signature | .client_update_v2 = {payload:$payload, signature:$signature}' \
   "$manifest" >"$tmp_manifest"
 mv "$tmp_manifest" "$manifest"
 

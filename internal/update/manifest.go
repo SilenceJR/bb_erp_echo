@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,7 +25,15 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const clientPackageName = "bb-erp-client-windows.zip"
+const (
+	clientPackageName    = "bb-erp-client-windows.zip"
+	serverPackageName    = "bb-erp-server-windows.zip"
+	serverDownloadPath   = "/api/v1/system/updates/server/download"
+	maxServerPackageSize = int64(512 << 20)
+)
+
+// ErrServerPackageUnavailable 表示尚无成功检查确认的服务端升级包。
+var ErrServerPackageUnavailable = errors.New("暂无可下载的服务端升级包，请先执行更新检查")
 
 // Manifest 是 Gitee、GitHub、对象存储或内网静态服务提供的更新清单。
 type Manifest struct {
@@ -39,10 +49,11 @@ type Manifest struct {
 
 // PackageManifest 描述一个可下载升级包。
 type PackageManifest struct {
-	Version string `json:"version"`
-	URL     string `json:"url"`
-	SHA256  string `json:"sha256,omitempty"`
-	Size    int64  `json:"size,omitempty"`
+	Version   string `json:"version"`
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+	Signature string `json:"signature,omitempty"`
 }
 
 // ClientUpdateStatus 是服务端暴露给 Tauri 客户端的兼容升级状态。
@@ -64,6 +75,8 @@ type ComponentStatus struct {
 	LatestVersion  string           `json:"latest_version,omitempty"`
 	Available      bool             `json:"available"`
 	DownloadURL    string           `json:"download_url,omitempty"`
+	DownloadPath   string           `json:"download_path,omitempty"`
+	FileName       string           `json:"file_name,omitempty"`
 	Size           int64            `json:"size,omitempty"`
 	SHA256         string           `json:"sha256,omitempty"`
 	Manifest       *PackageManifest `json:"manifest,omitempty"`
@@ -72,9 +85,7 @@ type ComponentStatus struct {
 // ClientComponentStatus 在组件状态上增加服务端缓存信息。
 type ClientComponentStatus struct {
 	ComponentStatus
-	Cached       bool   `json:"cached"`
-	FileName     string `json:"file_name,omitempty"`
-	DownloadPath string `json:"download_path,omitempty"`
+	Cached bool `json:"cached"`
 }
 
 // SystemUpdateStatus 是管理员更新页面使用的完整状态。
@@ -119,6 +130,7 @@ type UpdateService interface {
 	Status(string) SystemUpdateStatus
 	ClientStatus(string) ClientUpdateStatus
 	CachedClientPackagePath() string
+	ServerPackage(context.Context) (path string, fileName string, err error)
 	ClientUpdatePlan(ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error)
 	TauriClientUpdate(target, currentVersion string) (TauriUpdateResponse, bool, error)
 	ClientArtifact(string) (path string, artifact ClientArtifact, ok bool)
@@ -172,9 +184,10 @@ type LocalPackageStore struct {
 	verifyFile func(path, digest string) error
 }
 
-// Path 返回缓存包路径。
+// Path 返回缓存包路径。普通名称进入 client 目录，server/ 前缀进入 server 目录。
 func (s *LocalPackageStore) Path(name string) string {
-	return filepath.Join(s.Root, "client", filepath.Base(name))
+	cacheDir, fileName := packageCacheLocation(name)
+	return filepath.Join(s.Root, cacheDir, fileName)
 }
 
 // Cached 判断现有文件是否与清单一致且是有效 ZIP。
@@ -189,7 +202,7 @@ func (s *LocalPackageStore) Cached(name string, pkg PackageManifest) bool {
 		s.invalidate(name)
 		return false
 	}
-	key := filepath.Base(name)
+	key := path
 	digest := strings.ToLower(pkg.SHA256)
 	s.mu.Lock()
 	snapshot, verified := s.verified[key]
@@ -222,7 +235,7 @@ func (s *LocalPackageStore) Ensure(ctx context.Context, name string, pkg Package
 		return s.Path(name), true, nil
 	}
 	if strings.TrimSpace(pkg.URL) == "" || pkg.Size <= 0 || !isSHA256(pkg.SHA256) {
-		return "", false, errors.New("client package must declare url, positive size and sha256")
+		return "", false, errors.New("update package must declare url, positive size and sha256")
 	}
 	path := s.Path(name)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -245,21 +258,21 @@ func (s *LocalPackageStore) Ensure(ctx context.Context, name string, pkg Package
 		return "", false, err
 	}
 	if err := replaceCachedFile(tmpPath, path); err != nil {
-		return "", false, fmt.Errorf("store client package: %w", err)
+		return "", false, fmt.Errorf("store update package: %w", err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", false, fmt.Errorf("stat stored client package: %w", err)
 	}
 	s.mu.Lock()
-	s.rememberVerifiedLocked(filepath.Base(name), strings.ToLower(pkg.SHA256), path, info)
+	s.rememberVerifiedLocked(path, strings.ToLower(pkg.SHA256), path, info)
 	s.mu.Unlock()
 	return path, false, nil
 }
 
 func (s *LocalPackageStore) invalidate(name string) {
 	s.mu.Lock()
-	delete(s.verified, filepath.Base(name))
+	delete(s.verified, s.Path(name))
 	s.mu.Unlock()
 }
 
@@ -287,19 +300,20 @@ type Service struct {
 	planner       UpdatePlanner
 	verifierErr   error
 
-	mu            sync.RWMutex
-	manifest      *Manifest
-	clientPayload *ClientUpdatePayload
-	artifacts     map[string]ClientArtifact
-	deltaDegraded string
-	lastAttemptAt *time.Time
-	lastSuccessAt *time.Time
-	nextCheckAt   *time.Time
-	lastError     string
-	reachable     bool
-	checking      bool
-	inflight      *checkCall
-	startOnce     sync.Once
+	mu              sync.RWMutex
+	serverPackageMu sync.Mutex
+	manifest        *Manifest
+	clientPayload   *ClientUpdatePayload
+	artifacts       map[string]ClientArtifact
+	deltaDegraded   string
+	lastAttemptAt   *time.Time
+	lastSuccessAt   *time.Time
+	nextCheckAt     *time.Time
+	lastError       string
+	reachable       bool
+	checking        bool
+	inflight        *checkCall
+	startOnce       sync.Once
 }
 
 // NewService 使用普通 HTTP 清单源与本地文件缓存创建更新服务。
@@ -520,10 +534,14 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 	clientPkg := s.manifest.Client
 	status.Server.LatestVersion = serverPkg.Version
 	status.Server.Available = CompareVersions(serverPkg.Version, s.serverVersion) > 0
-	status.Server.DownloadURL = serverPkg.URL
 	status.Server.Size = serverPkg.Size
 	status.Server.SHA256 = serverPkg.SHA256
 	status.Server.Manifest = clonePackage(&serverPkg)
+	if serverFileName := packageFileName(serverPkg.URL); strings.TrimSpace(serverPkg.URL) != "" {
+		status.Server.FileName = serverFileName
+		status.Server.DownloadPath = serverDownloadPath
+		status.Server.DownloadURL = serverDownloadPath
+	}
 	status.Client.LatestVersion = clientPkg.Version
 	status.Client.Available = CompareVersions(clientPkg.Version, currentClientVersion) > 0
 	status.Client.Size = clientPkg.Size
@@ -558,6 +576,45 @@ func (s *Service) ClientStatus(currentVersion string) ClientUpdateStatus {
 
 // CachedClientPackagePath 返回客户端缓存包路径。
 func (s *Service) CachedClientPackagePath() string { return s.store.Path(clientPackageName) }
+
+// ServerPackage 按当前成功清单下载或复用服务端包，返回前验证大小、SHA-256 和 ZIP 结构。
+func (s *Service) ServerPackage(ctx context.Context) (path string, fileName string, err error) {
+	s.serverPackageMu.Lock()
+	defer s.serverPackageMu.Unlock()
+
+	s.mu.RLock()
+	manifest := cloneManifest(s.manifest)
+	verifier := s.verifier
+	verifierErr := s.verifierErr
+	s.mu.RUnlock()
+	if manifest == nil || strings.TrimSpace(manifest.Server.URL) == "" {
+		return "", "", ErrServerPackageUnavailable
+	}
+	if verifierErr != nil {
+		return "", "", fmt.Errorf("加载服务端升级验签公钥失败：%w", verifierErr)
+	}
+	if verifier == nil || strings.TrimSpace(manifest.Server.Signature) == "" {
+		return "", "", errors.New("服务端升级包缺少可信 Minisign 签名或验签公钥")
+	}
+	if manifest.Server.Size <= 0 || manifest.Server.Size > maxServerPackageSize {
+		return "", "", fmt.Errorf("服务端升级包大小 %d 超出允许范围 1..%d", manifest.Server.Size, maxServerPackageSize)
+	}
+	fileName = packageFileName(manifest.Server.URL)
+	cacheName := serverPackageCacheName(fileName)
+	path, _, err = s.store.Ensure(ctx, cacheName, manifest.Server)
+	if err != nil {
+		return "", "", fmt.Errorf("下载或校验服务端升级包失败：%w", err)
+	}
+	if verifyErr := verifier.VerifyFile(path, manifest.Server.Signature); verifyErr != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("服务端升级包 Minisign 签名校验失败：%w", verifyErr)
+	}
+	if validateErr := validateServerPackageArchive(path, manifest.Server.Version); validateErr != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("服务端升级包结构校验失败：%w", validateErr)
+	}
+	return path, fileName, nil
+}
 
 // ClientUpdatePlan 为 Windows x86_64 桌面端选择已缓存的差分或完整更新。
 func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error) {
@@ -655,6 +712,42 @@ func (s *Service) ClientArtifact(digest string) (string, ClientArtifact, bool) {
 	}
 	path, ok := s.artifactStore.Path(digest)
 	return path, artifact, ok
+}
+
+func serverPackageCacheName(fileName string) string {
+	return "server/" + fileName
+}
+
+func packageCacheLocation(name string) (cacheDir, fileName string) {
+	normalized := filepath.ToSlash(strings.TrimSpace(name))
+	cacheDir = "client"
+	fallback := clientPackageName
+	if normalized == "server" || strings.HasPrefix(normalized, "server/") {
+		cacheDir = "server"
+		fallback = serverPackageName
+		normalized = strings.TrimPrefix(normalized, "server/")
+	}
+	fileName = path.Base(normalized)
+	if fileName == "." || fileName == ".." || fileName == "" {
+		fileName = fallback
+	}
+	return cacheDir, fileName
+}
+
+func packageFileName(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return serverPackageName
+	}
+	fileName := path.Base(parsed.Path)
+	fileName, err = url.PathUnescape(fileName)
+	if err != nil || fileName == "." || fileName == ".." || fileName == "" ||
+		strings.ContainsAny(fileName, `/\\`) || strings.IndexFunc(fileName, func(r rune) bool {
+		return r < 0x20 || r == 0x7f
+	}) >= 0 {
+		return serverPackageName
+	}
+	return fileName
 }
 
 func normalizeInstallMode(value string) (string, error) {
@@ -821,11 +914,79 @@ func verifySHA256(path, want string) error {
 func validateZip(path string) error {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
-		return fmt.Errorf("validate client zip: %w", err)
+		return fmt.Errorf("validate update zip: %w", err)
 	}
 	defer reader.Close()
 	if len(reader.File) == 0 {
-		return errors.New("client zip is empty")
+		return errors.New("update zip is empty")
+	}
+	return nil
+}
+
+func validateServerPackageArchive(archivePath, expectedVersion string) error {
+	const (
+		maxEntries      = 10_000
+		maxExpandedSize = uint64(1 << 30)
+	)
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	if len(reader.File) > maxEntries {
+		return fmt.Errorf("too many ZIP entries: got %d max %d", len(reader.File), maxEntries)
+	}
+	required := map[string]bool{
+		"bb-erp-server.exe":         false,
+		"bb-erp-updater.exe":        false,
+		"bb-erp-upgrade-runner.bat": false,
+		"update-public.key":         false,
+		"version.json":              false,
+	}
+	packageVersion := ""
+	var expanded uint64
+	for _, entry := range reader.File {
+		name := path.Clean(strings.ReplaceAll(entry.Name, "\\", "/"))
+		if name == "." || name == ".." || strings.HasPrefix(name, "../") || path.IsAbs(name) {
+			return fmt.Errorf("unsafe ZIP path %q", entry.Name)
+		}
+		if entry.UncompressedSize64 > maxExpandedSize-expanded {
+			return fmt.Errorf("expanded ZIP size exceeds %d bytes", maxExpandedSize)
+		}
+		expanded += entry.UncompressedSize64
+		if _, ok := required[name]; ok && !entry.FileInfo().IsDir() && entry.UncompressedSize64 > 0 {
+			required[name] = true
+		}
+		if name == "version.json" && !entry.FileInfo().IsDir() {
+			if entry.UncompressedSize64 > 1<<20 {
+				return errors.New("version.json exceeds 1 MiB")
+			}
+			file, openErr := entry.Open()
+			if openErr != nil {
+				return fmt.Errorf("open version.json: %w", openErr)
+			}
+			var metadata struct {
+				Version       string `json:"version"`
+				ServerVersion string `json:"server_version"`
+			}
+			decodeErr := json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&metadata)
+			_ = file.Close()
+			if decodeErr != nil {
+				return fmt.Errorf("decode version.json: %w", decodeErr)
+			}
+			packageVersion = strings.TrimSpace(metadata.ServerVersion)
+			if packageVersion == "" {
+				packageVersion = strings.TrimSpace(metadata.Version)
+			}
+		}
+	}
+	for name, present := range required {
+		if !present {
+			return fmt.Errorf("required package entry %s is missing or empty", name)
+		}
+	}
+	if packageVersion == "" || CompareVersions(packageVersion, expectedVersion) != 0 {
+		return fmt.Errorf("package version %q does not match manifest version %q", packageVersion, expectedVersion)
 	}
 	return nil
 }

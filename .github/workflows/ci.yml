@@ -412,14 +412,64 @@ jobs:
           @echo off
           setlocal
           cd /d "%~dp0"
-          if not exist bb-erp-updater.exe (
-            echo bb-erp-updater.exe was not found.
+          title BB ERP Server Updater
+          if exist bb-erp-updater.pending.exe (
+            move /y bb-erp-updater.pending.exe bb-erp-updater.exe >nul
+            if errorlevel 1 (
+              echo [Error] Failed to activate the staged updater executable.
+              pause
+              exit /b 1
+            )
+          )
+          if exist bb-erp-upgrade-runner.pending.bat (
+            move /y bb-erp-upgrade-runner.pending.bat bb-erp-upgrade-runner.bat >nul
+            if errorlevel 1 (
+              echo [Error] Failed to activate the staged updater runner.
+              pause
+              exit /b 1
+            )
+          )
+          if not exist bb-erp-upgrade-runner.bat (
+            echo [Error] bb-erp-upgrade-runner.bat was not found.
             pause
             exit /b 1
           )
-          bb-erp-updater.exe -package "%~dp0bb-erp-server-windows.zip" -install-dir "%~dp0"
-          pause
+          call bb-erp-upgrade-runner.bat
+          exit /b %ERRORLEVEL%
           '@ | Set-Content -Path (Join-Path $serverPackageRoot "一键升级服务端.bat") -Encoding ASCII
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          if not exist bb-erp-updater.exe (
+            echo [Error] bb-erp-updater.exe was not found.
+            pause
+            exit /b 1
+          )
+          if not exist version.json (
+            echo [Error] version.json was not found.
+            echo [Info] Keep this script, bb-erp-updater.exe and version.json in the deployed server directory.
+            pause
+            exit /b 1
+          )
+          echo [Info] The updater will read the installed version and stable manifest from version.json.
+          if defined BB_ERP_WINDOWS_SERVICE_NAME (
+            bb-erp-updater.exe -install-dir "%~dp0" -service "%BB_ERP_WINDOWS_SERVICE_NAME%"
+          ) else (
+            bb-erp-updater.exe -install-dir "%~dp0"
+          )
+          set "UPDATE_EXIT=%ERRORLEVEL%"
+          echo.
+          if not "%UPDATE_EXIT%"=="0" (
+            echo [Error] Server upgrade failed with exit code %UPDATE_EXIT%.
+            echo [Info] Detailed logs are under "%~dp0logs\server-updater-*.log".
+          ) else (
+            echo [Info] Server upgrade completed successfully.
+          )
+          pause
+          exit /b %UPDATE_EXIT%
+          '@ | Set-Content -Path (Join-Path $serverPackageRoot "bb-erp-upgrade-runner.bat") -Encoding ASCII
 
           @'
           博邦 ERP 服务端升级包
@@ -428,6 +478,7 @@ jobs:
           内容：
           - bb-erp-server.exe：Go Windows 服务端。
           - bb-erp-updater.exe：服务端升级器。
+          - 一键升级服务端.bat / bb-erp-upgrade-runner.bat：升级入口与可更新执行脚本。
           - web/dist：服务端托管的 Web 管理端静态文件。
 
           首次部署：
@@ -436,14 +487,18 @@ jobs:
 
           升级：
           1. 不要覆盖 data、logs、updates、backups 目录。
-          2. 可用 bb-erp-updater.exe 执行升级，升级器会备份旧服务端和 web 目录。
+          2. 在已部署的服务端目录双击“一键升级服务端.bat”；脚本会读取 version.json、下载并校验新包。
+          3. 升级器会先停服并备份旧服务端、公钥、版本信息和 web，再执行替换；失败会自动恢复。
+          4. 无论成功或失败，窗口都会保留，详细日志写入 logs/server-updater-时间.log。
+          5. 注册为 Windows Service 时，请先设置 BB_ERP_WINDOWS_SERVICE_NAME 为准确服务名；升级器会确认该服务实际指向当前目录的 bb-erp-server.exe，禁止误停其他实例。
           '@ | Set-Content -Path (Join-Path $serverPackageRoot "README.txt") -Encoding UTF8
 
           @"
           {
             "version": "$version",
             "server_version": "$version",
-            "client_version": "$version"
+            "client_version": "$version",
+            "manifest_url": "$stableManifestUrl"
           }
           "@ | Set-Content -Path (Join-Path $serverPackageRoot "version.json") -Encoding UTF8
 
@@ -487,8 +542,14 @@ jobs:
           @'
           bb-erp-updater.exe 用法：
 
+          已部署目录直接运行：
+          将 bb-erp-updater.exe 与 version.json 放在服务端目录，双击 EXE；升级器会自动读取 manifest_url 和 server_version，保存日志并在结束时等待确认。
+
           本地包升级：
-          bb-erp-updater.exe -package bb-erp-server-windows.zip -install-dir C:\bb-erp
+          从同一份已签名 update-manifest.json 取得 server.signature 后执行：
+          bb-erp-updater.exe -package bb-erp-server-windows.zip -package-signature "BASE64_MINISIGN_SIGNATURE" -install-dir C:\bb-erp
+
+          本地包和远端包都必须小于等于 512 MiB，并使用已部署目录内的 update-public.key 验签；不能跳过签名。
 
           远端 manifest 升级：
           bb-erp-updater.exe -manifest-url https://example.com/update-manifest.json -install-dir C:\bb-erp -current-version 0.1.0
@@ -618,6 +679,42 @@ jobs:
               throw "Launcher does not pin the packaged update signing public-key file: $launcher"
             }
           }
+          foreach ($updaterRunner in @(
+            (Join-Path $serverPackageRoot "bb-erp-upgrade-runner.bat"),
+            (Join-Path $allInOneRoot "server/bb-erp-upgrade-runner.bat")
+          )) {
+            $updaterRunnerText = Get-Content -LiteralPath $updaterRunner -Raw
+            if ($updaterRunnerText -match 'bb-erp-server-windows[.]zip' -or
+                $updaterRunnerText -notmatch 'bb-erp-updater[.]exe -install-dir' -or
+                $updaterRunnerText -notmatch 'BB_ERP_WINDOWS_SERVICE_NAME' -or
+                $updaterRunnerText -notmatch 'server-updater-[*][.]log' -or
+                $updaterRunnerText -notmatch '(?m)^pause\r?$') {
+              throw "Server updater runner does not use installed metadata or preserve diagnostics: $updaterRunner"
+            }
+          }
+          foreach ($updaterLoader in @(
+            (Join-Path $serverPackageRoot "一键升级服务端.bat"),
+            (Join-Path $allInOneRoot "server/一键升级服务端.bat")
+          )) {
+            $updaterLoaderText = Get-Content -LiteralPath $updaterLoader -Raw
+            if ($updaterLoaderText -notmatch 'bb-erp-updater[.]pending[.]exe' -or
+                $updaterLoaderText -notmatch 'bb-erp-upgrade-runner[.]pending[.]bat' -or
+                $updaterLoaderText -notmatch 'call bb-erp-upgrade-runner[.]bat' -or
+                $updaterLoaderText -notmatch '(?m)^pause\r?$') {
+              throw "Server updater loader cannot activate staged updater files: $updaterLoader"
+            }
+          }
+          foreach ($serverVersionPath in @(
+            (Join-Path $serverPackageRoot "version.json"),
+            (Join-Path $allInOneRoot "server/version.json")
+          )) {
+            $serverVersionMetadata = Get-Content -LiteralPath $serverVersionPath -Raw | ConvertFrom-Json
+            if ($serverVersionMetadata.version -ne $version -or
+                $serverVersionMetadata.server_version -ne $version -or
+                $serverVersionMetadata.manifest_url -ne $stableManifestUrl) {
+              throw "Server version metadata does not contain the expected version and stable manifest URL: $serverVersionPath"
+            }
+          }
 
           Compress-Archive -Path "$serverPackageRoot/*" -DestinationPath "release-build/bb-erp-server-windows.zip" -Force
           Compress-Archive -Path "$clientPackageRoot/*" -DestinationPath "release-build/bb-erp-client-windows.zip" -Force
@@ -650,6 +747,42 @@ jobs:
               if ($launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=\r?$' -or
                   $launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public[.]key\r?$') {
                 throw "Archived launcher does not pin the packaged update signing public-key file: $launcher"
+              }
+            }
+            foreach ($archivedUpdaterRunner in @(
+              (Join-Path $serverVerifyRoot "bb-erp-upgrade-runner.bat"),
+              (Join-Path $allInOneVerifyRoot "server/bb-erp-upgrade-runner.bat")
+            )) {
+              $archivedUpdaterRunnerText = Get-Content -LiteralPath $archivedUpdaterRunner -Raw
+              if ($archivedUpdaterRunnerText -match 'bb-erp-server-windows[.]zip' -or
+                  $archivedUpdaterRunnerText -notmatch 'bb-erp-updater[.]exe -install-dir' -or
+                  $archivedUpdaterRunnerText -notmatch 'BB_ERP_WINDOWS_SERVICE_NAME' -or
+                  $archivedUpdaterRunnerText -notmatch 'server-updater-[*][.]log' -or
+                  $archivedUpdaterRunnerText -notmatch '(?m)^pause\r?$') {
+                throw "Archived server updater runner still depends on a missing nested ZIP or hides failures: $archivedUpdaterRunner"
+              }
+            }
+            foreach ($archivedUpdaterLoader in @(
+              (Join-Path $serverVerifyRoot "一键升级服务端.bat"),
+              (Join-Path $allInOneVerifyRoot "server/一键升级服务端.bat")
+            )) {
+              $archivedUpdaterLoaderText = Get-Content -LiteralPath $archivedUpdaterLoader -Raw
+              if ($archivedUpdaterLoaderText -notmatch 'bb-erp-updater[.]pending[.]exe' -or
+                  $archivedUpdaterLoaderText -notmatch 'bb-erp-upgrade-runner[.]pending[.]bat' -or
+                  $archivedUpdaterLoaderText -notmatch 'call bb-erp-upgrade-runner[.]bat' -or
+                  $archivedUpdaterLoaderText -notmatch '(?m)^pause\r?$') {
+                throw "Archived server updater loader cannot activate staged updater files: $archivedUpdaterLoader"
+              }
+            }
+            foreach ($archivedVersionPath in @(
+              (Join-Path $serverVerifyRoot "version.json"),
+              (Join-Path $allInOneVerifyRoot "server/version.json")
+            )) {
+              $archivedVersionMetadata = Get-Content -LiteralPath $archivedVersionPath -Raw | ConvertFrom-Json
+              if ($archivedVersionMetadata.version -ne $version -or
+                  $archivedVersionMetadata.server_version -ne $version -or
+                  $archivedVersionMetadata.manifest_url -ne $stableManifestUrl) {
+                throw "Archived server version metadata failed verification: $archivedVersionPath"
               }
             }
           } finally {
@@ -715,6 +848,7 @@ jobs:
           RELEASE_STABLE_MANIFEST_URL: https://gitee.com/${{ vars.GITEE_RELEASE_OWNER }}/${{ vars.GITEE_RELEASE_REPO }}/raw/main/update-manifest.json
           RELEASE_PORTABLE_FILE: release-build/bb-erp-client-windows-x86_64.exe
           RELEASE_NSIS_FILE: release-build/bb-erp-client-windows-x86_64-setup.exe
+          RELEASE_SERVER_FILE: release-build/bb-erp-server-windows.zip
           TAURI_CLIENT_DIR: client
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

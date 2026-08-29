@@ -216,3 +216,12 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 - 签名 v2 payload 的差分基线为 `0.0.7`，差分 3,875,708 字节；NSIS 与便携 EXE 完整回退资源同时保留。
 - all-in-one 已独立匿名下载复核，SHA-256 与 manifest 一致，包内服务端/客户端版本均为 `0.0.8`，公钥和三个 Windows 启动入口满足修复约束。
 - 0.0.7/0.0.8 技术发布链路已闭环；Windows 10/11 真机恢复、更新检查、升级应用、重启、异常恢复和业务数据保留仍待用户验收。
+
+### 2026-08-29 Windows 服务端升级验收故障与修复
+
+- 用户真机确认客户端升级通过；服务端升级未通过。更新中心的“下载升级包”在 Tauri 中把外部地址交给 WebView 打开，弹窗被拦截时没有成功、失败或进行中反馈。
+- 已新增受 `system:updates:read` 保护的 `GET /api/v1/system/updates/server/download`：按最近一次成功 manifest 下载或复用服务端包，在响应前使用当前部署的可信公钥流式验证 Minisign 签名，并验证 1 字节至 512 MiB 大小、SHA-256、ZIP 安全边界和必需文件；并发下载合并，损坏包不进入正式缓存，失败返回具体 `502` 错误。服务端包与兼容客户端包使用独立缓存目录。
+- 发布包内旧“一键升级服务端.bat”错误地引用同目录不存在的 `bb-erp-server-windows.zip`；直接双击无参数 updater 也会立即退出。新入口改为稳定加载器与可更新 runner：先激活上一轮暂存的 updater/runner，再读取同目录 `version.json` 的稳定 manifest，保留退出码并总是暂停。升级器默认使用自身目录、输出六阶段进度、把完整错误写入 `logs/server-updater-时间.log`，双击时等待确认。
+- 新服务端包的 `version.json` 增加 `manifest_url`，升级成功时随服务端和公钥一起更新版本元数据；失败回滚时恢复旧元数据。用户启动脚本以及 `data`、`static`、`updates`、`logs` 仍不被新包覆盖。
+- 升级器使用安装目录级互斥锁和唯一备份目录；远端下载与显式 `-package` 都强制使用已安装公钥流式验签并限制为 512 MiB，手工包需同时提供 manifest 中的 `-package-signature`。便携部署只停止同一绝对路径的服务端进程；显式 Windows Service 名必须存在且实际指向目标目录的 `bb-erp-server.exe`。新版 updater/runner 暂存到独立文件，由下一次稳定加载器启动时激活，失败回滚会清理暂存文件。
+- 本地更新模块和升级器测试覆盖权限、按需下载、并发缓存复用、可信签名拒绝、损坏 ZIP、版本元数据、互斥锁、日志持久化、文件大小以及替换/回滚；Windows 新正式包的下载、批处理升级、服务重启和数据保留尚待复验，不标记完成。

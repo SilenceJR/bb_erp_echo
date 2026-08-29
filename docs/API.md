@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-28
+更新时间：2026-08-29
 
 ## 文档入口
 
@@ -247,6 +247,7 @@ GET  /api/v1/system/permissions
 GET  /api/v1/system/audits
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
+GET  /api/v1/system/updates/server/download
 ```
 
 以上 GET 列表接口均支持 `page`、`page_size`、`q`。
@@ -264,6 +265,7 @@ GET  /api/v1/updates/client/tauri/windows/x86_64/1.2.2
 GET  /api/v1/updates/client/artifacts/<sha256>
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
+GET  /api/v1/system/updates/server/download
 ```
 
 - `/api/v1/version`、`status` 和 `download` 保持既有兼容；新客户端发现 `/plan` 为 `404` 时退回旧版完整 ZIP 体验。
@@ -275,7 +277,8 @@ POST /api/v1/system/updates/check
 - `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；服务端必须配置对应 Minisign 公钥后才接受 v2 更新。
 - `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
 - `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
-- 服务端更新只报告和提供远端包下载地址，不会自动替换当前进程。
+- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存，并在返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次下载。下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
+- 更新状态中的服务端 `download_url`/`download_path` 指向上述同源受保护接口，不再把外部下载地址直接交给 Tauri WebView；下载只提供升级包，不会自动替换当前进程。
 
 更新状态示例：
 
@@ -294,7 +297,9 @@ POST /api/v1/system/updates/check
     "current_version": "1.2.2",
     "latest_version": "1.2.3",
     "available": true,
-    "download_url": "https://gitee.com/example/bb-erp-release/releases/download/v1.2.3/bb-erp-server-windows.zip",
+    "file_name": "bb-erp-server-windows.zip",
+    "download_path": "/api/v1/system/updates/server/download",
+    "download_url": "/api/v1/system/updates/server/download",
     "size": 12345678,
     "sha256": "..."
   },

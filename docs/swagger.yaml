@@ -842,7 +842,11 @@ definitions:
         type: boolean
       current_version:
         type: string
+      download_path:
+        type: string
       download_url:
+        type: string
+      file_name:
         type: string
       latest_version:
         type: string
@@ -875,6 +879,8 @@ definitions:
   update.PackageManifest:
     properties:
       sha256:
+        type: string
+      signature:
         type: string
       size:
         type: integer
@@ -1847,6 +1853,40 @@ paths:
       security:
       - BearerAuth: []
       summary: 立即执行完整更新检查
+      tags:
+      - system-updates
+  /api/v1/system/updates/server/download:
+    get:
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 下载并校验服务端升级包
       tags:
       - system-updates
   /api/v1/system/updates/status:

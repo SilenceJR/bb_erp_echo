@@ -505,6 +505,10 @@ Authorization: Bearer {{token}}
 POST http://127.0.0.1:8080/api/v1/system/updates/check
 Authorization: Bearer {{token}}
 
+### 下载并校验服务端升级包（system:updates:read）
+GET http://127.0.0.1:8080/api/v1/system/updates/server/download
+Authorization: Bearer {{token}}
+
 ### 下载服务端已校验缓存的客户端包
 GET http://127.0.0.1:8080/api/v1/updates/client/download
 Authorization: Bearer {{token}}

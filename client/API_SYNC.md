@@ -27,7 +27,7 @@
 - 新客户端由 Rust 调用 `/api/v1/updates/client/plan`，传入真实版本、当前 EXE SHA、`windows-x86_64` 和安装模式。返回 `204` 表示已是最新；返回 `404` 表示旧服务端，界面退回完整 ZIP 提示。
 - 差分包仅适用于签名 payload 声明的精确上一版本和来源 EXE 哈希；任何不匹配或失败均自动切换完整资源。NSIS 安装版由 Tauri updater 安装，便携版由本地 helper 原子替换并在 90 秒 Ready 超时后回滚。
 - `/api/v1/updates/client/tauri/windows/x86_64/<当前版本>` 提供官方 updater JSON；`/api/v1/updates/client/artifacts/<sha256>` 只分发当前已验签 manifest 中的内容寻址资源，支持 ETag 和 Range。
-- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。
+- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。服务端升级包通过同源受保护接口 `/api/v1/system/updates/server/download` 下载，由 Go 服务端使用已部署可信公钥流式验证 Minisign 签名、1 字节至 512 MiB 大小、SHA-256 和 ZIP 结构后分发，Tauri 不直接打开外部更新地址；桌面传输对此大文件接口使用 12 分钟超时，比服务端默认下载时限多保留 2 分钟，以便接收并反馈服务端具体错误。
 - 兼容客户端 ZIP 仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。局域网服务可使用 HTTP，但 Rust 只接受 loopback/私网地址，所有自动更新资源仍须通过端到端签名与哈希验证；公网服务必须 HTTPS。
 - 客户端不检测、不选择 RC 渠道；自动更新始终只使用正式版 `update-manifest.json`。RC 或手动构建版本通过 GitHub Actions 提供的独立便携客户端 Artifact 测试，不加入正式版更新链路。
 

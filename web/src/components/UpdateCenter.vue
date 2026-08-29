@@ -46,6 +46,7 @@
         description="只报告和下载新版本，不会自动替换正在运行的服务。"
         :item="serverStatus"
         :known="statusKnown"
+        :downloading="downloading"
         @download="openDownload"
       />
       <DesktopUpdatePanel
@@ -61,6 +62,7 @@
         :allow-download="canCheck"
         :item="clientStatus"
         :known="statusKnown"
+        :downloading="downloading"
         @download="openDownload"
       />
     </div>
@@ -107,6 +109,7 @@ const status = ref<SystemUpdateStatus | null>(null)
 const desktopClient = isDesktopClient()
 const loading = ref(false)
 const checking = ref(false)
+const downloading = ref(false)
 const loadError = ref('')
 let statusRequestGeneration = 0
 const requestBusy = computed(() => loading.value || checking.value)
@@ -172,17 +175,36 @@ function cacheStateLabel(value?: boolean): string {
 }
 
 async function openDownload(item: UpdatePackageStatus) {
-  const target = item.download_url || item.download_path || ''
-  if (!target) return
+  if (downloading.value) return
+  const target = String(item.download_url || item.download_path || '').trim()
+  const fileName = item.file_name || 'bb-erp-update.zip'
+  if (!target) {
+    ElMessage.warning('当前没有可下载的安装包地址')
+    return
+  }
+
+  downloading.value = true
   try {
     if (/^https?:\/\//i.test(target)) {
-      window.open(target, '_blank', 'noopener,noreferrer')
+      if (desktopClient) {
+        throw new Error('服务端提供的是外部下载地址，桌面端无法安全代下载；请在 Web 管理端打开更新中心后下载')
+      }
+      const downloadWindow = window.open('', '_blank')
+      if (!downloadWindow) {
+        throw new Error('浏览器拦截了下载窗口，请允许此站点打开新窗口后重试')
+      }
+      downloadWindow.opener = null
+      downloadWindow.location.replace(target)
+      ElMessage.success(`已打开下载链接，建议保存文件名：${fileName}`)
       return
     }
     const apiPath = target.startsWith('/') ? target : `/${target}`
-    await downloadApiFile(apiPath, item.file_name || 'bb-erp-update.zip', props.token)
+    await downloadApiFile(apiPath, fileName, props.token)
+    ElMessage.success(`下载已开始，保存文件名：${fileName}`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '升级包下载失败')
+  } finally {
+    downloading.value = false
   }
 }
 
@@ -225,6 +247,7 @@ const PackageCard = defineComponent({
     description: {type: String, required: true},
     item: {type: Object as () => UpdatePackageStatus, required: true},
     known: {type: Boolean, required: true},
+    downloading: {type: Boolean, default: false},
     downloadLabel: {type: String, default: ''},
     allowDownload: {type: Boolean, default: true},
   },
@@ -263,7 +286,7 @@ const PackageCard = defineComponent({
       ]),
       cardProps.item.message ? h('p', {class: 'update-package-message'}, cardProps.item.message) : null,
       h('div', {class: 'update-actions'}, [
-        canDownload() ? h(ElButton, {type: 'primary', plain: true, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端')) : h('small', downloadUnavailableText()),
+        canDownload() ? h(ElButton, {type: 'primary', plain: true, loading: cardProps.downloading, disabled: cardProps.downloading, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端')) : h('small', downloadUnavailableText()),
       ]),
     ])
   },

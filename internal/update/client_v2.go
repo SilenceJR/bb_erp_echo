@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,6 +115,7 @@ type TauriUpdateResponse struct {
 // SignedManifestVerifier 验证 v2 签名 payload。接口允许测试和未来密钥托管实现替换。
 type SignedManifestVerifier interface {
 	Verify(payload []byte, signature string) error
+	VerifyFile(path, signature string) error
 }
 
 // UpdatePlanner isolates update-strategy selection from transport, signature
@@ -179,6 +181,30 @@ func (v *MinisignVerifier) Verify(payload []byte, signature string) error {
 		return errors.New("minisign signature is not valid base64")
 	}
 	if !minisign.Verify(v.public, payload, signatureText) {
+		return errors.New("minisign signature verification failed")
+	}
+	return nil
+}
+
+// VerifyFile 流式读取并验证文件签名，避免服务端升级包整体进入内存。
+func (v *MinisignVerifier) VerifyFile(path, signature string) error {
+	if v == nil {
+		return errors.New("minisign verifier is not configured")
+	}
+	signatureText, err := base64.StdEncoding.DecodeString(strings.TrimSpace(signature))
+	if err != nil {
+		return errors.New("minisign signature is not valid base64")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open signed file: %w", err)
+	}
+	defer file.Close()
+	reader := minisign.NewReader(file)
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		return fmt.Errorf("read signed file: %w", err)
+	}
+	if !reader.Verify(v.public, signatureText) {
 		return errors.New("minisign signature verification failed")
 	}
 	return nil

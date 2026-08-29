@@ -1,6 +1,8 @@
 package update
 
 import (
+	"errors"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -50,6 +52,7 @@ func (h *Handler) RegisterPublicRoutes(v1 *echo.Group) {
 func (h *Handler) RegisterSystemRoutes(system *echo.Group, require func(string, string) echo.MiddlewareFunc) {
 	system.GET("/updates/status", h.SystemStatus, require("/api/v1/system/updates", "read"))
 	system.POST("/updates/check", h.CheckRemoteUpdates, require("/api/v1/system/updates", "write"))
+	system.GET("/updates/server/download", h.DownloadServerPackage, require("/api/v1/system/updates", "read"))
 }
 
 // Version 返回当前服务端、客户端版本和已缓存客户端升级包状态。
@@ -93,6 +96,41 @@ func (h *Handler) DownloadClientPackage(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的客户端升级包")
 	}
 	return c.Attachment(path, clientPackageName)
+}
+
+// DownloadServerPackage 按当前成功清单下载、校验并缓存服务端升级包，再分发给管理员。
+// @Summary 下载并校验服务端升级包
+// @Tags system-updates
+// @Produce application/octet-stream
+// @Security BearerAuth
+// @Success 200 {file} binary
+// @Failure 401 {object} map[string]any
+// @Failure 403 {object} map[string]any
+// @Failure 404 {object} map[string]any
+// @Failure 502 {object} map[string]any
+// @Router /api/v1/system/updates/server/download [get]
+func (h *Handler) DownloadServerPackage(c *echo.Context) error {
+	path, fileName, err := h.Service.ServerPackage(c.Request().Context())
+	if err != nil {
+		if errors.Is(err, ErrServerPackageUnavailable) {
+			return echo.NewHTTPError(http.StatusNotFound, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的服务端升级包")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的服务端升级包")
+	}
+	defer file.Close()
+	response := c.Response()
+	response.Header().Set(echo.HeaderContentDisposition, mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+	response.Header().Set(echo.HeaderContentType, "application/octet-stream")
+	http.ServeContent(response, c.Request(), fileName, info.ModTime(), file)
+	return nil
 }
 
 // ClientPlan 返回桌面端应采用的增量或完整更新策略。

@@ -9,6 +9,8 @@ const serverUrlKey = 'bb_erp_server_url'
 const defaultServerUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 const defaultRequestTimeoutMs = 8000
 const fileRequestTimeoutMs = 60000
+// 比服务端默认 10 分钟下载超时多留 2 分钟，确保桌面端能收到服务端的具体校验错误。
+const serverUpdateDownloadTimeoutMs = 12 * 60 * 1000
 
 // normalizeServerUrl 只接受纯 HTTP(S) 源地址，避免把路径、凭据或查询参数
 // 保存为服务地址。后续切换公网 HTTPS 时无需重新构建客户端。
@@ -57,7 +59,7 @@ function isAbortError(error: unknown): boolean {
 
 function connectionError(error: unknown, serverUrl = currentServerUrl): Error {
   if (isAbortError(error)) {
-    return new Error(`连接 ${serverUrl} 超时，请检查 Go 服务是否启动、地址端口是否正确，以及 macOS 防火墙是否放行`)
+    return new Error(`连接 ${serverUrl} 超时，请检查 Go 服务是否启动、地址端口是否正确，以及系统防火墙是否放行`)
   }
   const detail = error instanceof Error ? error.message : String(error)
   return new Error(`无法连接 ${serverUrl}，请先点击“测试连接”确认服务器地址。${detail}`)
@@ -65,9 +67,11 @@ function connectionError(error: unknown, serverUrl = currentServerUrl): Error {
 
 async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl): Promise<Response> {
   const controller = new AbortController()
-  const requestTimeoutMs = path.startsWith('/api/v1/files')
-      ? fileRequestTimeoutMs
-      : defaultRequestTimeoutMs
+  const requestTimeoutMs = path.startsWith('/api/v1/system/updates/server/download')
+      ? serverUpdateDownloadTimeoutMs
+      : path.startsWith('/api/v1/files')
+        ? fileRequestTimeoutMs
+        : defaultRequestTimeoutMs
   // 合并调用方取消信号与桌面端请求超时，避免上传下载请求过早中断。
   const abortFromCaller = () => controller.abort()
   if (init.signal) {

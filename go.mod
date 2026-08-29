@@ -15,6 +15,7 @@ require (
 	github.com/swaggo/swag v1.16.2
 	golang.org/x/crypto v0.54.0
 	golang.org/x/mod v0.37.0
+	golang.org/x/sys v0.47.0
 	gorm.io/driver/sqlite v1.5.5
 	gorm.io/gorm v1.25.12
 )
@@ -43,7 +44,6 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect

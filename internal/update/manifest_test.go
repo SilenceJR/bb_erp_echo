@@ -5,18 +5,24 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"aead.dev/minisign"
 	"bb_erp_echo/internal/config"
+	"github.com/labstack/echo/v5"
 )
 
 func zipBytes(t *testing.T) []byte {
@@ -41,11 +47,54 @@ func zipBytesWithComment(t *testing.T, comment string) []byte {
 	return buffer.Bytes()
 }
 
+func serverPackageZipBytes(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	for _, name := range []string{
+		"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "update-public.key", "version.json",
+	} {
+		file, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("create server package entry %s: %v", name, err)
+		}
+		contents := []byte("payload")
+		if name == "version.json" {
+			contents = []byte(`{"version":"2.0.0","server_version":"2.0.0"}`)
+		}
+		if _, err := file.Write(contents); err != nil {
+			t.Fatalf("write server package entry %s: %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close server package: %v", err)
+	}
+	return buffer.Bytes()
+}
+
+func signedPackageForTest(t *testing.T, payload []byte) (string, SignedManifestVerifier) {
+	t.Helper()
+	public, private, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate package signing key: %v", err)
+	}
+	verifier, err := NewMinisignVerifier(public.String())
+	if err != nil {
+		t.Fatalf("create package verifier: %v", err)
+	}
+	reader := minisign.NewReader(bytes.NewReader(payload))
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		t.Fatalf("hash signed package: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(reader.Sign(private)), verifier
+}
+
 func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 	archive := zipBytes(t)
 	digest := sha256.Sum256(archive)
 	var manifestRequests atomic.Int32
 	var packageRequests atomic.Int32
+	var serverPackageRequests atomic.Int32
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -55,12 +104,18 @@ func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 			manifestRequests.Add(1)
 			_ = json.NewEncoder(w).Encode(Manifest{
 				Version: "2.0.0",
-				Server:  PackageManifest{Version: "2.0.0", URL: server.URL + "/server.zip"},
+				Server: PackageManifest{
+					Version: "2.0.0", URL: server.URL + "/server.zip",
+					SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
+				},
 				Client: PackageManifest{
 					Version: "2.0.0", URL: server.URL + "/client.zip",
 					SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
 				},
 			})
+		case "/server.zip":
+			serverPackageRequests.Add(1)
+			_, _ = w.Write(archive)
 		case "/client.zip":
 			packageRequests.Add(1)
 			_, _ = w.Write(archive)
@@ -83,20 +138,136 @@ func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 	if !status.Reachable || !status.Server.Available || !status.Client.Available || !status.Client.Cached {
 		t.Fatalf("unexpected first status: %+v", status)
 	}
-	if status.Server.DownloadURL != server.URL+"/server.zip" || status.Client.DownloadURL != "/api/v1/updates/client/download" || status.CheckInterval != "1h" {
-		t.Fatalf("unexpected direct download/interval fields: %+v", status)
+	if status.Server.DownloadURL != serverDownloadPath || status.Server.DownloadPath != serverDownloadPath ||
+		status.Server.FileName != "server.zip" || status.Client.DownloadURL != "/api/v1/updates/client/download" || status.CheckInterval != "1h" {
+		t.Fatalf("unexpected local download/interval fields: %+v", status)
 	}
 	if _, err := service.Check(context.Background()); err != nil {
 		t.Fatalf("second check: %v", err)
 	}
-	if manifestRequests.Load() != 2 || packageRequests.Load() != 1 {
-		t.Fatalf("requests manifest=%d package=%d", manifestRequests.Load(), packageRequests.Load())
+	if manifestRequests.Load() != 2 || packageRequests.Load() != 1 || serverPackageRequests.Load() != 0 {
+		t.Fatalf("requests manifest=%d client=%d server=%d", manifestRequests.Load(), packageRequests.Load(), serverPackageRequests.Load())
 	}
 	if service.ClientStatus("2.0.0").Available {
 		t.Fatal("same installed client version should not report update")
 	}
 	if !service.ClientStatus("1.5.0").Available {
 		t.Fatal("older installed client should report update")
+	}
+}
+
+func TestDownloadServerPackageUsesReadPermissionAndAttachment(t *testing.T) {
+	archive := serverPackageZipBytes(t)
+	digest := sha256.Sum256(archive)
+	signature, verifier := signedPackageForTest(t, archive)
+	var upstreamRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamRequests.Add(1)
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	cacheRoot := t.TempDir()
+	service := NewServiceWithAllDependencies(config.UpdateConfig{Enabled: true, CacheDir: cacheRoot}, "1.0.0",
+		staticManifestSource{manifest: &Manifest{Server: PackageManifest{
+			Version: "2.0.0", URL: server.URL + "/server.zip", SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)), Signature: signature,
+		}}},
+		&LocalPackageStore{Root: cacheRoot, Client: server.Client()},
+		&LocalArtifactStore{Root: cacheRoot, Client: server.Client()}, verifier, nil)
+	if _, err := service.Check(context.Background()); err != nil {
+		t.Fatalf("check server package manifest: %v", err)
+	}
+
+	var gotObject, gotAction string
+	allowed := false
+	require := func(object, action string) echo.MiddlewareFunc {
+		gotObject, gotAction = object, action
+		return func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c *echo.Context) error {
+				if !allowed {
+					return echo.NewHTTPError(http.StatusForbidden, "forbidden")
+				}
+				return next(c)
+			}
+		}
+	}
+	e := echo.New()
+	NewHandlerWithService(&config.Config{}, service).RegisterSystemRoutes(e.Group("/api/v1/system"), require)
+
+	record := httptest.NewRecorder()
+	e.ServeHTTP(record, httptest.NewRequest(http.MethodGet, serverDownloadPath, nil))
+	if record.Code != http.StatusForbidden {
+		t.Fatalf("download without read permission status=%d body=%s", record.Code, record.Body.String())
+	}
+	if gotObject != "/api/v1/system/updates" || gotAction != "read" {
+		t.Fatalf("download permission=%q/%q", gotObject, gotAction)
+	}
+
+	allowed = true
+	recorders := []*httptest.ResponseRecorder{httptest.NewRecorder(), httptest.NewRecorder()}
+	start := make(chan struct{})
+	var downloads sync.WaitGroup
+	for _, concurrentRecord := range recorders {
+		downloads.Add(1)
+		go func(recorder *httptest.ResponseRecorder) {
+			defer downloads.Done()
+			<-start
+			e.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, serverDownloadPath, nil))
+		}(concurrentRecord)
+	}
+	close(start)
+	downloads.Wait()
+	for _, concurrentRecord := range recorders {
+		if concurrentRecord.Code != http.StatusOK || !bytes.Equal(concurrentRecord.Body.Bytes(), archive) {
+			t.Fatalf("download response status=%d body-size=%d", concurrentRecord.Code, concurrentRecord.Body.Len())
+		}
+	}
+	if got := recorders[0].Header().Get(echo.HeaderContentDisposition); !strings.Contains(got, "attachment") || !strings.Contains(got, "server.zip") {
+		t.Fatalf("content disposition=%q", got)
+	}
+	if upstreamRequests.Load() != 1 {
+		t.Fatalf("concurrent package requests were not coalesced: upstream=%d", upstreamRequests.Load())
+	}
+	record = httptest.NewRecorder()
+	e.ServeHTTP(record, httptest.NewRequest(http.MethodGet, serverDownloadPath, nil))
+	if record.Code != http.StatusOK || upstreamRequests.Load() != 1 {
+		t.Fatalf("verified package cache was not reused: status=%d upstream=%d", record.Code, upstreamRequests.Load())
+	}
+}
+
+func TestDownloadServerPackageRejectsInvalidZipWithoutCaching(t *testing.T) {
+	body := []byte("not a zip archive")
+	digest := sha256.Sum256(body)
+	signature, verifier := signedPackageForTest(t, body)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	cacheRoot := t.TempDir()
+	service := NewServiceWithAllDependencies(config.UpdateConfig{Enabled: true, CacheDir: cacheRoot}, "1.0.0",
+		staticManifestSource{manifest: &Manifest{Version: "2.0.0", Server: PackageManifest{
+			Version: "2.0.0", URL: server.URL + "/server.zip", SHA256: hex.EncodeToString(digest[:]), Size: int64(len(body)), Signature: signature,
+		}}},
+		&LocalPackageStore{Root: cacheRoot, Client: server.Client()},
+		&LocalArtifactStore{Root: cacheRoot, Client: server.Client()}, verifier, nil)
+	if _, err := service.Check(context.Background()); err != nil {
+		t.Fatalf("server package is downloaded only on demand: %v", err)
+	}
+	if status := service.Status(""); status.Manifest == nil || status.LastSuccessAt == nil || status.Server.DownloadPath != serverDownloadPath {
+		t.Fatalf("valid manifest was not published before package download: %+v", status)
+	}
+	e := echo.New()
+	NewHandlerWithService(&config.Config{}, service).RegisterSystemRoutes(e.Group("/api/v1/system"), func(_, _ string) echo.MiddlewareFunc {
+		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
+	})
+	record := httptest.NewRecorder()
+	e.ServeHTTP(record, httptest.NewRequest(http.MethodGet, serverDownloadPath, nil))
+	if record.Code != http.StatusBadGateway || !strings.Contains(record.Body.String(), "下载或校验服务端升级包失败") {
+		t.Fatalf("invalid package response status=%d body=%s", record.Code, record.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(cacheRoot, "server", "server.zip")); !os.IsNotExist(err) {
+		t.Fatalf("invalid server package entered cache: %v", err)
 	}
 }
 

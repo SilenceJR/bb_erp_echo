@@ -37,6 +37,10 @@ if [[ ! -s "$asset_dir/update-manifest.json" ]]; then
 fi
 manifest="$asset_dir/update-manifest.json"
 test -s "$manifest" || { echo "Missing release manifest: $manifest" >&2; exit 1; }
+server_signature="$(jq -er '.server.signature' "$manifest")"
+printf '%s' "$server_signature" | base64 --decode >/dev/null 2>&1 || {
+  echo "Invalid server package signature." >&2; exit 1;
+}
 if jq -e '.client_update_v2? != null' "$manifest" >/dev/null; then
   payload_signature="$(jq -er '.client_update_v2.signature' "$manifest")"
   printf '%s' "$payload_signature" | base64 --decode >/dev/null 2>&1 || {
@@ -77,7 +81,8 @@ done < <(jq -er '
       and (.signature | type) == "string" and (.signature | length) > 0
       then [.url, .sha256, .size, .signature] | @tsv
       else error("client_update_v2 resource metadata or signature is missing") end;
-  [.server?, .client?, .all_in_one?, .updater? | select(. != null) | resource][],
+  (.server | signed_resource),
+  [.client?, .all_in_one?, .updater? | select(. != null) | resource][],
   (if .client_update_v2? == null then empty else
     (.client_update_v2.payload | @base64d | fromjson) as $payload
     | if $payload.protocol_version != 2 then error("unsupported client_update_v2 protocol") else . end

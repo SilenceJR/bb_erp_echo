@@ -1268,6 +1268,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/system/updates/server/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "system-updates"
+                ],
+                "summary": "下载并校验服务端升级包",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/system/updates/status": {
             "get": {
                 "security": [
@@ -3432,7 +3484,13 @@ const docTemplate = `{
                 "current_version": {
                     "type": "string"
                 },
+                "download_path": {
+                    "type": "string"
+                },
                 "download_url": {
+                    "type": "string"
+                },
+                "file_name": {
                     "type": "string"
                 },
                 "latest_version": {
@@ -3482,6 +3540,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "sha256": {
+                    "type": "string"
+                },
+                "signature": {
                     "type": "string"
                 },
                 "size": {
