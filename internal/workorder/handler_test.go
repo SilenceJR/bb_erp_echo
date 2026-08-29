@@ -29,13 +29,13 @@ func TestProductionWorkOrderDispatchAndDepartmentFlow(t *testing.T) {
 	db := openWorkOrderTestDB(t)
 	handler := &Handler{DB: db}
 	departments := seedWorkOrderDepartments(t, db)
+	product := seedWorkOrderProduct(t, db, "白色外壳", "P-WHITE")
 
 	created := createWorkOrder(t, handler, map[string]any{
 		"code":                  "WO-001",
 		"type":                  TypeProduction,
-		"product_name":          "白色外壳",
+		"product_id":            product.ID,
 		"planned_quantity":      int64(1000000),
-		"unit":                  "个",
 		"target_department_ids": []uint{departments[0].ID, departments[1].ID},
 	}, nil)
 	if created.Status != StatusDraft || len(created.DepartmentTasks) != 2 {
@@ -86,12 +86,12 @@ func TestWorkOrderValidationAndPauseRules(t *testing.T) {
 	db := openWorkOrderTestDB(t)
 	handler := &Handler{DB: db}
 	departments := seedWorkOrderDepartments(t, db)
+	product := seedWorkOrderProduct(t, db, "丝印面板", "P-SILK")
 	created := createWorkOrder(t, handler, map[string]any{
 		"code":                  "WO-002",
 		"type":                  TypeProduction,
-		"product_name":          "丝印面板",
+		"product_id":            product.ID,
 		"planned_quantity":      int64(1000000),
-		"unit":                  "个",
 		"target_department_ids": []uint{departments[0].ID},
 	}, nil)
 
@@ -123,12 +123,12 @@ func TestDepartmentTaskAccessBoundary(t *testing.T) {
 	db := openWorkOrderTestDB(t)
 	handler := &Handler{DB: db}
 	departments := seedWorkOrderDepartments(t, db)
+	product := seedWorkOrderProduct(t, db, "黑色外壳", "P-BLACK")
 	created := createWorkOrder(t, handler, map[string]any{
 		"code":                  "WO-003",
 		"type":                  TypeProduction,
-		"product_name":          "黑色外壳",
+		"product_id":            product.ID,
 		"planned_quantity":      int64(1000000),
-		"unit":                  "个",
 		"target_department_ids": []uint{departments[0].ID},
 	}, nil)
 	dispatched := callWorkOrder(t, handler.Dispatch, http.MethodPost, "/api/v1/workorder/:id/dispatch", nil, map[string]string{"id": idString(created.ID)}, nil, http.StatusOK)
@@ -137,6 +137,114 @@ func TestDepartmentTaskAccessBoundary(t *testing.T) {
 	rec := performWorkOrderJSON(t, handler.StartDepartmentTask, http.MethodPost, "/api/v1/workorder/department-tasks/:id/start", nil, map[string]string{"id": idString(dispatched.DepartmentTasks[0].ID)}, current)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("cross department status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProductionWorkOrderRequiresActiveProductAndUsesSnapshots(t *testing.T) {
+	db := openWorkOrderTestDB(t)
+	handler := &Handler{DB: db}
+	departments := seedWorkOrderDepartments(t, db)
+	active := seedWorkOrderProduct(t, db, "主产品", "P-ACTIVE")
+	disabled := seedWorkOrderProduct(t, db, "停用产品", "P-DISABLED")
+	disabled.Status = model.StatusDisabled
+	if err := db.Save(&disabled).Error; err != nil {
+		t.Fatalf("disable product: %v", err)
+	}
+
+	missing := performWorkOrderJSON(t, handler.Create, http.MethodPost, "/api/v1/workorder", map[string]any{
+		"type":                  TypeProduction,
+		"planned_quantity":      int64(10000),
+		"target_department_ids": []uint{departments[0].ID},
+	}, nil, nil)
+	if missing.Code != http.StatusBadRequest {
+		t.Fatalf("missing product status = %d body=%s", missing.Code, missing.Body.String())
+	}
+
+	disabledResponse := performWorkOrderJSON(t, handler.Create, http.MethodPost, "/api/v1/workorder", map[string]any{
+		"type":                  TypeProduction,
+		"product_id":            disabled.ID,
+		"planned_quantity":      int64(10000),
+		"target_department_ids": []uint{departments[0].ID},
+	}, nil, nil)
+	if disabledResponse.Code != http.StatusBadRequest {
+		t.Fatalf("disabled product status = %d body=%s", disabledResponse.Code, disabledResponse.Body.String())
+	}
+
+	created := createWorkOrder(t, handler, map[string]any{
+		"code":                  "WO-SNAPSHOT",
+		"type":                  TypeProduction,
+		"product_id":            active.ID,
+		"product_name":          "客户端伪造名称",
+		"planned_quantity":      int64(10000),
+		"unit":                  "箱",
+		"target_department_ids": []uint{departments[0].ID},
+	}, nil)
+	if created.ProductID == nil || *created.ProductID != active.ID {
+		t.Fatalf("product id snapshot = %+v, want %d", created.ProductID, active.ID)
+	}
+	if created.ProductName != active.Name || created.Unit != active.Unit {
+		t.Fatalf("product snapshot = name:%q unit:%q, want name:%q unit:%q", created.ProductName, created.Unit, active.Name, active.Unit)
+	}
+}
+
+func TestGeneralWorkOrderClearsProductAssociation(t *testing.T) {
+	db := openWorkOrderTestDB(t)
+	handler := &Handler{DB: db}
+	departments := seedWorkOrderDepartments(t, db)
+	product := seedWorkOrderProduct(t, db, "不应关联", "P-GENERAL")
+	created := createWorkOrder(t, handler, map[string]any{
+		"code":                  "WO-GENERAL",
+		"type":                  TypeGeneral,
+		"title":                 "通用任务",
+		"description":           "通用说明",
+		"product_id":            product.ID,
+		"target_department_ids": []uint{departments[0].ID},
+	}, nil)
+	if created.ProductID != nil || created.ProductName != "" || created.Unit != "" {
+		t.Fatalf("general task retained product association: %+v", created)
+	}
+}
+
+func TestCreateTemporaryProductDefaultsAndRejectsDuplicateCode(t *testing.T) {
+	db := openWorkOrderTestDB(t)
+	handler := &Handler{DB: db}
+
+	created := callProductWorkOrder(t, handler.CreateTemporaryProduct, map[string]any{
+		"name": "临时产品",
+		"code": "P-TEMP",
+		"spec": "试产",
+	}, http.StatusCreated)
+	if created.Status != model.StatusActive || created.Unit != "个" || created.SafetyStock != 0 || created.DefaultCost != 0 {
+		t.Fatalf("temporary product defaults = %+v", created)
+	}
+	var balances int64
+	if err := db.Model(&model.InventoryBalance{}).Where("item_type = ? AND item_id = ?", itemProductForTest, created.ID).Count(&balances).Error; err != nil {
+		t.Fatalf("count initial balances: %v", err)
+	}
+	if balances != 0 {
+		t.Fatalf("temporary product created %d inventory balances, want 0", balances)
+	}
+	var ledgers int64
+	if err := db.Model(&model.InventoryLedger{}).Where("item_type = ? AND item_id = ?", itemProductForTest, created.ID).Count(&ledgers).Error; err != nil {
+		t.Fatalf("count initial ledgers: %v", err)
+	}
+	if ledgers != 0 {
+		t.Fatalf("temporary product created %d inventory ledgers, want 0", ledgers)
+	}
+
+	duplicate := performWorkOrderJSON(t, handler.CreateTemporaryProduct, http.MethodPost, "/api/v1/workorder/products", map[string]any{
+		"name": "另一个产品",
+		"code": "P-TEMP",
+	}, nil, nil)
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("duplicate code status = %d body=%s", duplicate.Code, duplicate.Body.String())
+	}
+
+	missing := performWorkOrderJSON(t, handler.CreateTemporaryProduct, http.MethodPost, "/api/v1/workorder/products", map[string]any{
+		"name": "缺少编码",
+	}, nil, nil)
+	if missing.Code != http.StatusBadRequest {
+		t.Fatalf("missing code status = %d body=%s", missing.Code, missing.Body.String())
 	}
 }
 
@@ -151,10 +259,21 @@ func openWorkOrderTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Department{}, &model.WorkOrder{}, &model.DepartmentTask{}, &model.WorkOrderFlowLog{}); err != nil {
+	if err := db.AutoMigrate(&model.Department{}, &model.Product{}, &model.WorkOrder{}, &model.DepartmentTask{}, &model.WorkOrderFlowLog{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
+}
+
+const itemProductForTest = "product"
+
+func seedWorkOrderProduct(t *testing.T, db *gorm.DB, name string, code string) model.Product {
+	t.Helper()
+	product := model.Product{Name: name, Code: code, Unit: "个", Spec: "标准", Status: model.StatusActive}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	return product
 }
 
 func seedWorkOrderDepartments(t *testing.T, db *gorm.DB) []model.Department {
@@ -183,6 +302,17 @@ func callWorkOrder(t *testing.T, handler echo.HandlerFunc, method string, path s
 		t.Fatalf("%s %s status = %d want %d body=%s", method, path, rec.Code, wantStatus, rec.Body.String())
 	}
 	var result model.WorkOrder
+	decodeWorkOrderJSON(t, rec, &result)
+	return result
+}
+
+func callProductWorkOrder(t *testing.T, handler echo.HandlerFunc, body any, wantStatus int) model.Product {
+	t.Helper()
+	rec := performWorkOrderJSON(t, handler, http.MethodPost, "/api/v1/workorder/products", body, nil, nil)
+	if rec.Code != wantStatus {
+		t.Fatalf("POST /api/v1/workorder/products status = %d want %d body=%s", rec.Code, wantStatus, rec.Body.String())
+	}
+	var result model.Product
 	decodeWorkOrderJSON(t, rec, &result)
 	return result
 }

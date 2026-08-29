@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"bb_erp_echo/internal/config"
 	"bb_erp_echo/internal/model"
 
 	"gorm.io/driver/sqlite"
@@ -18,6 +19,9 @@ func newAssignmentTestService(t *testing.T) *Service {
 		t.Fatalf("open test database: %v", err)
 	}
 	if err := db.AutoMigrate(
+		&model.Organization{},
+		&model.Department{},
+		&model.Terminal{},
 		&model.User{},
 		&model.Role{},
 		&model.Permission{},
@@ -116,5 +120,44 @@ func TestBackfillUpdateReadPermission(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("read permission binding count = %d", count)
+	}
+}
+
+func TestDefaultPermissionsIncludeTemporaryProductWrite(t *testing.T) {
+	permissions := DefaultPermissions()
+	for _, permission := range permissions {
+		if permission.Code != TemporaryProductWriteCode {
+			continue
+		}
+		if permission.Object != "/api/v1/workorder/products" || permission.Action != "write" {
+			t.Fatalf("temporary product permission = %+v", permission)
+		}
+		return
+	}
+	t.Fatalf("default permissions do not include %q", TemporaryProductWriteCode)
+}
+
+func TestSeedSystemDataGivesTerminalOperatorWarehouseRead(t *testing.T) {
+	service := newAssignmentTestService(t)
+	cfg := &config.Config{Admin: config.AdminConfig{
+		Username: "seed-admin",
+		Password: "seed-password",
+		Name:     "种子管理员",
+	}}
+	if err := service.SeedSystemData(cfg); err != nil {
+		t.Fatalf("seed system data: %v", err)
+	}
+
+	var terminalRole model.Role
+	if err := service.DB.Where("code = ?", TerminalOperatorCode).First(&terminalRole).Error; err != nil {
+		t.Fatalf("load terminal operator role: %v", err)
+	}
+	var warehouseRead model.Permission
+	if err := service.DB.Where("code = ?", "warehouse:read").First(&warehouseRead).Error; err != nil {
+		t.Fatalf("load warehouse read permission: %v", err)
+	}
+	var binding model.RolePermission
+	if err := service.DB.Where("role_id = ? AND permission_id = ?", terminalRole.ID, warehouseRead.ID).First(&binding).Error; err != nil {
+		t.Fatalf("terminal operator should have warehouse read permission: %v", err)
 	}
 }

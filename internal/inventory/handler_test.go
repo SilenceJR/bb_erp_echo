@@ -87,6 +87,62 @@ func TestInventoryInboundWeightedAverageAndCostTrim(t *testing.T) {
 	}
 }
 
+func TestItemDetailAggregatesDefaultWarehouseLocations(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	warehouse := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
+	product := model.Product{Name: "聚合产品", Code: "P-AGGREGATE", Unit: "个", Status: model.StatusActive}
+	if err := db.Create(&warehouse).Error; err != nil {
+		t.Fatalf("seed warehouse: %v", err)
+	}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	locations := []model.Location{
+		{WarehouseID: warehouse.ID, Code: "A-01", Name: "A 货架", Status: model.StatusActive},
+		{WarehouseID: warehouse.ID, Code: "B-01", Name: "B 货架", Status: model.StatusActive},
+	}
+	if err := db.Create(&locations).Error; err != nil {
+		t.Fatalf("seed locations: %v", err)
+	}
+	balances := []model.InventoryBalance{
+		{WarehouseID: warehouse.ID, LocationID: &locations[0].ID, ItemType: itemProduct, ItemID: product.ID, Quantity: 10000, Amount: 2500},
+		{WarehouseID: warehouse.ID, LocationID: &locations[1].ID, ItemType: itemProduct, ItemID: product.ID, Quantity: 30000, Amount: 9000},
+	}
+	if err := db.Create(&balances).Error; err != nil {
+		t.Fatalf("seed balances: %v", err)
+	}
+
+	rec := performInventoryJSON(t, handler.GetItemDetail, http.MethodGet, "/api/v1/warehouse/items/:itemType/:itemID", nil, map[string]string{
+		"itemType": itemProduct,
+		"itemID":   strconv.FormatUint(uint64(product.ID), 10),
+	}, false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detail status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var withoutCost map[string]any
+	decodeInventoryJSON(t, rec, &withoutCost)
+	if withoutCost["quantity"].(float64) != 40000 {
+		t.Fatalf("aggregated quantity = %v, want 40000", withoutCost["quantity"])
+	}
+	if _, ok := withoutCost["amount"]; ok {
+		t.Fatalf("amount should be hidden without cost permission: %v", withoutCost)
+	}
+
+	rec = performInventoryJSON(t, handler.GetItemDetail, http.MethodGet, "/api/v1/warehouse/items/:itemType/:itemID", nil, map[string]string{
+		"itemType": itemProduct,
+		"itemID":   strconv.FormatUint(uint64(product.ID), 10),
+	}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cost detail status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var withCost map[string]any
+	decodeInventoryJSON(t, rec, &withCost)
+	if withCost["quantity"].(float64) != 40000 || withCost["amount"].(float64) != 11500 || withCost["avg_cost"].(float64) != 2875 {
+		t.Fatalf("aggregated cost detail = %v", withCost)
+	}
+}
+
 // TestInventoryOutboundRejectsNegativeStock 验证默认禁止负库存。
 func TestInventoryOutboundRejectsNegativeStock(t *testing.T) {
 	db := openInventoryTestDB(t)
@@ -269,7 +325,7 @@ func openInventoryTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Warehouse{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
+	if err := db.AutoMigrate(&model.Warehouse{}, &model.Location{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db

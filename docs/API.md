@@ -349,6 +349,7 @@ GET  /api/v1/inventory-ledgers
 ```
 
 `GET /api/v1/warehouse/items` 和 `GET /api/v1/suppliers` 支持 `page`、`page_size`、`q`，返回统一分页结构。
+`GET /api/v1/warehouse/items/:itemType/:itemID` 返回默认仓库内所有库位的库存合计；没有余额记录时数量为 `0`。无 `cost:view` 权限时不返回成本字段。
 
 任务兼容旧路径：
 
@@ -487,6 +488,7 @@ completed          完成
 ```text
 GET  /api/v1/workorder?page=&page_size=&q=&status=&type=&department_id=&priority=
 POST /api/v1/workorder
+POST /api/v1/workorder/products
 POST /api/v1/workorder/:id/dispatch
 POST /api/v1/workorder/:id/pause
 POST /api/v1/workorder/:id/resume
@@ -498,21 +500,39 @@ POST /api/v1/workorder/department-tasks/:id/complete
 GET  /api/v1/workorder/:id/logs
 ```
 
-创建生产单示例。数量使用 4 位定点整数，例如 `1000000` 表示 100 个：
+创建生产单时必须从仓库产品列表（`GET /api/v1/warehouse/items?tab=product&q=关键字`）中选择启用产品并提交 `product_id`。服务端根据产品主数据保存 `product_name` 和 `unit` 快照；请求中的名称和单位不作为自由文本接受。数量使用 4 位定点整数，例如 `1000000` 表示 100 个：
 
 ```json
 {
   "code": "WO-001",
   "type": "production",
-  "product_name": "白色外壳",
+  "product_id": 1,
   "planned_quantity": 1000000,
-  "unit": "个",
   "due_at": "2026-08-10",
   "priority": "normal",
   "target_department_ids": [2, 3],
   "description": "注塑后流转到包装"
 }
 ```
+
+成功响应中的 `product_id`、`product_name` 和 `unit` 分别是关联产品 ID 及创建时的名称、单位快照；产品后续改名不会改写历史任务单。生产单详情需要实时库存时，按 `product_id` 调用 `GET /api/v1/warehouse/items/product/:product_id`，响应中的 `quantity` 是默认仓库全部库位合计。
+
+### POST /api/v1/workorder/products
+
+在生产单内临时建立尚未入库产品的正式仓库产品档案。接口同时需要 `workorder:write` 和 `workorder:temporary-product:write`，默认只有超级管理员拥有后者；管理员可在角色权限中显式分配。新产品立即启用，安全库存和当前库存为 `0`，不会创建库存余额或库存流水。
+
+请求：
+
+```json
+{
+  "name": "白色外壳",
+  "code": "P-001",
+  "spec": "标准",
+  "unit": "个"
+}
+```
+
+`name`、`code` 必填，`spec` 可选，`unit` 缺省为 `个`；编码重复返回 `409`。创建成功返回标准 `model.Product`，前端可立即用返回的 ID 选中产品并查询库存。
 
 派发后系统自动把每个目标部门子任务置为 `received`，主任务置为 `processing`。部门可执行开始处理、部分完成和完成；全部部门完成后主任务自动进入 `pending_close`。办公室正常完成必须在 `pending_close` 执行；强制完成可在 `processing`、`paused`、`pending_close` 执行，但必须填写原因。
 

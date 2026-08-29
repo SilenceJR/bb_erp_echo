@@ -1664,6 +1664,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。",
                 "tags": [
                     "workorder"
                 ],
@@ -1871,6 +1872,75 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workorder/products": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建启用状态的正式产品档案；初始安全库存和当前库存均为 0，不创建库存流水。接口同时需要 workorder:write 和 workorder:temporary-product:write 权限。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workorder"
+                ],
+                "summary": "临时建立仓库产品档案",
+                "parameters": [
+                    {
+                        "description": "产品建档参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/workorder.temporaryProductRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Product"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -2906,6 +2976,41 @@ const docTemplate = `{
                 }
             }
         },
+        "model.Product": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "default_cost": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "safety_stock": {
+                    "type": "integer"
+                },
+                "spec": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "model.WorkOrder": {
             "type": "object",
             "properties": {
@@ -2950,6 +3055,9 @@ const docTemplate = `{
                 },
                 "priority": {
                     "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
                 },
                 "product_name": {
                     "type": "string"
@@ -3742,8 +3850,8 @@ const docTemplate = `{
                 "priority": {
                     "type": "string"
                 },
-                "product_name": {
-                    "type": "string"
+                "product_id": {
+                    "type": "integer"
                 },
                 "target_department_ids": {
                     "type": "array",
@@ -3755,9 +3863,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
-                    "type": "string"
-                },
-                "unit": {
                     "type": "string"
                 }
             }
@@ -3778,6 +3883,31 @@ const docTemplate = `{
             "properties": {
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "workorder.temporaryProductRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "P-001"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "白色外壳"
+                },
+                "spec": {
+                    "type": "string",
+                    "example": "标准"
+                },
+                "unit": {
+                    "type": "string",
+                    "example": "个"
                 }
             }
         },

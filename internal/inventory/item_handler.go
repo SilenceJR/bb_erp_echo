@@ -48,17 +48,25 @@ func (h *Handler) GetItemDetail(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	var balance model.InventoryBalance
 	result := map[string]any{"item": item, "warehouse": warehouse, "quantity": int64(0)}
-	err = h.DB.Where("warehouse_id = ? AND item_type = ? AND item_id = ?", warehouse.ID, itemType, itemID).First(&balance).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	var aggregate struct {
+		Quantity int64
+		Amount   int64
+	}
+	err = h.DB.Model(&model.InventoryBalance{}).
+		Select("COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount").
+		Where("warehouse_id = ? AND item_type = ? AND item_id = ?", warehouse.ID, itemType, itemID).
+		Scan(&aggregate).Error
+	if err != nil {
 		return err
 	}
-	if err == nil {
-		result["quantity"] = balance.Quantity
-		if hasCostView(c) {
-			result["avg_cost"] = balance.AvgCost
-			result["amount"] = balance.Amount
+	result["quantity"] = aggregate.Quantity
+	if hasCostView(c) {
+		result["amount"] = aggregate.Amount
+		if aggregate.Quantity > 0 {
+			result["avg_cost"] = aggregate.Amount * 10000 / aggregate.Quantity
+		} else {
+			result["avg_cost"] = int64(0)
 		}
 	}
 	return c.JSON(http.StatusOK, result)

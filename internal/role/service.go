@@ -22,6 +22,8 @@ const (
 	TerminalOperatorCode = "department_terminal_operator"
 	// CostViewCode 是成本字段查看权限编码。
 	CostViewCode = "cost:view"
+	// TemporaryProductWriteCode 是生产单内临时建立仓库产品档案的权限编码。
+	TemporaryProductWriteCode = "workorder:temporary-product:write"
 )
 
 // Service 封装角色、权限和策略操作。
@@ -133,7 +135,7 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 	if err := s.AttachPermissionCodes(boss.ID, []string{CostViewCode}); err != nil {
 		return err
 	}
-	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "tasks:read", "tasks:write", "inventory:read"}); err != nil {
+	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "tasks:read", "tasks:write", "warehouse:read", "inventory:read"}); err != nil {
 		return err
 	}
 
@@ -458,6 +460,7 @@ func DefaultPermissions() []model.Permission {
 		{"模具台账维护", "molds:write", "/api/v1/molds", "write"},
 		{"任务查看", "workorder:read", "/api/v1/workorder", "read"},
 		{"任务维护", "workorder:write", "/api/v1/workorder", "write"},
+		{"生产单临时产品建档", TemporaryProductWriteCode, "/api/v1/workorder/products", "write"},
 		{"报表查看", "statistics:read", "/api/v1/statistics", "read"},
 		{"报表维护", "statistics:write", "/api/v1/statistics", "write"},
 		{"成本查看", CostViewCode, "/api/v1/cost", "read"},

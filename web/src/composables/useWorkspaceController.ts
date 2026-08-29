@@ -78,7 +78,7 @@ export function useWorkspaceController() {
 type FormField = {
   key: string
   label: string
-  kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date'
+  kind?: 'text' | 'password' | 'select' | 'multi-select' | 'textarea' | 'date' | 'workorder-product' | 'workorder-quantity'
   options?: Array<{ label: string; value: string | number }>
   required?: boolean
 }
@@ -206,6 +206,21 @@ const {
   workorderLogs,
   workorderLogsLoading,
   workorderLogsError,
+  workorderProductOptions,
+  workorderProductSearchLoading,
+  workorderProductSearchError,
+  workorderProductStock,
+  workorderProductStockLoading,
+  workorderProductStockError,
+  workorderProductStockUpdatedAt,
+  workorderDrawerProductStock,
+  workorderDrawerProductStockLoading,
+  workorderDrawerProductStockError,
+  workorderDrawerProductStockUpdatedAt,
+  temporaryProductDialogVisible,
+  temporaryProductSubmitting,
+  temporaryProductError,
+  temporaryProductForm,
 } = useWorkorder()
 
 const statisticsData = ref<StatisticsDashboard | null>(null)
@@ -213,6 +228,19 @@ watch(() => formState.department_id, (departmentID) => {
   if (activeKey.value !== 'users' || !formState.terminal_id) return
   const terminal = rowsFor('terminals').find((item) => Number(item.id) === Number(formState.terminal_id))
   if (!terminal || Number(terminal.department_id) !== Number(departmentID)) delete formState.terminal_id
+})
+watch(() => formState.type, (type) => {
+  if (activeKey.value === 'workorder' && type !== 'production') {
+    invalidateWorkorderProductSearch()
+    resetWorkorderProductSelection()
+  }
+})
+watch(activeKey, (key) => {
+  if (key !== 'workorder') {
+    invalidateWorkorderProductSearch()
+    resetWorkorderProductSelection()
+    closeTemporaryProductDialog()
+  }
 })
 const selectedMoldMaintenanceState = computed(() => moldMaintenanceState(selectedMoldDetail.value || {}))
 const selectedMoldAlertType = computed<'success' | 'warning' | 'error' | 'info'>(() => {
@@ -674,13 +702,13 @@ const formSchema = computed<FormField[]>(() => {
             {label: '生产单', value: 'production'},
             {label: '通用任务', value: 'general'},
           ],
+          required: true,
         },
         {key: 'code', label: '任务编号'},
-        {key: 'title', label: '标题'},
+        {key: 'title', label: '标题', required: formState.type === 'general'},
         {key: 'customer_id', label: '客户', kind: 'select', options: rowsFor('customers').map((item) => ({label: item.name || item.code || `#${item.id}`, value: item.id}))},
-        {key: 'product_name', label: '产品'},
-        {key: 'planned_quantity', label: '计划数量'},
-        {key: 'unit', label: '单位'},
+        ...(formState.type === 'production' ? [{key: 'product_id', label: '仓库产品', kind: 'workorder-product' as const, required: true}] : []),
+        {key: 'planned_quantity', label: '计划数量', kind: formState.type === 'production' ? 'workorder-quantity' : 'text', required: formState.type === 'production'},
         {key: 'due_at', label: '交期', kind: 'date'},
         {
           key: 'priority',
@@ -691,8 +719,8 @@ const formSchema = computed<FormField[]>(() => {
             {label: '加急', value: 'urgent'},
           ],
         },
-        {key: 'target_department_ids', label: '流转部门', kind: 'multi-select', options: departmentOptions},
-        {key: 'description', label: '说明', kind: 'textarea'},
+        {key: 'target_department_ids', label: '流转部门', kind: 'multi-select', options: departmentOptions, required: true},
+        {key: 'description', label: '说明', kind: 'textarea', required: formState.type === 'general'},
       ]
     default:
       return []
@@ -1341,6 +1369,9 @@ function normalizedForm(): Record<string, unknown> {
 }
 
 function validateActiveForm(): string {
+  if (activeKey.value === 'workorder' && formState.type === 'production' && !hasPermission('warehouse:read')) {
+    return '当前账号缺少仓库查看权限，无法选择产品或创建生产单；请联系管理员授权或改为通用任务。'
+  }
   const missing = formSchema.value.filter((field) => field.required && (
     formState[field.key] === undefined
     || formState[field.key] === null
@@ -1357,12 +1388,20 @@ function validateActiveForm(): string {
       }
     }
   }
+  if (activeKey.value === 'workorder') {
+    if (!Array.isArray(formState.target_department_ids) || !formState.target_department_ids.length) return '请选择至少一个流转部门。'
+    if (formState.type === 'production') {
+      const quantity = String(formState.planned_quantity || '').trim()
+      if (!/^\d+(\.\d{1,4})?$/.test(quantity) || Number(quantity) <= 0) return '生产单计划数量必须大于 0，且最多保留 4 位小数。'
+    }
+  }
   return ''
 }
 
 const numericKeys = new Set(['quantity', 'unit_cost', 'default_cost', 'safety_stock', 'customer_id', 'product_id', 'cavity_count', 'weight_gram', 'maintenance_cycle_days'])
 
 function clearForm() {
+  resetWorkorderProductSelection()
   for (const key of Object.keys(formState)) {
     delete formState[key]
   }
@@ -1373,6 +1412,14 @@ function toggleCreateForm() {
   editingSupplier.value = null
   clearForm()
   showCreateForm.value = !showCreateForm.value
+  if (showCreateForm.value && activeKey.value === 'workorder') {
+    formState.type = 'production'
+    formState.priority = 'normal'
+    void searchWorkorderProducts('')
+  } else if (!showCreateForm.value) {
+    invalidateWorkorderProductSearch()
+    closeTemporaryProductDialog()
+  }
 }
 
 function editSupplier(item: any) {
@@ -1545,10 +1592,16 @@ let warehouseDetailRequestToken = 0
 let itemMovementsRequestToken = 0
 let moldDetailRequestToken = 0
 let workorderLogsRequestToken = 0
+let workorderProductSearchRequestToken = 0
+let workorderProductStockRequestToken = 0
+let workorderDrawerProductStockRequestToken = 0
 let warehouseDetailAbortController: AbortController | null = null
 let itemMovementsAbortController: AbortController | null = null
 let moldDetailAbortController: AbortController | null = null
 let workorderLogsAbortController: AbortController | null = null
+let workorderProductSearchAbortController: AbortController | null = null
+let workorderProductStockAbortController: AbortController | null = null
+let workorderDrawerProductStockAbortController: AbortController | null = null
 
 function invalidateWarehouseRequests() {
   warehouseDetailAbortController?.abort()
@@ -2046,12 +2099,230 @@ function movementQuantity(document: BasicItem): string {
   return `${document.type === 'outbound' ? '−' : '+'}${quantity} ${selectedWarehouseItem.value?.unit || ''}`
 }
 
+function safeWorkorderProduct(item: BasicItem): BasicItem {
+  const safe = {...item}
+  delete safe.default_cost
+  delete safe.avg_cost
+  delete safe.amount
+  return safe
+}
+
+function normalizeWorkorderProductDetail(data: BasicItem, fallback?: BasicItem): BasicItem {
+  const nestedItem = data.item && typeof data.item === 'object' && !Array.isArray(data.item)
+    ? data.item as BasicItem
+    : data
+  return safeWorkorderProduct({
+    ...(fallback || {}),
+    ...nestedItem,
+    quantity: data.quantity ?? nestedItem.quantity ?? fallback?.quantity ?? 0,
+    safety_stock: nestedItem.safety_stock ?? data.safety_stock ?? fallback?.safety_stock ?? 0,
+    item_type: 'product',
+  })
+}
+
+function invalidateWorkorderProductSearch() {
+  workorderProductSearchAbortController?.abort()
+  workorderProductSearchAbortController = null
+  workorderProductSearchRequestToken += 1
+  workorderProductSearchLoading.value = false
+}
+
+function isWorkorderProductionCreateFormActive(): boolean {
+  return activeKey.value === 'workorder' && showCreateForm.value && formState.type === 'production'
+}
+
+async function searchWorkorderProducts(keyword = '') {
+  if (!isWorkorderProductionCreateFormActive()) return
+  if (!hasPermission('warehouse:read')) {
+    workorderProductOptions.value = []
+    workorderProductSearchError.value = ''
+    return
+  }
+  workorderProductSearchAbortController?.abort()
+  const abortController = new AbortController()
+  workorderProductSearchAbortController = abortController
+  const requestToken = ++workorderProductSearchRequestToken
+  workorderProductSearchLoading.value = true
+  workorderProductSearchError.value = ''
+  try {
+    const path = appendQuery('/api/v1/warehouse/items', {tab: 'product', q: keyword.trim(), page: 1, page_size: 50})
+    const data = await request<PaginatedResponse<BasicItem> | BasicItem[]>(path, {signal: abortController.signal}, token.value)
+    if (requestToken !== workorderProductSearchRequestToken || !isWorkorderProductionCreateFormActive()) return
+    const items = Array.isArray(data) ? data : data.items
+    workorderProductOptions.value = items.map(safeWorkorderProduct)
+  } catch (error) {
+    if (requestToken !== workorderProductSearchRequestToken || !isWorkorderProductionCreateFormActive()) return
+    workorderProductSearchError.value = error instanceof Error ? error.message : '仓库产品搜索失败，请重试。'
+  } finally {
+    if (workorderProductSearchAbortController === abortController) workorderProductSearchAbortController = null
+    if (requestToken === workorderProductSearchRequestToken) workorderProductSearchLoading.value = false
+  }
+}
+
+function handleWorkorderProductSelect(productID: unknown) {
+  const id = Number(productID || 0)
+  if (!id) {
+    resetWorkorderProductSelection()
+    return
+  }
+  const option = workorderProductOptions.value.find((item) => Number(item.id) === id)
+  workorderProductStock.value = option ? safeWorkorderProduct(option) : null
+  workorderProductStockError.value = ''
+  workorderProductStockUpdatedAt.value = ''
+  void loadWorkorderProductStock()
+}
+
+function resetWorkorderProductSelection() {
+  workorderProductStockAbortController?.abort()
+  workorderProductStockAbortController = null
+  workorderProductStockRequestToken += 1
+  delete formState.product_id
+  workorderProductStock.value = null
+  workorderProductStockLoading.value = false
+  workorderProductStockError.value = ''
+  workorderProductStockUpdatedAt.value = ''
+}
+
+async function loadWorkorderProductStock() {
+  const productID = Number(formState.product_id || 0)
+  if (!productID || !isWorkorderProductionCreateFormActive()) return
+  if (!hasPermission('warehouse:read')) {
+    workorderProductStockLoading.value = false
+    workorderProductStockError.value = ''
+    return
+  }
+  workorderProductStockAbortController?.abort()
+  const abortController = new AbortController()
+  workorderProductStockAbortController = abortController
+  const requestToken = ++workorderProductStockRequestToken
+  workorderProductStockLoading.value = true
+  workorderProductStockError.value = ''
+  const fallback = workorderProductOptions.value.find((item) => Number(item.id) === productID) || workorderProductStock.value || undefined
+  try {
+    const data = await request<BasicItem>(`/api/v1/warehouse/items/product/${productID}`, {signal: abortController.signal}, token.value)
+    if (requestToken !== workorderProductStockRequestToken || !isWorkorderProductionCreateFormActive() || Number(formState.product_id) !== productID) return
+    workorderProductStock.value = normalizeWorkorderProductDetail(data, fallback)
+    workorderProductStockUpdatedAt.value = new Date().toISOString()
+  } catch (error) {
+    if (requestToken !== workorderProductStockRequestToken || !isWorkorderProductionCreateFormActive() || Number(formState.product_id) !== productID) return
+    workorderProductStockError.value = error instanceof Error ? error.message : '库存数量加载失败，请重试。'
+  } finally {
+    if (workorderProductStockAbortController === abortController) workorderProductStockAbortController = null
+    if (requestToken === workorderProductStockRequestToken && Number(formState.product_id) === productID) workorderProductStockLoading.value = false
+  }
+}
+
+function openTemporaryProductDialog() {
+  if (!hasPermission('warehouse:read') || !hasPermission('workorder:write') || !hasPermission('workorder:temporary-product:write')) return
+  temporaryProductForm.name = ''
+  temporaryProductForm.code = ''
+  temporaryProductForm.unit = '个'
+  temporaryProductForm.spec = ''
+  temporaryProductError.value = ''
+  temporaryProductDialogVisible.value = true
+}
+
+function closeTemporaryProductDialog() {
+  if (temporaryProductSubmitting.value) return
+  temporaryProductDialogVisible.value = false
+  temporaryProductError.value = ''
+}
+
+async function createTemporaryProduct() {
+  if (!hasPermission('warehouse:read') || !hasPermission('workorder:write') || !hasPermission('workorder:temporary-product:write')) {
+    temporaryProductError.value = '当前账号没有临时新增产品的权限。'
+    return
+  }
+  const name = temporaryProductForm.name.trim()
+  const code = temporaryProductForm.code.trim()
+  const unit = temporaryProductForm.unit.trim()
+  if (!name || !code || !unit) {
+    temporaryProductError.value = '请填写产品名称、产品编码和单位。'
+    return
+  }
+  invalidateWorkorderProductSearch()
+  temporaryProductSubmitting.value = true
+  temporaryProductError.value = ''
+  try {
+    const created = await request<BasicItem>('/api/v1/workorder/products', {
+      method: 'POST',
+      body: {name, code, unit, spec: temporaryProductForm.spec.trim()},
+    }, token.value)
+    const product = normalizeWorkorderProductDetail(created)
+    if (!isWorkorderProductionCreateFormActive()) return
+    invalidateWorkorderProductSearch()
+    workorderProductOptions.value = [product, ...workorderProductOptions.value.filter((item) => Number(item.id) !== Number(product.id))]
+    formState.product_id = Number(product.id)
+    workorderProductStock.value = product
+    temporaryProductDialogVisible.value = false
+    ElMessage.success('产品档案已新增并选中，初始库存为 0。')
+    await loadWorkorderProductStock()
+  } catch (error) {
+    temporaryProductError.value = error instanceof Error ? error.message : '临时产品建档失败，请检查编码后重试。'
+  } finally {
+    temporaryProductSubmitting.value = false
+  }
+}
+
+function invalidateWorkorderDrawerProductStock() {
+  workorderDrawerProductStockAbortController?.abort()
+  workorderDrawerProductStockAbortController = null
+  workorderDrawerProductStockRequestToken += 1
+  workorderDrawerProductStockLoading.value = false
+}
+
+async function loadWorkorderDrawerProductStock() {
+  const workorderID = Number(selectedWorkOrder.value?.id || 0)
+  const productID = Number(selectedWorkOrder.value?.product_id || 0)
+  if (!workorderID || !productID) return
+  if (!hasPermission('warehouse:read')) {
+    workorderDrawerProductStockLoading.value = false
+    workorderDrawerProductStockError.value = ''
+    return
+  }
+  workorderDrawerProductStockAbortController?.abort()
+  const abortController = new AbortController()
+  workorderDrawerProductStockAbortController = abortController
+  const requestToken = ++workorderDrawerProductStockRequestToken
+  workorderDrawerProductStockLoading.value = true
+  workorderDrawerProductStockError.value = ''
+  const fallback = workorderDrawerProductStock.value || {
+    id: productID,
+    name: String(selectedWorkOrder.value?.product_name || ''),
+    unit: String(selectedWorkOrder.value?.unit || ''),
+  }
+  try {
+    const data = await request<BasicItem>(`/api/v1/warehouse/items/product/${productID}`, {signal: abortController.signal}, token.value)
+    if (requestToken !== workorderDrawerProductStockRequestToken
+      || !workorderDrawerVisible.value
+      || Number(selectedWorkOrder.value?.id) !== workorderID
+      || Number(selectedWorkOrder.value?.product_id) !== productID) return
+    workorderDrawerProductStock.value = normalizeWorkorderProductDetail(data, fallback)
+    workorderDrawerProductStockUpdatedAt.value = new Date().toISOString()
+  } catch (error) {
+    if (requestToken !== workorderDrawerProductStockRequestToken
+      || !workorderDrawerVisible.value
+      || Number(selectedWorkOrder.value?.id) !== workorderID
+      || Number(selectedWorkOrder.value?.product_id) !== productID) return
+    workorderDrawerProductStockError.value = error instanceof Error ? error.message : '库存数量加载失败，请重试。'
+  } finally {
+    if (workorderDrawerProductStockAbortController === abortController) workorderDrawerProductStockAbortController = null
+    if (requestToken === workorderDrawerProductStockRequestToken && Number(selectedWorkOrder.value?.id) === workorderID) {
+      workorderDrawerProductStockLoading.value = false
+    }
+  }
+}
+
 function openWorkOrder(item: any) {
   selectedWorkOrder.value = item
   workorderLogs.value = []
   workorderLogsError.value = ''
+  workorderDrawerProductStock.value = null
+  workorderDrawerProductStockError.value = ''
+  workorderDrawerProductStockUpdatedAt.value = ''
   workorderDrawerVisible.value = true
   void loadWorkOrderLogs()
+  if (Number(item.product_id || 0) && hasPermission('warehouse:read')) void loadWorkorderDrawerProductStock()
 }
 
 function invalidateWorkOrderLogsRequest() {
@@ -2069,20 +2340,27 @@ function isCurrentWorkOrderLogsRequest(requestToken: number, workorderID: number
 
 function closeWorkOrder() {
   invalidateWorkOrderLogsRequest()
+  invalidateWorkorderDrawerProductStock()
   workorderDrawerVisible.value = false
 }
 
 function handleWorkOrderBeforeClose(done: () => void) {
   invalidateWorkOrderLogsRequest()
+  invalidateWorkorderDrawerProductStock()
   done()
 }
 
 function resetWorkOrder() {
   invalidateWorkOrderLogsRequest()
+  invalidateWorkorderDrawerProductStock()
   selectedWorkOrder.value = null
   workorderLogs.value = []
   workorderLogsLoading.value = false
   workorderLogsError.value = ''
+  workorderDrawerProductStock.value = null
+  workorderDrawerProductStockLoading.value = false
+  workorderDrawerProductStockError.value = ''
+  workorderDrawerProductStockUpdatedAt.value = ''
 }
 
 async function loadWorkOrderLogs() {
@@ -2443,6 +2721,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearSessionRefreshTimer()
+  invalidateWorkorderProductSearch()
+  resetWorkorderProductSelection()
+  invalidateWorkorderDrawerProductStock()
   window.removeEventListener('focus', refreshOnSessionActivity)
   document.removeEventListener('visibilitychange', refreshOnSessionActivity)
   configureAuthSession(null)
@@ -2507,6 +2788,7 @@ onBeforeUnmount(() => {
     formState,
     movementForm,
     quickSupplier,
+    temporaryProductForm,
     activeWarehouseTab,
     workorderStatusFilter,
     workorderTypeFilter,
@@ -2516,6 +2798,20 @@ onBeforeUnmount(() => {
     workorderLogs,
     workorderLogsLoading,
     workorderLogsError,
+    workorderProductOptions,
+    workorderProductSearchLoading,
+    workorderProductSearchError,
+    workorderProductStock,
+    workorderProductStockLoading,
+    workorderProductStockError,
+    workorderProductStockUpdatedAt,
+    workorderDrawerProductStock,
+    workorderDrawerProductStockLoading,
+    workorderDrawerProductStockError,
+    workorderDrawerProductStockUpdatedAt,
+    temporaryProductDialogVisible,
+    temporaryProductSubmitting,
+    temporaryProductError,
     moldDetailDrawerVisible,
     selectedMoldDetail,
     selectedMoldID,
@@ -2692,6 +2988,14 @@ onBeforeUnmount(() => {
     formatDate,
     businessTypeLabel,
     movementQuantity,
+    searchWorkorderProducts,
+    handleWorkorderProductSelect,
+    resetWorkorderProductSelection,
+    loadWorkorderProductStock,
+    openTemporaryProductDialog,
+    closeTemporaryProductDialog,
+    createTemporaryProduct,
+    loadWorkorderDrawerProductStock,
     openWorkOrder,
     invalidateWorkOrderLogsRequest,
     isCurrentWorkOrderLogsRequest,

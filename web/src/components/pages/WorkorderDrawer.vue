@@ -15,6 +15,33 @@
             <div><span>优先级</span><strong>{{ selectedWorkOrder.priority === 'urgent' ? '加急' : '普通' }}</strong></div>
             <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong><StatusTag v-if="workorderDueState(selectedWorkOrder).overdue" :label="workorderDueState(selectedWorkOrder).label" tone="danger"/></div>
           </div>
+          <WorkorderStockCard
+            v-if="selectedWorkOrder.product_id && hasPermission('warehouse:read')"
+            class="workorder-drawer-stock"
+            :product="workorderDrawerProductStock"
+            :loading="workorderDrawerProductStockLoading"
+            :error="workorderDrawerProductStockError"
+            :updated-at="workorderDrawerProductStockUpdatedAt"
+            @refresh="loadWorkorderDrawerProductStock"
+          />
+          <el-alert
+            v-else-if="selectedWorkOrder.product_id"
+            class="workorder-drawer-stock"
+            title="当前账号无权查看仓库库存"
+            description="产品关联已保留；如需查看实时库存，请联系管理员授予 warehouse:read。"
+            type="info"
+            :closable="false"
+            show-icon
+          />
+          <el-alert
+            v-else-if="selectedWorkOrder.type === 'production'"
+            class="workorder-drawer-stock"
+            title="历史生产单未关联仓库产品"
+            :description="`保留创建时产品名称“${selectedWorkOrder.product_name || '未记录'}”，无法据此查询实时库存。`"
+            type="info"
+            :closable="false"
+            show-icon
+          />
           <p v-if="selectedWorkOrder.description" class="drawer-message">{{ selectedWorkOrder.description }}</p>
           <section class="workorder-stage-card" aria-label="任务当前阶段">
             <div class="workorder-stage-card__heading">
@@ -95,6 +122,7 @@
 import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
 import StatusTag from '../ui/StatusTag.vue'
+import WorkorderStockCard from './WorkorderStockCard.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {
@@ -104,6 +132,10 @@ const {
   workorderLogs,
   workorderLogsLoading,
   workorderLogsError,
+  workorderDrawerProductStock,
+  workorderDrawerProductStockLoading,
+  workorderDrawerProductStockError,
+  workorderDrawerProductStockUpdatedAt,
   authRequestGeneration,
   statisticsData,
   selectedMoldMaintenanceState,
@@ -280,6 +312,7 @@ const {
   handleWorkOrderBeforeClose,
   resetWorkOrder,
   loadWorkOrderLogs,
+  loadWorkorderDrawerProductStock,
   dispatchWorkOrder,
   pauseWorkOrder,
   resumeWorkOrder,

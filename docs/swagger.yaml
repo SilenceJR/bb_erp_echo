@@ -462,6 +462,29 @@ definitions:
       work_order_id:
         type: integer
     type: object
+  model.Product:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      default_cost:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      safety_stock:
+        type: integer
+      spec:
+        type: string
+      status:
+        type: string
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
   model.WorkOrder:
     properties:
       cancel_reason:
@@ -492,6 +515,8 @@ definitions:
         type: integer
       priority:
         type: string
+      product_id:
+        type: integer
       product_name:
         type: string
       status:
@@ -1013,8 +1038,8 @@ definitions:
         type: integer
       priority:
         type: string
-      product_name:
-        type: string
+      product_id:
+        type: integer
       target_department_ids:
         items:
           type: integer
@@ -1022,8 +1047,6 @@ definitions:
       title:
         type: string
       type:
-        type: string
-      unit:
         type: string
     type: object
   workorder.partialCompleteRequest:
@@ -1037,6 +1060,24 @@ definitions:
     properties:
       reason:
         type: string
+    type: object
+  workorder.temporaryProductRequest:
+    properties:
+      code:
+        example: P-001
+        type: string
+      name:
+        example: 白色外壳
+        type: string
+      spec:
+        example: 标准
+        type: string
+      unit:
+        example: 个
+        type: string
+    required:
+    - code
+    - name
     type: object
   workorder.urgentRequest:
     properties:
@@ -2111,6 +2152,7 @@ paths:
       tags:
       - workorder
     post:
+      description: 创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。
       parameters:
       - description: 任务单创建参数
         in: body
@@ -2462,6 +2504,51 @@ paths:
       security:
       - BearerAuth: []
       summary: 部门开始处理子任务
+      tags:
+      - workorder
+  /api/v1/workorder/products:
+    post:
+      consumes:
+      - application/json
+      description: 创建启用状态的正式产品档案；初始安全库存和当前库存均为 0，不创建库存流水。接口同时需要 workorder:write 和
+        workorder:temporary-product:write 权限。
+      parameters:
+      - description: 产品建档参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/workorder.temporaryProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Product'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 临时建立仓库产品档案
       tags:
       - workorder
   /health:

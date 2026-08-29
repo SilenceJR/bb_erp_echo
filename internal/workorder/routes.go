@@ -62,13 +62,20 @@ type createRequest struct {
 	Title               string `json:"title"`
 	Type                string `json:"type"`
 	CustomerID          *uint  `json:"customer_id"`
-	ProductName         string `json:"product_name"`
+	ProductID           *uint  `json:"product_id"`
 	PlannedQuantity     int64  `json:"planned_quantity"`
-	Unit                string `json:"unit"`
 	DueAt               string `json:"due_at"`
 	Priority            string `json:"priority"`
 	Description         string `json:"description"`
 	TargetDepartmentIDs []uint `json:"target_department_ids"`
+}
+
+// temporaryProductRequest 是生产单内临时建立仓库产品档案的请求体。
+type temporaryProductRequest struct {
+	Name string `json:"name" validate:"required" example:"白色外壳"`
+	Code string `json:"code" validate:"required" example:"P-001"`
+	Spec string `json:"spec" example:"标准"`
+	Unit string `json:"unit" example:"个"`
 }
 
 type reasonRequest struct {
@@ -105,6 +112,9 @@ func (h *Handler) register(v1 *echo.Group, path string, require func(string, str
 	group := v1.Group("/"+path, audit)
 	group.GET("", h.List, require(object, "read"))
 	group.POST("", h.Create, require(object, "write"))
+	if path == "workorder" {
+		group.POST("/products", h.CreateTemporaryProduct, require(object, "write"), require(temporaryProductObject, "write"))
+	}
 	group.POST("/:id/dispatch", h.Dispatch, require(object, "write"))
 	group.POST("/:id/pause", h.Pause, require(object, "write"))
 	group.POST("/:id/resume", h.Resume, require(object, "write"))
@@ -115,6 +125,8 @@ func (h *Handler) register(v1 *echo.Group, path string, require func(string, str
 	group.POST("/department-tasks/:id/partial-complete", h.PartialCompleteDepartmentTask, require(object, "write"))
 	group.POST("/department-tasks/:id/complete", h.CompleteDepartmentTask, require(object, "write"))
 }
+
+const temporaryProductObject = "/api/v1/workorder/products"
 
 // List 分页查询任务单，并返回部门子任务摘要。
 // @Summary 分页查询任务单
@@ -162,6 +174,7 @@ func (h *Handler) List(c *echo.Context) error {
 
 // Create 创建草稿任务单。
 // @Summary 创建草稿任务单
+// @Description 创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。
 // @Tags workorder
 // @Security BearerAuth
 // @Param body body createRequest true "任务单创建参数"
@@ -182,19 +195,30 @@ func (h *Handler) Create(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
+	itemType := defaultString(req.Type, TypeProduction)
+	var product *model.Product
+	if itemType == TypeProduction {
+		product, err = h.loadActiveProduct(req.ProductID)
+		if err != nil {
+			return err
+		}
+	}
 	current := auth.GetCurrentUser(c)
 	item := model.WorkOrder{
 		Code:            strings.TrimSpace(req.Code),
 		Title:           strings.TrimSpace(req.Title),
-		Type:            defaultString(req.Type, TypeProduction),
+		Type:            itemType,
 		Status:          StatusDraft,
 		Priority:        defaultString(req.Priority, PriorityNormal),
 		CustomerID:      req.CustomerID,
-		ProductName:     strings.TrimSpace(req.ProductName),
 		PlannedQuantity: req.PlannedQuantity,
-		Unit:            strings.TrimSpace(req.Unit),
 		DueAt:           dueAt,
 		Description:     strings.TrimSpace(req.Description),
+	}
+	if product != nil {
+		item.ProductID = &product.ID
+		item.ProductName = product.Name
+		item.Unit = product.Unit
 	}
 	if item.Code == "" {
 		item.Code = fmt.Sprintf("WO-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano())
@@ -227,6 +251,87 @@ func (h *Handler) Create(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusCreated, item)
+}
+
+// CreateTemporaryProduct 在生产单内创建尚未建档的仓库产品。
+//
+// @Summary 临时建立仓库产品档案
+// @Description 创建启用状态的正式产品档案；初始安全库存和当前库存均为 0，不创建库存流水。接口同时需要 workorder:write 和 workorder:temporary-product:write 权限。
+// @Tags workorder
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body temporaryProductRequest true "产品建档参数"
+// @Success 201 {object} model.Product
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /api/v1/workorder/products [post]
+func (h *Handler) CreateTemporaryProduct(c *echo.Context) error {
+	var req temporaryProductRequest
+	if err := request.BindAndValidate(c, &req); err != nil {
+		return err
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.Code = strings.TrimSpace(req.Code)
+	req.Spec = strings.TrimSpace(req.Spec)
+	req.Unit = defaultString(req.Unit, "个")
+	if req.Name == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "产品名称不能为空")
+	}
+	if req.Code == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "产品编码不能为空")
+	}
+
+	var existing model.Product
+	err := h.DB.Where("code = ?", req.Code).First(&existing).Error
+	if err == nil {
+		return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	item := model.Product{
+		Name:   req.Name,
+		Code:   req.Code,
+		Spec:   req.Spec,
+		Unit:   req.Unit,
+		Status: model.StatusActive,
+	}
+	if err := h.DB.Create(&item).Error; err != nil {
+		if isUniqueConstraintError(err) {
+			return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
+		}
+		return err
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) loadActiveProduct(id *uint) (*model.Product, error) {
+	if id == nil || *id == 0 {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择仓库产品")
+	}
+	var product model.Product
+	if err := h.DB.First(&product, *id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, echo.NewHTTPError(http.StatusNotFound, "仓库产品不存在")
+		}
+		return nil, err
+	}
+	if product.Status != model.StatusActive {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "仓库产品已停用，不能用于生产单")
+	}
+	return &product, nil
+}
+
+func isUniqueConstraintError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "duplicate key") ||
+		strings.Contains(message, "unique violation")
 }
 
 // Dispatch 派发任务，目标部门自动进入已收到状态。
@@ -685,14 +790,11 @@ func validateCreateRequest(req createRequest) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "请选择至少一个流转部门")
 	}
 	if itemType == TypeProduction {
-		if strings.TrimSpace(req.ProductName) == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "生产单必须填写产品")
+		if req.ProductID == nil || *req.ProductID == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择仓库产品")
 		}
 		if req.PlannedQuantity <= 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "生产单计划数量必须大于 0")
-		}
-		if strings.TrimSpace(req.Unit) == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "生产单必须填写单位")
 		}
 		return nil
 	}

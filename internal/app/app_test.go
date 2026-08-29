@@ -351,13 +351,22 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 		t.Fatalf("personal audit person = %q", personalAudit.PersonName)
 	}
 
+	product := model.Product{
+		Name:   "审计测试产品",
+		Code:   "AUDIT-PRODUCT-001",
+		Unit:   "个",
+		Status: model.StatusActive,
+	}
+	if err := erp.DB.Create(&product).Error; err != nil {
+		t.Fatalf("create audit product: %v", err)
+	}
+
 	terminalToken := erp.createTerminalUserAndLogin(t)
 	rec = erp.request(http.MethodPost, "/api/v1/tasks", terminalToken, map[string]any{
 		"code":                  "AUDIT-TASK-001",
 		"type":                  "production",
-		"product_name":          "审计测试产品",
+		"product_id":            product.ID,
 		"planned_quantity":      int64(10000),
-		"unit":                  "个",
 		"target_department_ids": []uint{1},
 	})
 	if rec.Code != http.StatusCreated {

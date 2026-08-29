@@ -66,6 +66,8 @@ declare module 'vue' {
     UpdateCenter: typeof import('./src/components/UpdateCenter.vue')['default']
     WarehouseDrawer: typeof import('./src/components/pages/WarehouseDrawer.vue')['default']
     WorkorderDrawer: typeof import('./src/components/pages/WorkorderDrawer.vue')['default']
+    WorkorderProductField: typeof import('./src/components/pages/WorkorderProductField.vue')['default']
+    WorkorderStockCard: typeof import('./src/components/pages/WorkorderStockCard.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

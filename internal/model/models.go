@@ -184,7 +184,7 @@ type Location struct {
 type InventoryBalance struct {
 	BaseModel
 	WarehouseID uint   `json:"warehouse_id" gorm:"not null;index:idx_inventory_balance,unique"`
-	LocationID  *uint  `json:"location_id" gorm:"index"`
+	LocationID  *uint  `json:"location_id" gorm:"index:idx_inventory_balance,unique"`
 	ItemType    string `json:"item_type" gorm:"size:30;not null;index:idx_inventory_balance,unique"`
 	ItemID      uint   `json:"item_id" gorm:"not null;index:idx_inventory_balance,unique"`
 	Quantity    int64  `json:"quantity" gorm:"not null;default:0"`
@@ -286,6 +286,7 @@ type WorkOrder struct {
 	Status          string           `json:"status" gorm:"size:40;not null;default:draft;index"`
 	Priority        string           `json:"priority" gorm:"size:30;not null;default:normal;index"`
 	CustomerID      *uint            `json:"customer_id" gorm:"index"`
+	ProductID       *uint            `json:"product_id" gorm:"index"`
 	ProductName     string           `json:"product_name" gorm:"size:160"`
 	PlannedQuantity int64            `json:"planned_quantity" gorm:"not null;default:0"`
 	Unit            string           `json:"unit" gorm:"size:30"`
