@@ -127,6 +127,7 @@ Go 后端核心业务已经形成可运行的模块化单体：Echo HTTP 服务�
 
     go vet ./...                         通过（使用临时 GOCACHE/GOTMPDIR）
     Go 测试（排除 internal/update）       通过
+    入库数量边界回归测试                    本次新增，验证 `999.0000`、最大值 `999999999` 可入库，超过上限和 0 数量被拒绝
     图片单图/多图批量接收与原子回滚测试      通过（internal/file，含 race）
     bash scripts/test-release-semver.sh  通过
     bash scripts/test-release-delta-base.sh 通过

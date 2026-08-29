@@ -20,6 +20,7 @@ const (
 	businessReturnReworkInbound = "return_rework_inbound"
 	businessCustomerOutbound    = "customer_outbound"
 	businessDepartmentOutbound  = "department_outbound"
+	maxMovementQuantity         = int64(999999999 * 10000)
 )
 
 type itemMovementRequest struct {
@@ -107,6 +108,9 @@ func (h *Handler) CreateItemMovement(c *echo.Context) error {
 	}
 	if req.Quantity <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "数量必须大于 0")
+	}
+	if req.Quantity > maxMovementQuantity {
+		return echo.NewHTTPError(http.StatusBadRequest, "数量不能超过 999999999")
 	}
 	strategy, ok := h.movementStrategies[req.BusinessType]
 	if !ok {

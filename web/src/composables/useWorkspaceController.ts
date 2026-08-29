@@ -21,6 +21,52 @@ type AuthResponse = {
   user: CurrentUser
 }
 
+let fallbackIdempotencySequence = 0
+
+function formatUuidBytes(bytes: Uint8Array): string {
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+function fallbackHex(length: number): string {
+  let result = ''
+  while (result.length < length) {
+    result += Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0')
+  }
+  return result.slice(0, length)
+}
+
+function fallbackIdempotencyKey(): string {
+  // Idempotency keys are not secrets; preserve uniqueness when Web Crypto is unavailable.
+  const timestamp = Date.now().toString(16).padStart(12, '0')
+  const sequence = (fallbackIdempotencySequence++ % 0x100000000).toString(16).padStart(8, '0')
+  const hex = `${timestamp}${sequence}${fallbackHex(12)}`
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20)}`
+}
+
+function createIdempotencyKey(): string {
+  const webCrypto = typeof crypto !== 'undefined' ? crypto : undefined
+  if (webCrypto && typeof webCrypto.randomUUID === 'function') {
+    try {
+      return webCrypto.randomUUID()
+    } catch {
+      // Continue with the next available generator for incomplete WebView implementations.
+    }
+  }
+  if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
+    try {
+      const bytes = new Uint8Array(16)
+      webCrypto.getRandomValues(bytes)
+      bytes[6] = (bytes[6] & 0x0f) | 0x40
+      bytes[8] = (bytes[8] & 0x3f) | 0x80
+      return formatUuidBytes(bytes)
+    } catch {
+      // Fall back to a local unique key if Web Crypto is present but unusable.
+    }
+  }
+  return fallbackIdempotencyKey()
+}
+
 
 /**
  * Creates the authenticated workspace state shared by Web and Tauri.
@@ -1923,7 +1969,7 @@ async function submitMovement() {
   try {
     await request(`/api/v1/warehouse/items/${item.item_type}/${item.id}/movements`, {
       method: 'POST',
-      headers: {'Idempotency-Key': crypto.randomUUID()},
+      headers: {'Idempotency-Key': createIdempotencyKey()},
       body,
     }, token.value)
     movementMode.value = ''

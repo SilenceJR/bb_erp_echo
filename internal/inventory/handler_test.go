@@ -166,6 +166,64 @@ func TestItemMovementsPostImmediatelyAndAreIdempotent(t *testing.T) {
 	}
 }
 
+// TestItemMovementAcceptsFourDecimalInboundQuantity 验证采购入库支持按四位定点精度
+// 直接提交校准数量，避免界面输入的 999.0000 被后端截断或改变。
+func TestItemMovementAcceptsFourDecimalInboundQuantity(t *testing.T) {
+	db := openInventoryTestDB(t)
+	handler := NewHandler(db)
+	supplier := model.Supplier{Name: "校准供应商", Code: "SUP-CALIBRATE", Status: model.StatusActive}
+	material := model.Material{Name: "校准物料", Code: "MAT-CALIBRATE", Unit: "个", Status: model.StatusActive}
+	if err := db.Create(&supplier).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&material).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const calibratedQuantity int64 = 9990000
+	rec := performItemMovementJSON(t, handler, material, map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      calibratedQuantity,
+		"supplier_id":   supplier.ID,
+	}, "movement-calibrated-quantity", []string{"suppliers:read"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("calibrated inbound status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var balance model.InventoryBalance
+	if err := db.Where("item_type = ? AND item_id = ?", itemMaterial, material.ID).First(&balance).Error; err != nil {
+		t.Fatal(err)
+	}
+	if balance.Quantity != calibratedQuantity {
+		t.Fatalf("calibrated quantity = %d, want %d", balance.Quantity, calibratedQuantity)
+	}
+
+	rec = performItemMovementJSON(t, handler, material, map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      maxMovementQuantity,
+		"supplier_id":   supplier.ID,
+	}, "movement-max-quantity", []string{"suppliers:read"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("maximum inbound status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = performItemMovementJSON(t, handler, material, map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      maxMovementQuantity + 1,
+		"supplier_id":   supplier.ID,
+	}, "movement-over-max-quantity", []string{"suppliers:read"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("over maximum inbound status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = performItemMovementJSON(t, handler, material, map[string]any{
+		"business_type": businessPurchaseInbound,
+		"quantity":      int64(0),
+		"supplier_id":   supplier.ID,
+	}, "movement-zero-quantity", []string{"suppliers:read"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("zero inbound status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestItemMovementBusinessPartiesAndReturn(t *testing.T) {
 	db := openInventoryTestDB(t)
 	handler := NewHandler(db)

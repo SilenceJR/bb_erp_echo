@@ -93,8 +93,8 @@
               </el-select>
             </el-form-item>
             <el-form-item :label="`数量（${selectedWarehouseItem.unit}）`" required>
-              <el-input-number v-model="movementForm.quantity" :min="0.0001" :precision="4" :controls="false" :input-attrs="{'aria-invalid': Boolean(movementQuantityError), 'aria-describedby': 'movement-quantity-help movement-quantity-error'}" placeholder="请输入大于 0 的数量"/>
-              <small id="movement-quantity-help" class="field-help">当前库存 {{ formatQuantity(warehouseDetail?.quantity) }}；办理后预计 {{ formatQuantity(expectedStockQuantity) }} {{ selectedWarehouseItem.unit }}</small>
+              <el-input-number v-model="movementForm.quantity" :min="0" :max="999999999" :step="0.0001" :precision="4" :controls="false" :input-attrs="{'aria-invalid': Boolean(movementQuantityError), 'aria-describedby': 'movement-quantity-help movement-quantity-error'}" placeholder="请输入 0–999999999，最多 4 位小数"/>
+              <small id="movement-quantity-help" class="field-help">可填 0–999999999，最多 4 位小数；0 不可提交。当前库存 {{ formatQuantity(warehouseDetail?.quantity) }}；办理后预计 {{ formatQuantity(expectedStockQuantity) }} {{ selectedWarehouseItem.unit }}</small>
               <small v-show="movementQuantityError" id="movement-quantity-error" class="field-error" aria-live="polite">{{ movementQuantityError }}</small>
             </el-form-item>
             <el-form-item v-if="movementMode === 'purchase_inbound' && hasPermission('cost:view')" label="采购单价（元）">
