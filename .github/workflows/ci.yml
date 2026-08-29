@@ -397,6 +397,7 @@ jobs:
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
+          set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=
           set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
           set BB_ERP_ADMIN_USERNAME=admin
           bb-erp-server.exe
@@ -524,6 +525,7 @@ jobs:
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
+          set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=
           set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
           set BB_ERP_ADMIN_USERNAME=admin
           bb-erp-server.exe
@@ -554,7 +556,8 @@ jobs:
           set BB_ERP_UPDATE_ENABLED=__UPDATE_ENABLED__
           set BB_ERP_UPDATE_CACHE_DIR=updates
           set BB_ERP_UPDATE_MANIFEST_URL=__UPDATE_MANIFEST_URL__
-          set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=server\update-public.key
+          set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=
+          set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
           set BB_ERP_ADMIN_USERNAME=admin
           start "BB ERP Server" /min /d "%~dp0server" cmd /c "bb-erp-server.exe & echo. & echo [Info] Server exited. & pause"
           timeout /t 3 /nobreak >nul
@@ -599,10 +602,59 @@ jobs:
           - 后续备份数据时，优先备份 server/data 目录。
           '@ | Set-Content -Path (Join-Path $allInOneRoot "README.txt") -Encoding UTF8
 
+          $packagedPublicKey = (Get-Content -LiteralPath (Join-Path $serverPackageRoot "update-public.key") -Raw).Trim()
+          $verifiedPublicKey = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $packagedPublicKey) -join ""
+          if ($packagedPublicKey -ne $verifiedPublicKey) {
+            throw "Packaged update-public.key is not the canonical verified Minisign public-key envelope."
+          }
+          foreach ($launcher in @(
+            (Join-Path $serverPackageRoot "启动服务端.bat"),
+            (Join-Path $allInOneRoot "启动服务端.bat"),
+            (Join-Path $allInOneRoot "启动系统.bat")
+          )) {
+            $launcherText = Get-Content -LiteralPath $launcher -Raw
+            if ($launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=\r?$' -or
+                $launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public[.]key\r?$') {
+              throw "Launcher does not pin the packaged update signing public-key file: $launcher"
+            }
+          }
+
           Compress-Archive -Path "$serverPackageRoot/*" -DestinationPath "release-build/bb-erp-server-windows.zip" -Force
           Compress-Archive -Path "$clientPackageRoot/*" -DestinationPath "release-build/bb-erp-client-windows.zip" -Force
           Compress-Archive -Path "$allInOneRoot/*" -DestinationPath "release-build/bb-erp-all-in-one-windows.zip" -Force
           Compress-Archive -Path "$updaterPackageRoot/*" -DestinationPath "release-build/bb-erp-updater-windows.zip" -Force
+
+          $verifyRoot = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetRandomFileName())
+          New-Item -ItemType Directory -Path $verifyRoot | Out-Null
+          try {
+            $serverVerifyRoot = Join-Path $verifyRoot "server-package"
+            $allInOneVerifyRoot = Join-Path $verifyRoot "all-in-one-package"
+            Expand-Archive -LiteralPath "release-build/bb-erp-server-windows.zip" -DestinationPath $serverVerifyRoot
+            Expand-Archive -LiteralPath "release-build/bb-erp-all-in-one-windows.zip" -DestinationPath $allInOneVerifyRoot
+            foreach ($keyPath in @(
+              (Join-Path $serverVerifyRoot "update-public.key"),
+              (Join-Path $allInOneVerifyRoot "server/update-public.key")
+            )) {
+              $archivedPublicKey = (Get-Content -LiteralPath $keyPath -Raw).Trim()
+              $archivedVerifiedKey = (& "$env:GITHUB_WORKSPACE/scripts/normalize-tauri-public-key.ps1" -Value $archivedPublicKey) -join ""
+              if ($archivedPublicKey -ne $archivedVerifiedKey) {
+                throw "Archived update-public.key failed canonical Minisign verification: $keyPath"
+              }
+            }
+            foreach ($launcher in @(
+              (Join-Path $serverVerifyRoot "启动服务端.bat"),
+              (Join-Path $allInOneVerifyRoot "启动服务端.bat"),
+              (Join-Path $allInOneVerifyRoot "启动系统.bat")
+            )) {
+              $launcherText = Get-Content -LiteralPath $launcher -Raw
+              if ($launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=\r?$' -or
+                  $launcherText -notmatch '(?m)^set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public[.]key\r?$') {
+                throw "Archived launcher does not pin the packaged update signing public-key file: $launcher"
+              }
+            }
+          } finally {
+            Remove-Item -LiteralPath $verifyRoot -Recurse -Force
+          }
 
           $serverHash = (Get-FileHash "release-build/bb-erp-server-windows.zip" -Algorithm SHA256).Hash.ToLower()
           $clientHash = (Get-FileHash "release-build/bb-erp-client-windows.zip" -Algorithm SHA256).Hash.ToLower()

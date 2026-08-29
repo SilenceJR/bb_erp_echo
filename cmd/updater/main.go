@@ -71,20 +71,50 @@ func run(manifestURL string, packagePath string, installDir string, serviceName 
 	if _, err := os.Stat(filepath.Join(sourceDir, "bb-erp-server.exe")); err != nil {
 		return fmt.Errorf("server package does not contain bb-erp-server.exe: %w", err)
 	}
+	if err := validateServerPackage(sourceDir); err != nil {
+		return err
+	}
 
+	wasRunning, err := serverRunning(serviceName)
+	if err != nil {
+		return fmt.Errorf("inspect current server state: %w", err)
+	}
 	if err := stopServer(serviceName); err != nil {
 		return err
 	}
 
 	backupDir := filepath.Join(installDir, "backups", time.Now().Format("20060102-150405"))
 	if err := backupServerFiles(installDir, backupDir); err != nil {
+		if wasRunning {
+			if restartErr := startServer(serviceName, installDir); restartErr != nil {
+				return fmt.Errorf("backup failed (%v); previous server restart failed: %w", err, restartErr)
+			}
+			return fmt.Errorf("backup failed and previous server was restarted: %w", err)
+		}
 		return err
 	}
 	if err := replaceServerFiles(sourceDir, installDir); err != nil {
-		return err
+		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
 	}
 	if err := startServer(serviceName, installDir); err != nil {
-		return err
+		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
+	}
+	return nil
+}
+
+func validateServerPackage(sourceDir string) error {
+	serverPath := filepath.Join(sourceDir, "bb-erp-server.exe")
+	serverInfo, err := os.Stat(serverPath)
+	if err != nil || !serverInfo.Mode().IsRegular() || serverInfo.Size() == 0 {
+		return fmt.Errorf("server package contains an invalid bb-erp-server.exe")
+	}
+	keyPath := filepath.Join(sourceDir, "update-public.key")
+	keyInfo, err := os.Stat(keyPath)
+	if err != nil || !keyInfo.Mode().IsRegular() || keyInfo.Size() == 0 {
+		return fmt.Errorf("server package must contain a non-empty update-public.key")
+	}
+	if _, err := update.LoadSignedManifestVerifier("", keyPath); err != nil {
+		return fmt.Errorf("validate server package update-public.key: %w", err)
 	}
 	return nil
 }
@@ -118,22 +148,129 @@ func downloadServerPackage(manifestURL string, currentVersion string) (string, e
 
 func stopServer(serviceName string) error {
 	if serviceName != "" {
-		_ = exec.Command("sc.exe", "stop", serviceName).Run()
-		time.Sleep(3 * time.Second)
-		return nil
+		stopErr := exec.Command("sc.exe", "stop", serviceName).Run()
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			stopped, err := serviceState(serviceName, "STOPPED")
+			if err != nil {
+				if stopErr != nil {
+					return fmt.Errorf("stop service: %v; query service state: %w", stopErr, err)
+				}
+				return fmt.Errorf("query service state: %w", err)
+			}
+			if stopped {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("service %q did not stop within 30 seconds", serviceName)
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
-	_ = exec.Command("taskkill.exe", "/F", "/IM", "bb-erp-server.exe").Run()
-	time.Sleep(2 * time.Second)
-	return nil
+	killErr := exec.Command("taskkill.exe", "/F", "/IM", "bb-erp-server.exe").Run()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		running, err := serverProcessRunning()
+		if err != nil {
+			if killErr != nil {
+				return fmt.Errorf("stop server process: %v; query process state: %w", killErr, err)
+			}
+			return fmt.Errorf("query process state: %w", err)
+		}
+		if !running {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("bb-erp-server.exe did not stop within 30 seconds")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func startServer(serviceName string, installDir string) error {
 	if serviceName != "" {
-		return exec.Command("sc.exe", "start", serviceName).Run()
+		if err := exec.Command("sc.exe", "start", serviceName).Run(); err != nil {
+			return err
+		}
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			running, err := serviceState(serviceName, "RUNNING")
+			if err != nil {
+				return err
+			}
+			if running {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("service %q did not start within 30 seconds", serviceName)
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
-	cmd := exec.Command(filepath.Join(installDir, "bb-erp-server.exe"))
+	launcher := filepath.Join(installDir, "启动服务端.bat")
+	var cmd *exec.Cmd
+	if info, err := os.Stat(launcher); err == nil && info.Mode().IsRegular() {
+		cmd = exec.Command("cmd.exe", "/D", "/C", launcher)
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect server launcher: %w", err)
+	} else {
+		cmd = exec.Command(filepath.Join(installDir, "bb-erp-server.exe"))
+	}
 	cmd.Dir = installDir
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	var wrapperErr error
+	select {
+	case err := <-exited:
+		wrapperErr = err
+		<-timer.C
+	case <-timer.C:
+	}
+	running, err := serverProcessRunning()
+	if err != nil {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Kill()
+		}
+		return fmt.Errorf("verify server startup: %w", err)
+	}
+	if running {
+		return nil
+	}
+	if cmd.ProcessState == nil {
+		_ = cmd.Process.Kill()
+	}
+	if wrapperErr != nil {
+		return fmt.Errorf("server did not remain running after launcher exited: %w", wrapperErr)
+	}
+	return fmt.Errorf("server did not remain running after launcher completed")
+}
+
+func serverRunning(serviceName string) (bool, error) {
+	if serviceName != "" {
+		return serviceState(serviceName, "RUNNING")
+	}
+	return serverProcessRunning()
+}
+
+func serviceState(serviceName, state string) (bool, error) {
+	output, err := exec.Command("sc.exe", "query", serviceName).CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("sc.exe query %q: %w: %s", serviceName, err, strings.TrimSpace(string(output)))
+	}
+	return strings.Contains(strings.ToUpper(string(output)), state), nil
+}
+
+func serverProcessRunning() (bool, error) {
+	output, err := exec.Command("tasklist.exe", "/NH", "/FI", "IMAGENAME eq bb-erp-server.exe").CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("tasklist.exe: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return strings.Contains(strings.ToLower(string(output)), "bb-erp-server.exe"), nil
 }
 
 func backupServerFiles(installDir string, backupDir string) error {
@@ -146,7 +283,10 @@ func backupServerFiles(installDir string, backupDir string) error {
 	for _, name := range []string{"bb-erp-server.exe", "web", "data", "static", "updates", "logs", "update-public.key"} {
 		source := filepath.Join(installDir, name)
 		if _, err := os.Stat(source); err != nil {
-			continue
+			if os.IsNotExist(err) && name != "bb-erp-server.exe" {
+				continue
+			}
+			return fmt.Errorf("inspect %s for backup: %w", name, err)
 		}
 		if err := copyPath(source, filepath.Join(backupDir, name)); err != nil {
 			return fmt.Errorf("backup %s: %w", name, err)
@@ -156,15 +296,15 @@ func backupServerFiles(installDir string, backupDir string) error {
 }
 
 func replaceServerFiles(sourceDir string, installDir string) error {
-	if err := copyPath(filepath.Join(sourceDir, "bb-erp-server.exe"), filepath.Join(installDir, "bb-erp-server.exe")); err != nil {
+	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-server.exe"), filepath.Join(installDir, "bb-erp-server.exe")); err != nil {
 		return fmt.Errorf("replace server exe: %w", err)
+	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "update-public.key"), filepath.Join(installDir, "update-public.key")); err != nil {
+		return fmt.Errorf("replace update-public.key: %w", err)
 	}
 	webSource := filepath.Join(sourceDir, "web")
 	if _, err := os.Stat(webSource); err == nil {
-		if err := os.RemoveAll(filepath.Join(installDir, "web")); err != nil {
-			return fmt.Errorf("remove old web dist: %w", err)
-		}
-		if err := copyPath(webSource, filepath.Join(installDir, "web")); err != nil {
+		if err := replaceDirectorySafely(webSource, filepath.Join(installDir, "web")); err != nil {
 			return fmt.Errorf("replace web dist: %w", err)
 		}
 	}
@@ -172,6 +312,139 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 		if err := os.MkdirAll(filepath.Join(installDir, name), 0o755); err != nil {
 			return fmt.Errorf("ensure %s dir: %w", name, err)
 		}
+	}
+	return nil
+}
+
+func recoverFailedUpgrade(serviceName, installDir, backupDir string, restartPrevious bool, cause error) error {
+	_ = stopServer(serviceName)
+	restoreErr := restoreServerFiles(backupDir, installDir)
+	if restoreErr != nil {
+		return fmt.Errorf("upgrade failed (%v); restore backup failed: %w", cause, restoreErr)
+	}
+	if restartPrevious {
+		if restartErr := startServer(serviceName, installDir); restartErr != nil {
+			return fmt.Errorf("upgrade failed (%v); backup restored but previous server restart failed: %w", cause, restartErr)
+		}
+		return fmt.Errorf("upgrade failed and previous version was restored and restarted: %w", cause)
+	}
+	return fmt.Errorf("upgrade failed and previous stopped version was restored: %w", cause)
+}
+
+func restoreServerFiles(backupDir, installDir string) error {
+	for _, name := range []string{"bb-erp-server.exe", "update-public.key", "web"} {
+		source := filepath.Join(backupDir, name)
+		target := filepath.Join(installDir, name)
+		info, err := os.Stat(source)
+		if os.IsNotExist(err) {
+			if err := os.RemoveAll(target); err != nil {
+				return fmt.Errorf("remove newly installed %s: %w", name, err)
+			}
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect backup %s: %w", name, err)
+		}
+		if info.IsDir() {
+			err = replaceDirectorySafely(source, target)
+		} else {
+			err = replaceFileSafely(source, target)
+		}
+		if err != nil {
+			return fmt.Errorf("restore %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func replaceFileSafely(source, target string) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	staged, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".new-*")
+	if err != nil {
+		return err
+	}
+	stagedPath := staged.Name()
+	defer os.Remove(stagedPath)
+	if err := staged.Chmod(info.Mode()); err != nil {
+		_ = staged.Close()
+		return err
+	}
+	if _, err := io.Copy(staged, input); err != nil {
+		_ = staged.Close()
+		return err
+	}
+	if err := staged.Sync(); err != nil {
+		_ = staged.Close()
+		return err
+	}
+	if err := staged.Close(); err != nil {
+		return err
+	}
+	return swapPreparedPath(stagedPath, target)
+}
+
+func replaceDirectorySafely(source, target string) error {
+	parent := filepath.Dir(target)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	stagedPath, err := os.MkdirTemp(parent, "."+filepath.Base(target)+".new-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stagedPath)
+	if err := copyPath(source, stagedPath); err != nil {
+		return err
+	}
+	return swapPreparedPath(stagedPath, target)
+}
+
+func swapPreparedPath(stagedPath, target string) error {
+	backupHandle, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".old-*")
+	if err != nil {
+		return err
+	}
+	backupPath := backupHandle.Name()
+	if err := backupHandle.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return err
+	}
+	cleanupBackup := true
+	defer func() {
+		if cleanupBackup {
+			_ = os.RemoveAll(backupPath)
+		}
+	}()
+	targetExists := false
+	if _, err := os.Stat(target); err == nil {
+		targetExists = true
+		if err := os.Rename(target, backupPath); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(stagedPath, target); err != nil {
+		if targetExists {
+			if restoreErr := os.Rename(backupPath, target); restoreErr != nil {
+				cleanupBackup = false
+				return fmt.Errorf("install prepared path: %v; restore previous path from %q: %w", err, backupPath, restoreErr)
+			}
+		}
+		return err
 	}
 	return nil
 }

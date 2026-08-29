@@ -185,19 +185,40 @@ func (v *MinisignVerifier) Verify(payload []byte, signature string) error {
 }
 
 // LoadSignedManifestVerifier 按直接公钥优先、文件路径次之加载验证器；缺失公钥返回 nil，v1 不受影响。
+// 若直接值受 Windows 父进程环境污染且无法解析，但显式配置的公钥文件有效，则回退到文件。
 func LoadSignedManifestVerifier(publicKey, publicKeyFile string) (SignedManifestVerifier, error) {
 	publicKey = strings.TrimSpace(publicKey)
-	if publicKey == "" && strings.TrimSpace(publicKeyFile) != "" {
-		contents, err := os.ReadFile(filepath.Clean(publicKeyFile))
+	publicKeyFile = strings.TrimSpace(publicKeyFile)
+	var directErr error
+	if publicKey != "" {
+		verifier, err := NewMinisignVerifier(publicKey)
+		if err == nil {
+			return verifier, nil
+		}
+		directErr = err
+	}
+	if publicKeyFile != "" {
+		cleanPath := filepath.Clean(publicKeyFile)
+		contents, err := os.ReadFile(cleanPath)
 		if err != nil {
+			if directErr != nil {
+				return nil, fmt.Errorf("direct update signing public key is invalid (%v); read fallback key file %q: %w", directErr, cleanPath, err)
+			}
 			return nil, fmt.Errorf("read update signing public key file: %w", err)
 		}
-		publicKey = string(contents)
+		verifier, err := NewMinisignVerifier(string(contents))
+		if err != nil {
+			if directErr != nil {
+				return nil, fmt.Errorf("direct update signing public key is invalid (%v); parse fallback key file %q: %w", directErr, cleanPath, err)
+			}
+			return nil, fmt.Errorf("parse update signing public key file %q: %w", cleanPath, err)
+		}
+		return verifier, nil
 	}
-	if publicKey == "" {
-		return nil, nil
+	if directErr != nil {
+		return nil, directErr
 	}
-	return NewMinisignVerifier(publicKey)
+	return nil, nil
 }
 
 // DecodeSignedClientPayload 对 base64 payload 解码、验签并校验 v2 契约。

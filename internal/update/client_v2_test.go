@@ -75,6 +75,79 @@ func TestMinisignVerifierAcceptsTauriPublicKeyEnvelope(t *testing.T) {
 	}
 }
 
+func TestMinisignVerifierAcceptsPublishedCanonicalPublicKeyEnvelope(t *testing.T) {
+	const publishedKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4Y2E4ZTFhMmNlOWQxNTcKUldSWDBla3NHbzdLbUpoZnlmNWlwY1p6eEdEaUFiNmlFVVpsNTRIcnV0RmI5NjlFMytNNFlTQVcK"
+	if _, err := NewMinisignVerifier(publishedKey); err != nil {
+		t.Fatalf("parse published canonical public key envelope: %v", err)
+	}
+}
+
+func TestLoadSignedManifestVerifierFallsBackToConfiguredFile(t *testing.T) {
+	public, private, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	publicText, err := public.MarshalText()
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	keyFile := filepath.Join(t.TempDir(), "update-public.key")
+	if err := os.WriteFile(keyFile, []byte(base64.StdEncoding.EncodeToString(publicText)), 0o600); err != nil {
+		t.Fatalf("write public key: %v", err)
+	}
+	verifier, err := LoadSignedManifestVerifier("pub-key", keyFile)
+	if err != nil {
+		t.Fatalf("load fallback public key file: %v", err)
+	}
+	payload := []byte("signed update payload")
+	signature := base64.StdEncoding.EncodeToString(minisign.Sign(private, payload))
+	if err := verifier.Verify(payload, signature); err != nil {
+		t.Fatalf("verify with fallback public key file: %v", err)
+	}
+}
+
+func TestLoadSignedManifestVerifierKeepsValidDirectKeyAuthoritative(t *testing.T) {
+	directPublic, directPrivate, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate direct key: %v", err)
+	}
+	filePublic, filePrivate, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate file key: %v", err)
+	}
+	fileText, err := filePublic.MarshalText()
+	if err != nil {
+		t.Fatalf("marshal file public key: %v", err)
+	}
+	keyFile := filepath.Join(t.TempDir(), "update-public.key")
+	if err := os.WriteFile(keyFile, fileText, 0o600); err != nil {
+		t.Fatalf("write file public key: %v", err)
+	}
+	verifier, err := LoadSignedManifestVerifier(directPublic.String(), keyFile)
+	if err != nil {
+		t.Fatalf("load direct public key: %v", err)
+	}
+	payload := []byte("authoritative direct key")
+	directSignature := base64.StdEncoding.EncodeToString(minisign.Sign(directPrivate, payload))
+	if err := verifier.Verify(payload, directSignature); err != nil {
+		t.Fatalf("verify direct signature: %v", err)
+	}
+	fileSignature := base64.StdEncoding.EncodeToString(minisign.Sign(filePrivate, payload))
+	if err := verifier.Verify(payload, fileSignature); err == nil {
+		t.Fatal("signature failure must not trigger a switch to the file public key")
+	}
+}
+
+func TestLoadSignedManifestVerifierRejectsTwoInvalidSources(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "update-public.key")
+	if err := os.WriteFile(keyFile, []byte("also-invalid"), 0o600); err != nil {
+		t.Fatalf("write invalid public key file: %v", err)
+	}
+	if _, err := LoadSignedManifestVerifier("invalid", keyFile); err == nil {
+		t.Fatal("two invalid public key sources must be rejected")
+	}
+}
+
 func TestDecodeSignedClientPayloadUsesFullMinisignVerification(t *testing.T) {
 	payload := ClientUpdatePayload{
 		ProtocolVersion: 2, Version: "1.0.1", Target: clientTargetWindowsX64, LayoutVersion: 1,
