@@ -23,7 +23,7 @@ const (
 	installModePortable    = "portable"
 )
 
-// SignedClientUpdateManifest 是 v1 manifest 中可选的 v2 客户端更新签名信封。
+// SignedClientUpdateManifest 是 stable manifest 中的签名客户端更新信封；v3 为当前局域网全量协议，v2 仅历史兼容。
 // Payload 必须是原始 JSON 字节的 base64 编码，Signature 使用 Minisign detached signature。
 type SignedClientUpdateManifest struct {
 	Payload   string `json:"payload"`
@@ -86,7 +86,7 @@ type ClientUpdatePlanArtifact struct {
 	TargetSHA256 string `json:"target_sha256,omitempty"`
 }
 
-// ClientUpdatePlan 是桌面端增量/完整更新统一策略响应。
+// ClientUpdatePlan 是桌面端全量更新响应；历史 v2 清单可能返回兼容差分策略。
 type ClientUpdatePlan struct {
 	ProtocolVersion int                      `json:"protocol_version"`
 	CurrentVersion  string                   `json:"current_version"`
@@ -112,7 +112,7 @@ type TauriUpdateResponse struct {
 	Signature string `json:"signature"`
 }
 
-// SignedManifestVerifier 验证 v2 签名 payload。接口允许测试和未来密钥托管实现替换。
+// SignedManifestVerifier 验证签名 payload。接口允许测试和未来密钥托管实现替换。
 type SignedManifestVerifier interface {
 	Verify(payload []byte, signature string) error
 	VerifyFile(path, signature string) error
@@ -166,6 +166,22 @@ func NewMinisignVerifier(publicKey string) (*MinisignVerifier, error) {
 		}
 	}
 	return &MinisignVerifier{public: key}, nil
+}
+
+// CanonicalMinisignPublicKey parses a Minisign key and returns its canonical
+// text representation. Callers use this to require that an external bootstrap
+// trust root and the key shipped in a candidate package are the same key,
+// without comparing comments or line-ending details.
+func CanonicalMinisignPublicKey(publicKey string) (string, error) {
+	verifier, err := NewMinisignVerifier(publicKey)
+	if err != nil {
+		return "", err
+	}
+	canonical, err := verifier.public.MarshalText()
+	if err != nil {
+		return "", fmt.Errorf("marshal minisign public key: %w", err)
+	}
+	return strings.TrimSpace(string(canonical)), nil
 }
 
 // Verify 使用完整 Minisign 规则验证 payload、密钥 ID 和可信注释签名。
@@ -247,13 +263,13 @@ func LoadSignedManifestVerifier(publicKey, publicKeyFile string) (SignedManifest
 	return nil, nil
 }
 
-// DecodeSignedClientPayload 对 base64 payload 解码、验签并校验 v2 契约。
+// DecodeSignedClientPayload 对 base64 payload 解码、验签并校验 v2/v3 契约。
 func DecodeSignedClientPayload(envelope *SignedClientUpdateManifest, verifier SignedManifestVerifier) (*ClientUpdatePayload, error) {
 	if envelope == nil {
 		return nil, nil
 	}
 	if verifier == nil {
-		return nil, errors.New("v2 client update requires a configured minisign public key")
+		return nil, errors.New("signed client update requires a configured minisign public key")
 	}
 	raw, err := decodeBase64Payload(envelope.Payload)
 	if err != nil {
@@ -285,7 +301,7 @@ func decodeBase64Payload(value string) ([]byte, error) {
 }
 
 func validateClientUpdatePayload(payload *ClientUpdatePayload) error {
-	if payload == nil || payload.ProtocolVersion != 2 {
+	if payload == nil || (payload.ProtocolVersion != clientUpdateProtocolV2 && payload.ProtocolVersion != ClientUpdateProtocolV3) {
 		return errors.New("unsupported client update protocol version")
 	}
 	if normalizeVersion(payload.Version) == "" {
@@ -297,14 +313,18 @@ func validateClientUpdatePayload(payload *ClientUpdatePayload) error {
 	if payload.LayoutVersion <= 0 {
 		return errors.New("client update layout version is required")
 	}
-	if err := validateClientArtifact(payload.Full.NSIS, "nsis"); err != nil {
+	requireURL := payload.ProtocolVersion != ClientUpdateProtocolV3
+	if err := validateClientArtifactPolicy(payload.Full.NSIS, "nsis", requireURL); err != nil {
 		return fmt.Errorf("invalid full nsis artifact: %w", err)
 	}
-	if err := validateClientArtifact(payload.Full.Portable, "portable"); err != nil {
+	if err := validateClientArtifactPolicy(payload.Full.Portable, "portable", requireURL); err != nil {
 		return fmt.Errorf("invalid full portable artifact: %w", err)
 	}
+	if payload.ProtocolVersion == ClientUpdateProtocolV3 && len(payload.Deltas) != 0 {
+		return errors.New("client update protocol v3 must not contain delta artifacts")
+	}
 	for index, delta := range payload.Deltas {
-		if err := validateClientArtifact(delta.ClientArtifact, "delta"); err != nil {
+		if err := validateClientArtifactPolicy(delta.ClientArtifact, "delta", true); err != nil {
 			return fmt.Errorf("invalid delta %d: %w", index, err)
 		}
 		if strings.TrimSpace(delta.Algorithm) != "zstd-patch-from-v1" {
@@ -318,11 +338,18 @@ func validateClientUpdatePayload(payload *ClientUpdatePayload) error {
 }
 
 func validateClientArtifact(artifact ClientArtifact, expectedKind string) error {
+	return validateClientArtifactPolicy(artifact, expectedKind, true)
+}
+
+func validateClientArtifactPolicy(artifact ClientArtifact, expectedKind string, requireURL bool) error {
 	if strings.TrimSpace(artifact.Kind) != expectedKind {
 		return fmt.Errorf("kind must be %q", expectedKind)
 	}
-	if strings.TrimSpace(artifact.URL) == "" || !isSHA256(artifact.SHA256) || artifact.Size <= 0 || strings.TrimSpace(artifact.Signature) == "" {
-		return errors.New("url, sha256, positive size and signature are required")
+	if (requireURL && strings.TrimSpace(artifact.URL) == "") || !isSHA256(artifact.SHA256) || artifact.Size <= 0 || strings.TrimSpace(artifact.Signature) == "" {
+		if requireURL {
+			return errors.New("url, sha256, positive size and signature are required")
+		}
+		return errors.New("sha256, positive size and signature are required")
 	}
 	return nil
 }
@@ -376,6 +403,10 @@ func (s verifiedFileSnapshot) matches(path, digest string, info os.FileInfo) boo
 type LocalArtifactStore struct {
 	Root   string
 	Client *http.Client
+	// LocalOnly makes the store resolve every artifact from Root/artifacts/<sha>
+	// and is used by the LAN stable-manifest source. It prevents a local
+	// manifest from turning a signed metadata URL into an outbound request.
+	LocalOnly bool
 
 	mu         sync.Mutex
 	inflight   map[string]*artifactCall
@@ -388,9 +419,16 @@ func (s *LocalArtifactStore) Path(digest string) (string, bool) {
 	if !isSHA256(digest) {
 		return "", false
 	}
-	path := filepath.Join(s.Root, "artifacts", strings.ToLower(digest))
-	info, err := os.Stat(path)
-	return path, err == nil && !info.IsDir() && info.Size() > 0
+	artifactRoot := filepath.Join(s.Root, "artifacts")
+	path := filepath.Join(artifactRoot, strings.ToLower(digest))
+	if s.LocalOnly {
+		rootInfo, err := os.Lstat(artifactRoot)
+		if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			return path, false
+		}
+	}
+	info, err := os.Lstat(path)
+	return path, err == nil && info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && info.Size() > 0
 }
 
 // Cached 校验内容地址对象的长度和哈希。
@@ -400,8 +438,8 @@ func (s *LocalArtifactStore) Cached(artifact ClientArtifact) bool {
 		s.invalidate(artifact.SHA256)
 		return false
 	}
-	info, err := os.Stat(path)
-	if err != nil || info.Size() != artifact.Size {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != artifact.Size {
 		s.invalidate(artifact.SHA256)
 		return false
 	}
@@ -434,12 +472,18 @@ func (s *LocalArtifactStore) Cached(artifact ClientArtifact) bool {
 
 // Ensure 合并同一 SHA 的并发下载，以临时文件和原子替换写入缓存。
 func (s *LocalArtifactStore) Ensure(ctx context.Context, artifact ClientArtifact) (string, bool, error) {
-	if !isSHA256(artifact.SHA256) || strings.TrimSpace(artifact.URL) == "" || artifact.Size <= 0 {
+	if !isSHA256(artifact.SHA256) || artifact.Size <= 0 {
 		return "", false, errors.New("invalid content-addressed artifact")
 	}
 	if s.Cached(artifact) {
 		path, _ := s.Path(artifact.SHA256)
 		return path, true, nil
+	}
+	if s.LocalOnly {
+		return "", false, fmt.Errorf("local artifact %s is missing or failed SHA-256 validation", strings.ToLower(artifact.SHA256))
+	}
+	if strings.TrimSpace(artifact.URL) == "" {
+		return "", false, errors.New("content-addressed artifact URL is empty")
 	}
 	key := strings.ToLower(artifact.SHA256)
 	s.mu.Lock()

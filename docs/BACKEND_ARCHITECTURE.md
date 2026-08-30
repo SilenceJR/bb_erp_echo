@@ -30,8 +30,8 @@ flowchart TB
     subgraph storage["系统保存的数据"]
         db["SQLite 数据库<br/>账号、权限、资料、库存、任务、模具、审计"]:::done
         files["图片文件目录<br/>按业务对象受保护保存"]:::done
-        cache["正式版客户端更新包缓存<br/>完整包和可选增量包"]:::done
-        remote["正式版远程更新清单和发布资源<br/>用于版本检查和客户端下载"]:::pending
+        stable["本机 stable 清单<br/>原子切换当前正式版本"]:::done
+        cache["内容寻址客户端资源<br/>仅完整 NSIS 与 Portable"]:::done
     end
 
     users --> clients
@@ -40,10 +40,10 @@ flowchart TB
     validation --> domains
     domains --> db
     domains --> files
+    domains --> stable
     domains --> cache
-    cache --> remote
 
-    acceptance["待真实环境验收<br/>生产配置、备份恢复、更新发布、Windows 10/11 运行"]:::pending
+    acceptance["待真实环境验收<br/>Server 2016 构建/服务回滚<br/>Windows 10 客户端更新"]:::pending
     planned["规划功能<br/>统计导出、任务提醒、自动备份<br/>多组织、多仓库和更细权限"]:::planned
     domains -.-> acceptance
     domains -.-> planned
@@ -257,37 +257,29 @@ sequenceDiagram
     end
 ~~~
 
-### 4.6 服务端检查并缓存客户端更新
+### 4.6 服务端读取本地清单并分发客户端完整包
 
-用户只需要记住：服务端不会盲目下载正式版更新包，只有版本、大小、哈希和签名都通过才会提供给客户端。RC 和手动构建通过独立便携 EXE Artifact 测试，不进入服务端正式版更新缓存。
+用户只需要记住：计划任务先在服务器本机完成构建、签名和验证，服务端只读取已经原子激活的 stable 清单，并按哈希提供完整客户端包；不访问公网发布源，也不开放更新目录。
 
 ~~~mermaid
 sequenceDiagram
-    participant scheduler as 服务端定时检查
+    participant task as Windows 计划任务
     participant api as Go 更新服务
-    participant remote as 远程更新清单
+    participant stable as 本机 stable 清单
     participant verify as 文件与签名检查
-    participant cache as 本地更新缓存
+    participant artifacts as 内容寻址资源
     participant client as 桌面客户端
 
-    scheduler->>api: 到达检查时间
-    api->>remote: 读取更新清单
-    remote-->>api: 返回服务端和客户端版本信息
-    api->>verify: 检查版本、文件大小、SHA-256 和签名
-
-    alt 完整包检查通过
-        verify->>cache: 保存可用完整包
-        opt 存在相邻版本且差分包足够小
-            verify->>cache: 保存可用增量包
-        end
-        cache-->>api: 更新缓存状态
-    else 检查失败
-        verify-->>api: 返回失败原因
-        api->>cache: 保留上一份可用缓存和状态
-    end
+    task->>verify: 构建、签名并校验完整包
+    verify->>artifacts: 按 SHA-256 保存 NSIS/Portable
+    verify->>stable: 原子切换已验证清单
+    api->>stable: 读取当前正式版本
+    api->>artifacts: 确认清单资源存在且哈希一致
 
     client->>api: 查询是否有可用更新
-    api-->>client: 返回完整包或增量包计划
+    api-->>client: 返回签名完整包计划
+    client->>api: 按 sha256 下载受控资源
+    api-->>client: 流式返回完整包
     Note over api,client: 私钥只在发布端签名；服务端和客户端使用公钥验证。
 ~~~
 
@@ -297,7 +289,7 @@ sequenceDiagram
 
 - JWT 使用系统内部密钥；access token 默认 2 小时，refresh token 按活跃会话滚动 30 天；管理员首次登录后在系统内修改默认密码。
 - 真实账号下的权限和组织/部门数据范围。
-- Windows 10/11 安装、升级、断网和回滚。
+- Server 2016 构建、服务升级/回滚和 Windows 10 客户端安装、断网、重启。
 - SQLite、图片目录和更新缓存的备份恢复。
 - 长时间运行、并发访问和异常网络环境。
 
@@ -312,7 +304,7 @@ sequenceDiagram
 
 - [Go 后端状态、进度与维护台账](BACKEND_STATUS.md)
 - [API 文档](API.md)
-- [Gitee 主仓库与发布闭环](GITEE_RELEASE.md)
+- [Windows 本机打包与局域网发布](WINDOWS_LAN_RELEASE.md)
 - [Web、Client 前端产品架构与时序图](WEB_CLIENT_ARCHITECTURE.md)
 
 ## 7. 维护规则
@@ -331,7 +323,7 @@ sequenceDiagram
 | 修改权限或数据范围 | 公共能力层和相关业务图 | 页面隐藏不是最终授权；后端必须继续校验角色、组织、部门和 cost:view。 |
 | 修改金额、库存数量或成本 | 库存时序图和业务说明 | 数量固定精度、金额单位、加权平均成本和无成本权限时的字段裁剪。 |
 | 修改图片文件流程 | 文件能力和相关业务时序图 | owner 权限继承、路径安全、文件与数据库的一致性、替换/删除失败回滚。 |
-| 修改更新检查或发布流程 | 更新时序图和发布文档 | 公钥/私钥边界、签名和哈希校验、旧版兼容、完整包兜底和增量基线。 |
+| 修改更新检查或发布流程 | 更新时序图和发布文档 | 公钥/私钥边界、签名和哈希校验、本地 stable 原子切换、完整包与回滚。 |
 | 修改配置、部署或启动流程 | 架构边界和 README | JWT 和管理员初始密码按当前内部默认策略运行；更新验签配置、目录权限和备份要求必须明确。 |
 
 ### 8.1 后端实施完成前检查

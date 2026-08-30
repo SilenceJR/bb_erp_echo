@@ -2979,6 +2979,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/system/updates/client/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "system-updates"
+                ],
+                "summary": "下载已校验缓存的桌面客户端包",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/system/updates/server/download": {
             "get": {
                 "security": [
@@ -3855,32 +3907,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/updates/client/download": {
-            "get": {
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "下载已校验缓存的桌面客户端包",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/updates/client/plan": {
             "get": {
                 "produces": [
@@ -3889,7 +3915,7 @@ const docTemplate = `{
                 "tags": [
                     "updates"
                 ],
-                "summary": "规划 Windows 客户端自动更新",
+                "summary": "规划 Windows 客户端全量更新",
                 "parameters": [
                     {
                         "type": "string",
@@ -7626,6 +7652,14 @@ const docTemplate = `{
                 "client_update_v2": {
                     "$ref": "#/definitions/update.SignedClientUpdateManifest"
                 },
+                "client_update_v3": {
+                    "description": "ClientUpdateV3 is the LAN full-package payload. ClientUpdateV2 remains\nreadable for already deployed clients and older remote manifests.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/update.SignedClientUpdateManifest"
+                        }
+                    ]
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -7721,6 +7755,9 @@ const docTemplate = `{
                 },
                 "manifest": {
                     "$ref": "#/definitions/update.Manifest"
+                },
+                "manifest_file": {
+                    "type": "string"
                 },
                 "manifest_url": {
                     "type": "string"

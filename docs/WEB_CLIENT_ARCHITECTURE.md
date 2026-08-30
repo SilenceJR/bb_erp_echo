@@ -86,7 +86,7 @@ flowchart TB
     end
 
     server["Go 后端<br/>业务接口和权限检查"]:::done
-    packages["正式版客户端更新资源<br/>完整安装包、便携版和可选增量包"]:::pending
+    packages["服务器局域网更新资源<br/>完整 NSIS 与便携版"]:::pending
 
     user --> window
     window --> main
@@ -263,15 +263,12 @@ sequenceDiagram
     page->>bridge: 请求客户端更新计划
     bridge->>rust: 调用桌面更新检查
     rust->>server: 查询当前版本、文件哈希和目标平台
-    server-->>rust: 返回完整包或增量包计划
-
-    alt 存在可用增量包
-        rust->>server: 下载增量包
-        rust->>rust: 校验签名、哈希和生成结果
-    else 使用完整包
-        rust->>server: 下载完整安装包
-        rust->>rust: 校验签名、哈希和文件大小
-    end
+    server-->>rust: 返回局域网完整包计划
+    rust->>page: 显示目标版本并请求用户确认
+    user->>page: 选择稍后处理或开始更新并重启
+    page->>rust: 用户确认后开始更新
+    rust->>server: 按 SHA-256 下载完整安装包
+    rust->>rust: 校验类型、签名、哈希和文件大小
 
     alt 校验和安装成功
         rust->>files: 安排替换并保留回滚文件
@@ -280,9 +277,9 @@ sequenceDiagram
         bridge-->>page: 更新进度和重启提示
         page-->>user: 显示更新完成
     else 下载、校验或安装失败
-        rust-->>bridge: 返回失败和回滚/完整包兜底状态
+        rust-->>bridge: 返回失败和当前版本保留状态
         bridge-->>page: 显示可理解的错误
-        page-->>user: 建议重试或使用完整包
+        page-->>user: 建议检查局域网或重试更新
     end
 ~~~
 

@@ -12,12 +12,12 @@
       <article class="update-source-card">
         <div class="update-card-heading">
           <div>
-            <span class="update-kicker">更新源</span>
+            <span class="update-kicker">局域网发布源</span>
             <h2>{{ connectivityText }}</h2>
           </div>
           <el-tag :type="connectivityType" effect="light" round>{{ connectivityTag }}</el-tag>
         </div>
-        <p class="update-manifest">{{ manifestUrl || '尚未配置升级 manifest 地址' }}</p>
+        <p class="update-manifest">{{ manifestLocation || '尚未配置本机稳定版清单' }}</p>
         <dl class="update-meta-grid">
           <div><dt>最后尝试</dt><dd>{{ formatTime(status?.last_attempt_at) }}</dd></div>
           <div><dt>最后成功</dt><dd>{{ formatTime(status?.last_success_at) }}</dd></div>
@@ -43,7 +43,9 @@
     <div class="update-package-grid">
       <PackageCard
         title="Go 服务端"
-        description="只报告和下载新版本，不会自动替换正在运行的服务。"
+        description="由服务器计划任务自动发布、替换并重启；Web 页面仅查看版本与发布结果，不触发服务端安装。"
+        :allow-download="false"
+        unavailable-text="服务端安装由服务器计划任务执行"
         :item="serverStatus"
         :known="statusKnown"
         :downloading="downloading"
@@ -52,6 +54,9 @@
       <DesktopUpdatePanel
         v-if="desktopClient"
         :legacy-status="clientStatus"
+        :recovery-downloading="downloading"
+        :recovery-download-error="downloadError"
+        :can-download-recovery="canCheck"
         @download-recovery="openDownload"
       />
       <PackageCard
@@ -63,39 +68,33 @@
         :item="clientStatus"
         :known="statusKnown"
         :downloading="downloading"
+        :download-error="downloadError"
         @download="openDownload"
       />
     </div>
 
-    <article v-if="clientProtocolVersion > 0" class="update-package-card" aria-labelledby="client-v2-cache-title">
+    <article v-if="clientProtocolVersion > 0" class="update-package-card" aria-labelledby="client-lan-cache-title">
       <div class="update-card-heading">
         <div>
-          <span class="update-kicker">客户端更新缓存</span>
-          <h2 id="client-v2-cache-title">增量更新资源</h2>
+          <span class="update-kicker">客户端分发</span>
+          <h2 id="client-lan-cache-title">局域网完整更新包</h2>
         </div>
         <el-tag type="info" effect="light">协议 v{{ clientProtocolVersion }}</el-tag>
       </div>
-      <p class="update-package-description">服务端已验签并缓存的 Windows 客户端更新资源摘要。</p>
+      <p class="update-package-description">客户端通过当前服务端的同源接口下载，服务端不公开发布目录或目录列表。</p>
       <dl class="update-version-list">
-        <div><dt>完整包</dt><dd>{{ cacheStateLabel(status?.client_full_cached) }}</dd></div>
-        <div><dt>差分来源版本</dt><dd>{{ status?.client_delta_from_version || '暂无可用差分' }}</dd></div>
-        <div><dt>差分包</dt><dd>{{ cacheStateLabel(status?.client_delta_cached) }}</dd></div>
+        <div><dt>发布方式</dt><dd>完整包</dd></div>
+        <div><dt>资源状态</dt><dd>{{ cacheStateLabel(status?.client_full_cached) }}</dd></div>
+        <div><dt>适用平台</dt><dd>Windows x64 桌面客户端</dd></div>
         <div><dt>缓存总量</dt><dd>{{ formatBytes(status?.client_cache_bytes) }}</dd></div>
       </dl>
-      <el-alert
-        v-if="clientDeltaDegraded"
-        :title="`差分更新已降级：${clientDeltaDegraded}`"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
     </article>
   </section>
 </template>
 
 <script setup lang="ts">
 import {computed, defineComponent, h, onMounted, ref} from 'vue'
-import {ElButton, ElMessage, ElTag} from 'element-plus'
+import {ElAlert, ElButton, ElMessage, ElTag} from 'element-plus'
 import DesktopUpdatePanel from './DesktopUpdatePanel.vue'
 import {downloadApiFile, isDesktopClient, request} from '../api/http'
 import type {SystemUpdateStatus, UpdatePackageStatus} from '../types'
@@ -110,13 +109,13 @@ const desktopClient = isDesktopClient()
 const loading = ref(false)
 const checking = ref(false)
 const downloading = ref(false)
+const downloadError = ref('')
 const loadError = ref('')
 let statusRequestGeneration = 0
 const requestBusy = computed(() => loading.value || checking.value)
-const manifestUrl = computed(() => String(status.value?.manifest_url || status.value?.source || ''))
+const manifestLocation = computed(() => String(status.value?.manifest_file || status.value?.manifest_url || status.value?.source || ''))
 const statusError = computed(() => String(status.value?.last_error || status.value?.error || ''))
 const clientProtocolVersion = computed(() => Math.max(0, Number(status.value?.client_protocol_version || 0)))
-const clientDeltaDegraded = computed(() => String(status.value?.client_delta_degraded || '').trim())
 const statusKnown = computed(() => Boolean(
   status.value
   && !loadError.value
@@ -134,7 +133,7 @@ const connectivityText = computed(() => {
   if (status.value.enabled === false) return '更新检查已停用'
   if (statusError.value || status.value.reachable === false) return '更新状态未知'
   if (status.value?.checking) return '正在检查更新'
-  if (status.value?.last_success_at || status.value?.reachable === true) return '更新源连接正常'
+  if (status.value?.last_success_at || status.value?.reachable === true) return '局域网服务与发布状态正常'
   return '等待首次检查'
 })
 const connectivityTag = computed(() => {
@@ -175,34 +174,26 @@ function cacheStateLabel(value?: boolean): string {
 }
 
 async function openDownload(item: UpdatePackageStatus) {
-  if (downloading.value) return
+  if (!props.canCheck || downloading.value) return
   const target = String(item.download_url || item.download_path || '').trim()
   const fileName = item.file_name || 'bb-erp-update.zip'
   if (!target) {
-    ElMessage.warning('当前没有可下载的安装包地址')
+    downloadError.value = '当前没有可下载的故障恢复包，请检查服务器发布计划任务'
     return
   }
 
   downloading.value = true
+  downloadError.value = ''
   try {
-    if (/^https?:\/\//i.test(target)) {
-      if (desktopClient) {
-        throw new Error('服务端提供的是外部下载地址，桌面端无法安全代下载；请在 Web 管理端打开更新中心后下载')
-      }
-      const downloadWindow = window.open('', '_blank')
-      if (!downloadWindow) {
-        throw new Error('浏览器拦截了下载窗口，请允许此站点打开新窗口后重试')
-      }
-      downloadWindow.opener = null
-      downloadWindow.location.replace(target)
-      ElMessage.success(`已打开下载链接，建议保存文件名：${fileName}`)
-      return
-    }
+    if (/^https?:\/\//i.test(target)) throw new Error('更新包必须通过当前服务端的同源接口下载')
     const apiPath = target.startsWith('/') ? target : `/${target}`
+    if (!apiPath.startsWith('/api/v1/') || apiPath.startsWith('//') || apiPath.split('/').includes('..')) {
+      throw new Error('更新包下载路径不合法')
+    }
     await downloadApiFile(apiPath, fileName, props.token)
     ElMessage.success(`下载已开始，保存文件名：${fileName}`)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '升级包下载失败')
+    downloadError.value = error instanceof Error ? error.message : '故障恢复包下载失败'
   } finally {
     downloading.value = false
   }
@@ -250,6 +241,8 @@ const PackageCard = defineComponent({
     downloading: {type: Boolean, default: false},
     downloadLabel: {type: String, default: ''},
     allowDownload: {type: Boolean, default: true},
+    unavailableText: {type: String, default: ''},
+    downloadError: {type: String, default: ''},
   },
   emits: ['download'],
   setup(cardProps, {emit}) {
@@ -263,7 +256,7 @@ const PackageCard = defineComponent({
       return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
     }
     const canDownload = () => cardProps.allowDownload && Boolean(cardProps.item.download_url || cardProps.item.download_path)
-    const downloadUnavailableText = () => !cardProps.allowDownload ? '需要更新管理权限才能下载故障恢复包' : '当前没有可下载的安装包'
+    const downloadUnavailableText = () => cardProps.unavailableText || (!cardProps.allowDownload ? '需要更新管理权限才能下载故障恢复包' : '当前没有可下载的安装包')
     const hasVersionData = () => Boolean(cardProps.item.current_version && cardProps.item.latest_version)
     const packageState = () => {
       if (!cardProps.known) return {type: 'info' as const, label: '状态未知'}
@@ -285,8 +278,9 @@ const PackageCard = defineComponent({
         h('div', [h('dt', '缓存状态'), h('dd', cardProps.item.cached === undefined ? '不适用' : (cardProps.item.cached ? '已校验并缓存' : '尚未缓存'))]),
       ]),
       cardProps.item.message ? h('p', {class: 'update-package-message'}, cardProps.item.message) : null,
+      cardProps.downloadError ? h(ElAlert, {title: cardProps.downloadError, description: '请确认局域网服务可用且发布状态正常后重试下载。', type: 'error', closable: false, showIcon: true}) : null,
       h('div', {class: 'update-actions'}, [
-        canDownload() ? h(ElButton, {type: 'primary', plain: true, loading: cardProps.downloading, disabled: cardProps.downloading, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端')) : h('small', downloadUnavailableText()),
+        canDownload() ? h(ElButton, {type: 'primary', plain: true, loading: cardProps.downloading, disabled: cardProps.downloading, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadError ? `重试${cardProps.downloadLabel || '下载客户端'}` : (cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端'))) : h('small', downloadUnavailableText()),
       ]),
     ])
   },

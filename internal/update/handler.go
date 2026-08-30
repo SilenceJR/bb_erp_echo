@@ -42,16 +42,16 @@ func (h *Handler) RegisterPublicRoutes(v1 *echo.Group) {
 	v1.GET("/version", h.Version)
 	updates := v1.Group("/updates/client")
 	updates.GET("/status", h.ClientStatus)
-	updates.GET("/download", h.DownloadClientPackage)
 	updates.GET("/plan", h.ClientPlan)
 	updates.GET("/tauri/:target/:arch/:current_version", h.TauriClientUpdate)
 	updates.GET("/artifacts/:sha256", h.DownloadClientArtifact)
 }
 
-// RegisterSystemRoutes 注册管理员触发的远端检查接口。
+// RegisterSystemRoutes 注册管理员触发的本地清单检查接口；兼容 HTTP 清单仅用于历史部署。
 func (h *Handler) RegisterSystemRoutes(system *echo.Group, require func(string, string) echo.MiddlewareFunc) {
 	system.GET("/updates/status", h.SystemStatus, require("/api/v1/system/updates", "read"))
 	system.POST("/updates/check", h.CheckRemoteUpdates, require("/api/v1/system/updates", "write"))
+	system.GET("/updates/client/download", h.DownloadClientPackage, require("/api/v1/system/updates", "write"))
 	system.GET("/updates/server/download", h.DownloadServerPackage, require("/api/v1/system/updates", "read"))
 }
 
@@ -84,15 +84,24 @@ func (h *Handler) ClientStatus(c *echo.Context) error {
 
 // DownloadClientPackage 把服务端缓存的客户端升级包分发给员工电脑。
 // @Summary 下载已校验缓存的桌面客户端包
-// @Tags updates
+// @Tags system-updates
 // @Produce application/octet-stream
+// @Security BearerAuth
 // @Success 200 {file} binary
+// @Failure 401 {object} map[string]any
+// @Failure 403 {object} map[string]any
 // @Failure 404 {object} map[string]any
-// @Router /api/v1/updates/client/download [get]
+// @Failure 502 {object} map[string]any
+// @Router /api/v1/system/updates/client/download [get]
 func (h *Handler) DownloadClientPackage(c *echo.Context) error {
-	path := h.Service.CachedClientPackagePath()
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
+	path, err := h.Service.ClientRecoveryPackage()
+	if err != nil {
+		if errors.Is(err, ErrClientPackageUnavailable) {
+			return echo.NewHTTPError(http.StatusNotFound, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+	if info, statErr := os.Stat(path); statErr != nil || info.IsDir() {
 		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的客户端升级包")
 	}
 	return c.Attachment(path, clientPackageName)
@@ -133,8 +142,8 @@ func (h *Handler) DownloadServerPackage(c *echo.Context) error {
 	return nil
 }
 
-// ClientPlan 返回桌面端应采用的增量或完整更新策略。
-// @Summary 规划 Windows 客户端自动更新
+// ClientPlan 返回桌面端的全量更新计划。协议 v3 只发布完整包；历史 v2 清单仍可读但不属于当前发布路径。
+// @Summary 规划 Windows 客户端全量更新
 // @Tags updates
 // @Produce json
 // @Param current_version query string true "当前客户端 SemVer"
@@ -224,7 +233,7 @@ func (h *Handler) DownloadClientArtifact(c *echo.Context) error {
 	return nil
 }
 
-// CheckRemoteUpdates 由管理员触发服务端检查 GitHub、Gitee 或内网 manifest。
+// CheckRemoteUpdates 由管理员触发服务端检查本机 stable manifest；兼容 HTTP 清单仅服务历史部署。
 // @Summary 立即执行完整更新检查
 // @Tags system-updates
 // @Produce json

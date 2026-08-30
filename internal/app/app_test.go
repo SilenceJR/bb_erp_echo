@@ -284,11 +284,27 @@ func TestUpdateStatusRoutesAndClientVersionParameter(t *testing.T) {
 	if clientStatus["current_version"] != "1.2.3-beta.1" {
 		t.Fatalf("client current_version = %v", clientStatus["current_version"])
 	}
+	rec = erp.request(http.MethodGet, "/api/v1/updates/client/download", "", nil)
+	if rec.Code != http.StatusUnauthorized && rec.Code != http.StatusNotFound {
+		t.Fatalf("legacy public recovery download = %d, want 401 or 404", rec.Code)
+	}
+	rec = erp.request(http.MethodGet, "/api/v1/system/updates/client/download", "", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated recovery download = %d, want 401", rec.Code)
+	}
+	rec = erp.request(http.MethodGet, "/api/v1/system/updates/client/download", token, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("authorized recovery download without package = %d, want 404", rec.Code)
+	}
 
 	limitedToken := erp.createLimitedUserAndLogin(t)
 	rec = erp.request(http.MethodGet, "/api/v1/system/updates/status", limitedToken, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("limited update status access = %d", rec.Code)
+	}
+	rec = erp.request(http.MethodGet, "/api/v1/system/updates/client/download", limitedToken, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("limited recovery download access = %d", rec.Code)
 	}
 }
 

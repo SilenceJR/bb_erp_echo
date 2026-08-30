@@ -1415,6 +1415,12 @@ definitions:
         $ref: '#/definitions/update.PackageManifest'
       client_update_v2:
         $ref: '#/definitions/update.SignedClientUpdateManifest'
+      client_update_v3:
+        allOf:
+        - $ref: '#/definitions/update.SignedClientUpdateManifest'
+        description: |-
+          ClientUpdateV3 is the LAN full-package payload. ClientUpdateV2 remains
+          readable for already deployed clients and older remote manifests.
       notes:
         type: string
       published_at:
@@ -1478,6 +1484,8 @@ definitions:
         type: string
       manifest:
         $ref: '#/definitions/update.Manifest'
+      manifest_file:
+        type: string
       manifest_url:
         type: string
       next_check_at:
@@ -3691,6 +3699,40 @@ paths:
       summary: 立即执行完整更新检查
       tags:
       - system-updates
+  /api/v1/system/updates/client/download:
+    get:
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 下载已校验缓存的桌面客户端包
+      tags:
+      - system-updates
   /api/v1/system/updates/server/download:
     get:
       produces:
@@ -4249,23 +4291,6 @@ paths:
       summary: 下载已验签客户端更新资源
       tags:
       - updates
-  /api/v1/updates/client/download:
-    get:
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: file
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 下载已校验缓存的桌面客户端包
-      tags:
-      - updates
   /api/v1/updates/client/plan:
     get:
       parameters:
@@ -4303,7 +4328,7 @@ paths:
           schema:
             additionalProperties: true
             type: object
-      summary: 规划 Windows 客户端自动更新
+      summary: 规划 Windows 客户端全量更新
       tags:
       - updates
   /api/v1/updates/client/status:

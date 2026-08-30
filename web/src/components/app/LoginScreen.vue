@@ -38,11 +38,12 @@
             <div class="server-settings-heading">
               <div>
                 <span id="login-server-title">桌面端服务器</span>
-                <small>连接运行 Go 服务的内网电脑</small>
+                <small>连接运行并分发更新的内网服务器</small>
               </div>
               <StatusTag label="仅桌面端" tone="info"/>
             </div>
-            <el-input v-model.trim="serverUrlInput" aria-label="Go 服务地址" placeholder="例如 http://192.168.1.20:8080" clearable :disabled="loading || serverTesting"/>
+            <el-input v-model.trim="serverUrlInput" aria-label="ERP 服务器地址" placeholder="例如 http://192.168.1.20:8080" clearable :disabled="loading || serverTesting"/>
+            <small>连接失败时请核对 IP 和端口，并确认处于同一局域网、防火墙已放行且 Go 服务正在运行。</small>
             <div class="server-actions">
               <el-button :loading="serverTesting" :disabled="loading || serverTesting" @click="testServerSetting">测试连接</el-button>
               <el-button type="primary" plain :disabled="loading || serverTesting" @click="saveServerSetting">保存地址</el-button>

@@ -2,7 +2,7 @@
 
 博邦 ERP 是面向工厂内网使用的单组织、单仓库 ERP。后端采用 Go 1.27、Echo v5.3.1、GORM、SQLite WAL、Casbin 和标准库 `log/slog`；Web 端采用 Vue 3、TypeScript、Vite 与 Element Plus；桌面端通过 Tauri 复用同一套 Vue 界面和业务 API。
 
-首版部署在内网电脑上，浏览器和桌面客户端通过服务端局域网 IP 访问。系统保留切换公网 HTTPS 地址的能力，不为旧版操作系统、IE 或浏览器兼容模式提供适配；桌面端支持现代 macOS(测试) 和 Windows 10/11(主要)。
+首版部署在工厂局域网。Windows Server 2016 Desktop Experience 主要负责从 Gitee 拉取源码、编译、分发更新包和运行 Go 服务端，不作为日常 Web/Tauri 操作电脑；Windows 10 1909 及以上工作站通过服务器局域网 IP 使用浏览器或桌面客户端。
 
 ## 已实现范围
 
@@ -14,9 +14,9 @@
 - 生产/通用任务单、多部门子任务流转、状态日志和办公室确认；任务及仓库/库存写操作显式记录本次实际操作员工。
 - 库存、任务、模具、审计等统计报表。
 - 产品、模具、任务单和部门子任务图片的受保护单图/多图上传、预览、替换与删除。
-- Web 同源请求与 Tauri Rust HTTP 传输抽象，可动态保存内网或公网服务地址。
-- 服务启动异步检查更新、周期检查、客户端安装包校验缓存，以及管理员“版本与更新”页面。
-- Gitee 主仓库、GitHub 只读构建镜像和公开 Gitee Release 的 Windows 发布闭环。
+- Web 同源请求与 Tauri Rust HTTP 传输抽象，可保存 ERP 服务器局域网地址。
+- 本机 stable manifest、v3 完整包签名校验、内容寻址分发、管理员“版本与更新”页面，以及客户端确认后安装重启。
+- Gitee `main` 唯一源码源、Windows PowerShell 5.1 环境引导和本机计划任务发布闭环。
 
 ## 目录职责
 
@@ -90,7 +90,7 @@ npm run desktop:dev
 
 服务端默认监听 `0.0.0.0:8080`。本机可访问 `http://127.0.0.1:8080`，其他内网电脑应访问服务端的局域网 IP，例如 `http://192.168.1.20:8080`，并在操作系统防火墙放行 `8080/TCP`。
 
-Web 生产环境由 Go 托管静态文件并使用同源相对路径。Tauri 通过 `HttpTransport` 接口选择 Rust HTTP 插件发送请求，避免依赖 macOS/Windows WebView 的跨域实现；业务 API 不感知运行平台。登录页和顶栏均可保存服务地址，后续部署公网时可直接切换为 HTTPS 源地址。详见 [client/API_SYNC.md](client/API_SYNC.md)。
+Web 生产环境由 Go 托管静态文件并使用同源相对路径。Tauri 通过 `HttpTransport` 接口选择 Rust HTTP 插件发送请求，避免依赖 Windows WebView 的跨域实现；业务 API 不感知运行平台。登录页和顶栏均可保存 ERP 服务器局域网地址。详见 [client/API_SYNC.md](client/API_SYNC.md)。
 
 常用环境变量：
 
@@ -107,7 +107,7 @@ BB_ERP_WEB_ENABLED=true
 BB_ERP_WEB_DIST_DIR=web/dist
 BB_ERP_ADMIN_USERNAME=admin
 BB_ERP_UPDATE_ENABLED=false
-BB_ERP_UPDATE_MANIFEST_URL=https://gitee.com/SilenceJR/bb_erp_releases/raw/main/update-manifest.json
+BB_ERP_UPDATE_MANIFEST_FILE=updates/stable/update-manifest.json
 BB_ERP_UPDATE_CACHE_DIR=updates
 BB_ERP_UPDATE_CHECK_INTERVAL=6h
 BB_ERP_UPDATE_MANIFEST_TIMEOUT=20s
@@ -117,25 +117,15 @@ BB_ERP_UPDATE_SIGNING_PUBLIC_KEY=
 BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
 ```
 
-更新检查在服务启动后异步执行，失败不会阻止 ERP 启动，之后默认每 6 小时检查一次。旧版客户端 ZIP 保持兼容；v2 客户端资源还会验证签名 payload、文件 Minisign 签名、大小和 SHA-256，再按哈希原子写入缓存。服务端新版本只报告和提供下载，不会自动覆盖正在运行的服务；管理页通过受 `system:updates:read` 保护的同源接口下载服务端包，由 Go 服务端使用已安装的可信公钥流式验证 Minisign 签名、大小、SHA-256、ZIP 结构和必需文件，服务端包上限为 512 MiB，避免 Tauri 直接打开外部地址时无反馈。升级器的远端和本地包路径都不能绕过签名；指定 Windows Service 时还会校验服务实际 EXE 是否位于目标安装目录。
+服务端只读取本机 `updates/stable/update-manifest.json`，不会访问 Gitee、GitHub 或通过 HTTP 请求自身。客户端 v3 完整包资源由类型、大小、SHA-256 和 Minisign 签名共同绑定，并通过受控同源 API 下载；更新目录不作为静态目录公开。用户必须先确认，确认后客户端才使用精确 Portable EXE 完成备份、替换、启动验证和失败回滚；NSIS 只用于首次安装或人工恢复。浏览器端只查看发布状态和管理员恢复包。
 
-Windows 10/11 x86_64 桌面端支持“上一版 → 最新版”的 zstd EXE 增量更新。来源版本、当前 EXE 哈希或布局不匹配时直接使用完整包；增量下载、校验或应用失败时自动切换签名 NSIS/便携 EXE，不要求用户再次确认。浏览器端不执行桌面安装，完整 ZIP 仅作为管理员故障恢复入口。RC 和手动构建通过 GitHub Actions 独立便携客户端 Artifact 测试，不参与正式版自动更新。
+服务端发布由计划任务调用 updater 完成。updater 停止目标 Windows Service 或安装目录普通进程，持久化备份 EXE、Web、公钥、版本信息、stable manifest 和 SQLite/WAL/SHM，安装后验证 `/ready`、目标版本和客户端完整包计划；失败时恢复旧程序、数据库和清单。追加式事务日志及固定 recovery updater 允许下一次计划任务在环境检查和联网前恢复被强制中止的升级。Service 模式还会校验服务实际指向目标 `bb-erp-server.exe`，并要求机器级运行配置与发布参数一致。
 
-## 分支、CI 与发布
+## 分支与 Windows 发布
 
-Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标签的 Push 镜像并运行 Actions。功能开发采用 `codex/<主题>` 分支，通过 Go、Web、Tauri 和相关发布配置验证后再合并主分支。
+Gitee 是唯一源码源。功能开发采用 `codex/<主题>` 分支，通过 Go、Web、Tauri 和发布配置验证后再合并 `main`。GitHub Workflow、Artifact、Gitee Release 上传、双仓同步和差分生成脚本均已删除。
 
-任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。正式版标签 `vMAJOR.MINOR.PATCH` 经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库；预发布标签 `vMAJOR.MINOR.PATCH-prerelease` 只生成临时 Windows Artifact。正式标签同时生成签名 NSIS、便携 EXE及满足阈值时的 zstd 差分；发布任务先匿名复验 manifest 声明的全部附件，最后才更新正式版 manifest。
-
-仓库拓扑、remote 切换、Secrets/Variables、最小权限、正式版发布和 RC 便携包测试见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。当前 Gitee 源码主仓库为 `SilenceJR/bb_erp_echo`，公开发布仓库为 `SilenceJR/bb_erp_releases`。
-
-### 0.0.x 正式版发布顺序
-
-`0.0.2`、`0.0.3` 和 `0.0.4` 均完成 Windows 构建，但 Gitee 大附件接口持续出现 0 字节响应超时，源码标签保持原提交不改写。`0.0.5` 已通过可恢复的串行附件上传建立正式基线；`0.0.6` 已发布七个正式附件，但 Windows 验收发现服务端可被父进程遗留的直接公钥环境变量覆盖包内有效 `update-public.key`。`0.0.7` 已完成构建、签名、七个正式附件、匿名哈希和稳定 manifest 技术验收，作为需手动部署一次的公钥恢复基线；`0.0.8` 也已完成正式发布，签名 payload 的差分基线确认为 `0.0.7`，并保留 NSIS 与便携 EXE 完整回退资源。Windows 真机已确认客户端升级成功；服务端验收发现下载入口无反馈、旧批处理引用不存在的内嵌 ZIP、升级器错误窗口立即关闭，修复后的服务端升级仍需新正式包复验。版本号由正式标签注入 Windows 服务端和 Tauri 客户端，源码依赖清单中的开发版本号不代表正式发布版本。
-
-`all-in-one` 已包含服务端、客户端便携 EXE、便携标记和安装器，适合首次全量部署；发布更新链路仍保留独立签名便携 EXE，供客户端更新清单直接下载。CI 不再生成重复的 `gitee-release-assets-*` 或 NSIS 中转 Artifact。正式发布失败时可重跑失败作业：系统重新校验标签提交，只复用自动发布器创建的同标签 Release 和名称、大小匹配的附件，不修改人工创建的同名 Release。
-
-用户验收顺序：由于 `0.0.5/0.0.6` 的服务端更新检查可在公钥解析阶段失败，`0.0.7` 不得使用旧包内的“一键升级服务端”恢复。先停止旧服务端并备份整个旧部署目录，将 `0.0.7` all-in-one 全量包解压到新目录，只迁移 `server/data`、`server/static/uploads`、`server/logs` 和 `server/updates`；如旧启动脚本改过端口、数据库、日志或上传目录，只把这些业务值手工填入新脚本，不覆盖新脚本的更新地址和公钥配置。使用新目录的“启动系统.bat”启动，确认当前版本为 `0.0.7`、更新状态不再报公钥错误且业务数据可读；失败时停止新服务端并直接重启未改动的旧目录。确认 `0.0.7` 恢复成功后，再执行 `0.0.7 → 0.0.8` 自动升级；完整验收用例见 `docs/GITEE_RELEASE.md`。
+正式发布只接受 `origin/main` HEAD 上严格递增的 `vMAJOR.MINOR.PATCH` 标签。Windows Server 2016 Desktop Experience 或 Windows 10 的专用 checkout 运行 `scripts/windows-release.ps1`：管理员首次显式执行 `Setup` 安装或修复环境，计划任务日常只执行 `Publish`，不会自动升级工具链或重启电脑。完整的环境、密钥、计划任务、局域网分发和回滚说明见 [Windows 本机打包与局域网发布](docs/WINDOWS_LAN_RELEASE.md)。
 
 ## 权限与仓库原则
 
@@ -163,17 +153,17 @@ cd src-tauri && cargo check --locked
 
 ## 验证状态
 
-2026-08-26 已完成 Go 1.27 / Echo v5.3.1 迁移，历史 `v0.1.0-rc.3` 已跑通 Gitee 主仓库、GitHub Windows 构建和 Gitee Release。当前 RC/手动构建改为仅生成独立便携客户端 Artifact，正式版 manifest 只由正式标签更新。Windows 增量升级分支已通过 `go mod tidy`、`go vet ./...`、`go test ./...`、Web/Client 生产构建、Rust 11 项测试、`cargo check --locked`、真实 Tauri 格式签名 smoke、发布脚本语法和 Workflow YAML 校验；独立 UI 审查结果为 P0/P1/P2 均为 0。签名私钥已完成离线备份；JWT 使用系统内部密钥，管理员首次登录后修改默认密码；正式版和 RC 便携包仍需在 Windows 10/11 真机完成安装、启动、断网、磁盘不足、不可写目录、崩溃与 90 秒回滚验收，并完成更新配置、目录权限和备份恢复演练。构建可能提示前端主包体积较大以及 `@vueuse/core` 注释位置，但不影响产物生成。
+2026-08-30 已切换为 Gitee main + Windows 本机全量发布设计。仓库内静态检查和跨平台测试只证明代码与构建配置，不证明 Windows 正式可用；Server 2016 Desktop Experience/Windows 10 真机的 Setup、断网缓存、NSIS/Portable、计划任务、Service/普通进程重启、SQLite 回滚和局域网下载证据完整前，发布状态仍为“待真机验收”。
 
 ## 已知限制与路线图
 
-- 首版为单组织、单仓库和局域网部署；公网 HTTPS 只保留扩展能力。
+- 首版为单组织、单仓库和局域网部署；当前发布协议不面向公网。
 - SQLite 适合当前单机内网服务，部署前仍需建立可验证的备份与恢复流程。
-- Tauri 的 Windows 10/11 与 macOS 运行态需要在对应真实系统持续回归。
+- Tauri 的 Windows 10 运行态需要在真实系统持续回归；Server 2016 只承担构建、分发和服务端运行。
 
 路线图：
 
-1. P0：恢复 Go、Web、Tauri 和 CI 全部绿色。
-2. P1：完成现代浏览器、Windows 10/11 Tauri、macOS Tauri 的运行态验收。
+1. P0：保持 Go、Web、Tauri 和 Windows 发布脚本验证全部绿色。
+2. P1：完成现代浏览器和 Windows 10 Tauri 的运行态验收。
 3. P1：完成内网部署安全检查、SQLite 备份恢复。
 4. P2：统计导出、任务实时提醒和办公室/部门权限细化。

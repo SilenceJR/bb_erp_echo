@@ -1,18 +1,19 @@
 <template>
       <el-dialog v-model="serverDialogVisible" title="服务器设置" width="min(520px, 92vw)" append-to-body>
         <div class="server-settings">
-          <p class="server-description">当前客户端通过此地址访问 Go 服务。内网部署可填写服务器电脑的局域网 IP，后续公网部署可直接改为 HTTPS 地址。切换到其他服务器后需要重新登录。</p>
+          <p class="server-description">当前客户端通过此地址访问 Go 服务，并从同一台服务器发现和下载完整更新包。请填写服务器电脑的局域网 IP；切换服务器后需要重新登录。</p>
           <el-form label-position="top">
-            <el-form-item label="Go 服务地址">
+            <el-form-item label="ERP 服务器地址">
               <el-input v-model.trim="serverUrlInput" placeholder="例如 http://192.168.1.20:8080" clearable/>
             </el-form-item>
           </el-form>
+          <small class="server-description">连接失败时请核对 IP 和端口，并确认客户端与服务器在同一局域网、防火墙已放行且 Go 服务正在运行。</small>
           <el-alert v-if="serverMessage" :title="serverMessage" :type="serverMessageType" :closable="false" show-icon/>
         </div>
         <template #footer>
           <el-button @click="serverDialogVisible = false">取消</el-button>
           <el-button :loading="serverTesting" @click="testServerSetting">测试连接</el-button>
-          <el-button type="primary" @click="saveServerSetting">保存地址</el-button>
+          <el-button type="primary" :disabled="serverTesting" @click="saveServerSetting">保存地址</el-button>
         </template>
       </el-dialog>
 

@@ -1255,15 +1255,11 @@ async function loadClientUpdate() {
 
 async function downloadClientUpdate() {
   if (!desktopClient || !clientUpdate.value.download_path) return
-  try {
-    await downloadApiFile(
-      clientUpdate.value.download_path,
-      clientUpdate.value.file_name || 'bb-erp-client-windows.zip',
-      token.value,
-    )
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '客户端安装包下载失败')
-  }
+  await downloadApiFile(
+    clientUpdate.value.download_path,
+    clientUpdate.value.file_name || 'bb-erp-client-windows.zip',
+    token.value,
+  )
 }
 
 async function preloadBaseData() {

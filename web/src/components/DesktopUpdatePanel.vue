@@ -10,7 +10,7 @@
         <strong>{{ compactTitle }}</strong>
         <span>{{ compactDescription }}</span>
       </div>
-      <el-tag v-if="displayStrategy" :type="displayStrategy === 'delta' ? 'success' : 'info'" effect="light" round>
+      <el-tag v-if="displayStrategy" type="info" effect="light" round>
         {{ strategyLabel }}
       </el-tag>
       <el-progress
@@ -25,7 +25,8 @@
         v-if="compactAction"
         type="primary"
         link
-        :disabled="closeLocked"
+        :loading="recoveryDownloading && compatibilityMode"
+        :disabled="closeLocked || recoveryDownloading"
         @click="handleCompactAction"
       >
         {{ compactAction }}
@@ -44,20 +45,14 @@
 
       <el-alert
         v-if="compatibilityMode"
-        title="当前服务端不支持自动更新协议"
-        description="可继续使用服务端提供的完整客户端 ZIP；升级服务端后即可使用自动更新。"
+        title="服务器尚未提供客户端完整更新包"
+        description="请检查 ERP 服务器上的发布计划任务是否成功，再重新检查更新；必要时可下载故障恢复 ZIP。"
         type="info"
         :closable="false"
         show-icon
       />
-      <el-alert
-        v-if="fallbackReason"
-        :title="`增量更新已自动切换为完整更新：${fallbackReason}`"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <el-alert v-if="error" :title="error" :description="errorGuidance" type="error" :closable="false" show-icon />
+      <el-alert v-if="recoveryDownloadError && canDownloadRecovery" :title="recoveryDownloadError" description="请确认局域网服务可用且发布状态正常后重试下载。" type="error" :closable="false" show-icon />
 
       <dl class="desktop-update-facts">
         <div><dt>当前版本</dt><dd>{{ currentVersion || legacyStatus?.current_version || '—' }}</dd></div>
@@ -65,15 +60,6 @@
         <div><dt>更新方式</dt><dd>{{ strategyLabel }}</dd></div>
         <div><dt>下载大小</dt><dd>{{ formatBytes(downloadSize) }}</dd></div>
       </dl>
-
-      <div v-if="displayStrategy === 'delta'" class="desktop-update-saving">
-        <div>
-          <strong>预计节省 {{ savingPercent }}%</strong>
-          <span>少下载 {{ formatBytes(savedBytes) }}</span>
-        </div>
-        <el-progress :percentage="savingPercent" :stroke-width="8" status="success" />
-        <small>若增量包校验或应用失败，将自动切换为签名完整安装包，无需再次确认。</small>
-      </div>
 
       <div class="desktop-update-status" role="status" aria-live="polite" aria-atomic="true">
         <strong>{{ message || idleMessage }}</strong>
@@ -89,13 +75,16 @@
       />
 
       <div class="update-actions desktop-update-actions">
-        <small v-if="compatibilityMode">兼容模式只提供完整安装包，不执行自动安装。</small>
+        <small v-if="recoveryAvailable && !canDownloadRecovery">故障恢复包仅限更新管理员下载，请联系管理员处理。</small>
+        <small v-else-if="compatibilityMode">自动安装暂不可用，可下载完整 ZIP 进行故障恢复。</small>
         <el-button
-          v-if="recoveryAvailable"
+          v-if="recoveryActionAvailable"
           plain
+          :loading="recoveryDownloading"
+          :disabled="recoveryDownloading"
           @click="$emit('download-recovery', legacyStatus)"
         >
-          下载完整 ZIP（故障恢复）
+          {{ recoveryDownloadError ? '重试下载完整 ZIP（故障恢复）' : '下载完整 ZIP（故障恢复）' }}
         </el-button>
         <el-button v-if="state === 'Ready' && plan" type="primary" @click="openConfirmation">立即更新</el-button>
         <el-button v-else-if="state === 'Failed'" type="primary" @click="retryUpdate">重试</el-button>
@@ -132,14 +121,7 @@
         </div>
       </template>
       <template v-else>
-        <el-alert
-          v-if="fallbackReason"
-          :title="`增量更新未能继续，已自动改用完整更新：${fallbackReason}`"
-          type="warning"
-          :closable="false"
-          show-icon
-        />
-        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+        <el-alert v-if="error" :title="error" :description="errorGuidance" type="error" :closable="false" show-icon />
         <el-steps class="desktop-update-steps" :active="activeStep" finish-status="success" align-center>
           <el-step title="检查" />
           <el-step title="下载" />
@@ -189,9 +171,15 @@ import {useDesktopUpdate} from '../composables/useDesktopUpdate'
 const props = withDefaults(defineProps<{
   compact?: boolean
   legacyStatus?: UpdatePackageStatus
+  recoveryDownloading?: boolean
+  recoveryDownloadError?: string
+  canDownloadRecovery?: boolean
 }>(), {
   compact: false,
   legacyStatus: () => ({}),
+  recoveryDownloading: false,
+  recoveryDownloadError: '',
+  canDownloadRecovery: false,
 })
 
 const emit = defineEmits<{
@@ -201,7 +189,7 @@ const emit = defineEmits<{
 const updater = useDesktopUpdate()
 const {
   state, plan, currentVersion, message, error, downloadedBytes, totalBytes,
-  activeStrategy, fallbackReason, compatibilityMode, taskInProgress,
+  activeStrategy, failedStage, compatibilityMode, taskInProgress,
   closeLocked, downloadPercent, initialize, check, apply, retry,
 } = updater
 const progressDialogVisible = ref(false)
@@ -210,32 +198,39 @@ const laterButton = ref<{ $el: HTMLButtonElement } | null>(null)
 
 const targetVersion = computed(() => String(plan.value?.latest_version || plan.value?.version || props.legacyStatus?.latest_version || '—'))
 const displayStrategy = computed(() => activeStrategy.value || plan.value?.strategy || null)
-const strategyLabel = computed(() => displayStrategy.value === 'delta' ? '增量更新' : displayStrategy.value === 'full' ? '完整更新' : '—')
+const strategyLabel = computed(() => displayStrategy.value ? '完整更新' : '—')
 const downloadSize = computed(() => Number(
-  (displayStrategy.value === 'full' ? plan.value?.full_size : plan.value?.download_size)
+  plan.value?.download_size
+  || plan.value?.full_size
   || props.legacyStatus?.size
   || 0,
 ))
-const savedBytes = computed(() => Math.max(0, Number(plan.value?.saved_bytes || 0)))
-const savingPercent = computed(() => {
-  if (plan.value?.saved_percent !== undefined) return Math.min(100, Math.max(0, Math.round(Number(plan.value.saved_percent))))
-  const full = Number(plan.value?.full_size || 0)
-  return full > 0 ? Math.min(100, Math.max(0, Math.round(savedBytes.value / full * 100))) : 0
-})
 const recoveryAvailable = computed(() => Boolean(props.legacyStatus?.download_url || props.legacyStatus?.download_path))
-const compactVisible = computed(() => Boolean(plan.value || taskInProgress.value || state.value === 'Failed' || fallbackReason.value || (compatibilityMode.value && recoveryAvailable.value)))
+const recoveryActionAvailable = computed(() => props.canDownloadRecovery && recoveryAvailable.value)
+const compactVisible = computed(() => Boolean(plan.value || taskInProgress.value || state.value === 'Failed' || (compatibilityMode.value && recoveryAvailable.value)))
 const confirmationVisible = computed(() => state.value === 'Ready' && Boolean(plan.value) && !updateStarted.value)
-const idleMessage = computed(() => compatibilityMode.value ? '当前服务端仅支持完整包更新' : '当前客户端已是最新版本')
+const idleMessage = computed(() => compatibilityMode.value ? '服务器尚未准备客户端更新' : '当前客户端已是最新版本')
+const errorGuidance = computed(() => {
+  if (error.value.includes('恢复旧版本失败')) return props.canDownloadRecovery
+    ? '请停止继续更新并下载故障恢复 ZIP；如客户端无法正常启动，请由管理员人工恢复或重新安装。'
+    : '请停止继续更新，并联系更新管理员下载故障恢复包或协助重新安装。'
+  if (error.value.includes('已恢复旧版本')) return '当前客户端已恢复到旧版本。请确认服务器发布包和局域网状态后，再重新检查并确认更新。'
+  if (error.value.includes('安装目录不可写')) return props.canDownloadRecovery
+    ? '请下载故障恢复 ZIP，或将客户端重新安装到当前账号可写目录后再检查更新。'
+    : '请联系更新管理员下载故障恢复包，或协助将客户端重新安装到当前账号可写目录。'
+  if (plan.value) return '完整包下载或安装未完成，请确认局域网连接稳定、安装目录可写后重试。'
+  return '请核对 ERP 服务器 IP 和端口，确认客户端与服务器在同一局域网、防火墙已放行且 Go 服务正在运行；若更新包尚未就绪，请检查服务器发布计划任务。'
+})
 const statusLabel = computed(() => {
   if (state.value === 'Ready') return '发现新版本'
   if (state.value === 'Failed') return '更新失败'
   if (taskInProgress.value) return '更新进行中'
-  if (compatibilityMode.value) return '兼容模式'
+  if (compatibilityMode.value) return '更新包未就绪'
   return '已是最新'
 })
 const statusTone = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
   if (state.value === 'Failed') return 'danger'
-  if (state.value === 'Ready' || fallbackReason.value) return 'warning'
+  if (state.value === 'Ready') return 'warning'
   if (taskInProgress.value) return 'info'
   return compatibilityMode.value ? 'info' : 'success'
 })
@@ -247,24 +242,27 @@ const compactTitle = computed(() => {
 })
 const compactDescription = computed(() => {
   if (state.value === 'Downloading') return '正在下载安装包'
-  if (fallbackReason.value) return '增量失败，正在自动改用完整更新'
   if (state.value === 'Failed') return error.value
-  if (compatibilityMode.value) return '旧服务端兼容模式'
+  if (props.recoveryDownloadError) return props.recoveryDownloadError
+  if (compatibilityMode.value && recoveryAvailable.value && !props.canDownloadRecovery) return '故障恢复包仅限更新管理员下载，请联系管理员处理'
+  if (compatibilityMode.value) return '服务器尚未准备完整更新包'
   return `${strategyLabel.value} · ${formatBytes(downloadSize.value)}`
 })
 const compactAction = computed(() => {
   if (state.value === 'Ready' && plan.value) return '立即更新'
   if (state.value === 'Failed') return '重试'
   if (taskInProgress.value) return '查看进度'
-  if (compatibilityMode.value && recoveryAvailable.value) return '下载完整包'
+  if (compatibilityMode.value && recoveryActionAvailable.value) return props.recoveryDownloadError ? '重试下载完整包' : '下载完整包'
   return ''
 })
-const activeStep = computed(() => ({
-  Idle: 0, Checking: 0, Ready: 0, Downloading: 1, Verifying: 2, Applying: 3, Restarting: 4, Failed: 0,
-})[state.value])
+const phaseStep = {Idle: 0, Checking: 0, Ready: 0, Downloading: 1, Verifying: 2, Applying: 3, Restarting: 4} as const
+const activeStep = computed(() => state.value === 'Failed' ? phaseStep[failedStage.value || 'Checking'] : phaseStep[state.value])
+const failedStageLabel = computed(() => ({
+  Idle: '准备', Checking: '检查', Ready: '确认', Downloading: '下载', Verifying: '校验', Applying: '安装', Restarting: '重启',
+})[failedStage.value || 'Checking'])
 const stageLabel = computed(() => ({
   Idle: '等待更新', Checking: '正在检查更新', Ready: '更新已准备就绪', Downloading: '正在下载更新',
-  Verifying: '正在校验更新', Applying: '正在安装更新', Restarting: '正在重启客户端', Failed: '更新失败',
+  Verifying: '正在校验更新', Applying: '正在安装更新', Restarting: '正在重启客户端', Failed: `${failedStageLabel.value}失败`,
 })[state.value])
 const stageNote = computed(() => ({
   Idle: '尚未开始更新。', Checking: '正在获取并验证服务器提供的更新计划。', Ready: '确认后将开始下载。',
@@ -292,19 +290,21 @@ function openConfirmation() {
 async function startUpdate() {
   updateStarted.value = true
   await apply()
+  if (state.value === 'Ready' && plan.value) updateStarted.value = false
 }
 
 async function retryUpdate() {
   updateStarted.value = Boolean(plan.value)
   progressDialogVisible.value = true
   await retry()
+  if (state.value === 'Ready' && plan.value) updateStarted.value = false
 }
 
 function handleCompactAction() {
   if (state.value === 'Ready' && plan.value) openConfirmation()
   else if (state.value === 'Failed') void retryUpdate()
   else if (taskInProgress.value) progressDialogVisible.value = true
-  else if (compatibilityMode.value && recoveryAvailable.value) {
+  else if (compatibilityMode.value && recoveryActionAvailable.value) {
     emit('download-recovery', props.legacyStatus)
   }
 }
@@ -321,6 +321,10 @@ async function focusLaterAction() {
 
 watch(taskInProgress, (running) => {
   if (running && updateStarted.value) progressDialogVisible.value = true
+})
+
+watch(confirmationVisible, (visible) => {
+  if (visible) void focusLaterAction()
 })
 
 onMounted(async () => {

@@ -18,7 +18,7 @@ export interface ApiErrorBody {
   request_id: string
 }
 
-// 客户端升级状态，由服务端从 GitHub、Gitee 或内网更新源缓存后提供。
+// 客户端升级状态，由 ERP 服务端从本机局域网发布目录提供。
 export interface ClientUpdateStatus {
   current_version: string
   latest_version?: string
@@ -69,8 +69,9 @@ export interface SystemUpdateStatus {
   [key: string]: unknown
 }
 
-export type DesktopUpdateStrategy = 'delta' | 'full'
+export type DesktopUpdateStrategy = 'full'
 export type DesktopUpdateState = 'Idle' | 'Checking' | 'Ready' | 'Downloading' | 'Verifying' | 'Applying' | 'Restarting' | 'Failed'
+export type DesktopUpdatePhase = Exclude<DesktopUpdateState, 'Failed'>
 
 // 桌面升级计划由 Rust 校验后返回。Vue 只展示计划摘要，不读取资源 URL、
 // 本地路径或签名内容，避免把安全决策下放到 WebView。
@@ -96,6 +97,7 @@ export interface DesktopUpdateProgress {
   total_bytes?: number
   strategy?: DesktopUpdateStrategy
   fallback_reason?: string
+  failed_stage?: DesktopUpdatePhase
 }
 
 export interface DesktopUpdateApplyResult {

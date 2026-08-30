@@ -9,7 +9,7 @@
 - 共用请求层通过 `HttpTransport` 接口选择浏览器或桌面传输，业务 API 不感知运行平台。
 - `npm run desktop:dev` 和生产安装包都通过同一套 Rust HTTP 传输访问 Go 后端。
 - 首次启动默认连接 `http://127.0.0.1:8080`，可在登录页或登录后的顶栏设置运行 Go 服务的内网地址，例如 `http://192.168.1.20:8080`。
-- `VITE_API_BASE_URL` 只用于指定安装包首次启动的默认地址；用户保存后的地址优先，并可在未来直接切换为公网 HTTPS 地址。
+- `VITE_API_BASE_URL` 只用于指定安装包首次启动的默认地址；用户保存后的 ERP 服务器局域网地址优先。
 - 服务地址只接受不带路径、参数和凭据的 `http://` 或 `https://` 源地址；每次实际请求仍只能使用站内 API 路径。
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
@@ -30,23 +30,24 @@
 ## 更新请求
 
 - `/api/v1/version` 保持启动兼容信息。
-- 旧客户端继续调用 `/api/v1/updates/client/status?current_version=<安装版本>`。
-- 新客户端由 Rust 调用 `/api/v1/updates/client/plan`，传入真实版本、当前 EXE SHA、`windows-x86_64` 和安装模式。返回 `204` 表示已是最新；返回 `404` 表示旧服务端，界面退回完整 ZIP 提示。
-- 差分包仅适用于签名 payload 声明的精确上一版本和来源 EXE 哈希；任何不匹配或失败均自动切换完整资源。NSIS 安装版由 Tauri updater 安装，便携版由本地 helper 原子替换并在 90 秒 Ready 超时后回滚。
+- 兼容状态接口仍为 `/api/v1/updates/client/status?current_version=<安装版本>`；当前没有已部署旧客户端，不执行旧协议迁移。历史 v2/delta 运行时代码暂留但正式 v3 发布不生成、不选择也不展示差分。
+- 新客户端由 Rust 调用 `/api/v1/updates/client/plan`，传入真实版本、当前 EXE SHA、`windows-x86_64` 和固定的 `install_mode=portable`。返回 `204` 表示已是最新。
+- v3 计划只允许 `full`。签名 payload 绑定资源 `kind`、大小、SHA-256 和 Minisign 签名，不包含或信任公网 URL。自动更新只使用用户确认的 Portable 单 EXE，由本地 helper 原子替换并在 Ready 超时后回滚；NSIS 仅用于首次安装或人工恢复。
 - `/api/v1/updates/client/tauri/windows/x86_64/<当前版本>` 提供官方 updater JSON；`/api/v1/updates/client/artifacts/<sha256>` 只分发当前已验签 manifest 中的内容寻址资源，支持 ETag 和 Range。
 - 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。服务端升级包通过同源受保护接口 `/api/v1/system/updates/server/download` 下载，由 Go 服务端使用已部署可信公钥流式验证 Minisign 签名、1 字节至 512 MiB 大小、SHA-256 和 ZIP 结构后分发，Tauri 不直接打开外部更新地址；桌面传输对此大文件接口使用 12 分钟超时，比服务端默认下载时限多保留 2 分钟，以便接收并反馈服务端具体错误。
-- 兼容客户端 ZIP 仍从 `/api/v1/updates/client/download` 下载；manifest 和 Release 附件来自公开 HTTPS 地址，传输层不依赖 Gitee/GitHub 专属 API。局域网服务可使用 HTTP，但 Rust 只接受 loopback/私网地址，所有自动更新资源仍须通过端到端签名与哈希验证；公网服务必须 HTTPS。
-- 客户端不检测、不选择 RC 渠道；自动更新始终只使用正式版 `update-manifest.json`。RC 或手动构建版本通过 GitHub Actions 提供的独立便携客户端 Artifact 测试，不加入正式版更新链路。
+- 管理员恢复 ZIP 从需要 `system:updates:write` 权限的 `/api/v1/system/updates/client/download` 下载，并在每次分发前重验独立 Minisign、大小、SHA-256 和 ZIP 路径安全；正式清单来自服务端本机 `updates/stable/update-manifest.json`，制品来自 `updates/artifacts/<sha256>`，服务端不会请求 Gitee、GitHub或自身 HTTP 地址。
+- 局域网可使用 HTTP，但 Rust 只接受 loopback/私网 ERP 服务器地址；所有自动更新资源仍须通过端到端签名、大小和哈希验证。当前协议不面向公网。
+- 客户端不检测、不选择 RC 渠道；自动更新只使用服务器计划任务激活的正式 stable manifest。
 
 ## 调试说明
 
 - 先启动 Go 后端：`go run ./cmd/server`
 - 再启动桌面调试：`cd client && npm run desktop:dev`
-- macOS 调试直接使用 Tauri dev。
-## RC 与手动构建测试
+- macOS 调试只用于开发，不作为 Windows 发布验收。
 
-- 预发布标签和 `workflow_dispatch` 只生成 Windows 构建 Artifact，不生成或更新正式版自动更新 manifest。
-- 使用 `bb-erp-client-windows-portable-*` Artifact 时，必须保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 在同一目录。
-- RC 测试电脑应使用独立测试目录；测试 EXE 不应覆盖正式安装目录，也不应把测试包当作正式升级包分发。
+## Windows 构建与验收
 
-- Windows 支持通过 `npm run desktop:build` 构建安装包，前提是本机已安装 Rust、Node.js 和 Tauri 对应平台依赖。
+- 正式 Windows 包只由 `scripts/windows-release.ps1 -Mode Publish` 在锁定环境中构建；不得全局安装 Tauri 或执行 `latest` 依赖安装。
+- 便携恢复目录必须保持 `bb-erp-client-windows-x86_64.exe` 与 `bb-erp-portable.json` 同目录。
+- Windows 10 真机必须验证服务器地址、更新前确认、稍后处理、完整包下载安装重启、断网、截断下载、错误签名和不可写目录。
+- Server 2016 只承担构建、分发和服务端运行，不作为主要 Tauri 使用电脑。

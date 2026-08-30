@@ -18,22 +18,21 @@ import (
 	"bb_erp_echo/internal/update"
 )
 
-// TestBackupServerFilesIncludesRuntimeState 验证升级回滚快照包含数据库、上传文件、更新缓存和公钥文件。
+// TestBackupServerFilesIncludesRuntimeState 验证升级回滚快照只包含最小运行时集合和 SQLite sidecar。
 func TestBackupServerFilesIncludesRuntimeState(t *testing.T) {
 	installDir := t.TempDir()
 	backupDir := filepath.Join(t.TempDir(), "backup")
 
 	files := map[string]string{
-		"bb-erp-server.exe":         "server",
-		"bb-erp-updater.exe":        "updater",
-		"bb-erp-upgrade-runner.bat": "runner",
-		"web/index.html":            "web",
-		"data/erp.db":               "sqlite",
-		"static/uploads/image.png":  "upload",
-		"updates/client.zip":        "update-cache",
-		"logs/app.log":              "log",
-		"update-public.key":         "public-key",
-		"version.json":              `{"version":"1.0.0","server_version":"1.0.0","manifest_url":"https://example.com/update-manifest.json"}`,
+		"bb-erp-server.exe":                   "server",
+		"启动服务端.bat":                           "launcher",
+		"web/index.html":                      "web",
+		"data/erp.db":                         "sqlite",
+		"data/erp.db-wal":                     "wal",
+		"data/erp.db-shm":                     "shm",
+		"updates/stable/update-manifest.json": `{"version":"1.0.0"}`,
+		"update-public.key":                   "public-key",
+		"version.json":                        `{"version":"1.0.0","server_version":"1.0.0","manifest_url":"https://example.com/update-manifest.json"}`,
 	}
 	for name, contents := range files {
 		path := filepath.Join(installDir, filepath.FromSlash(name))
@@ -58,11 +57,85 @@ func TestBackupServerFilesIncludesRuntimeState(t *testing.T) {
 			t.Errorf("backed up %s = %q, want %q", name, got, want)
 		}
 	}
+	for _, name := range []string{"bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "static/uploads/image.png", "updates/client.zip", "logs/app.log"} {
+		if _, err := os.Stat(filepath.Join(backupDir, filepath.FromSlash(name))); !os.IsNotExist(err) {
+			t.Errorf("large or mutable path %s must not be copied to rollback snapshot: %v", name, err)
+		}
+	}
 }
 
 func TestBackupServerFilesRequiresExistingServerExecutable(t *testing.T) {
 	if err := backupServerFiles(t.TempDir(), filepath.Join(t.TempDir(), "backup")); err == nil {
 		t.Fatal("backup without the installed server executable must fail")
+	}
+}
+
+func TestFirstInstallBackupAllowsMissingRuntimeAndPreservesProvisionedDatabase(t *testing.T) {
+	installDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "backup")
+	databasePath := filepath.Join(installDir, "data", "erp.db")
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
+		t.Fatalf("create database directory: %v", err)
+	}
+	if err := os.WriteFile(databasePath, []byte("provisioned"), 0o640); err != nil {
+		t.Fatalf("write provisioned database: %v", err)
+	}
+	if err := backupServerFilesWithDatabaseMode(installDir, backupDir, databasePath, false, false); err != nil {
+		t.Fatalf("first-install backup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, "bb-erp-server.exe")); !os.IsNotExist(err) {
+		t.Fatalf("first-install snapshot should not invent a server executable: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(backupDir, "data", "erp.db"))
+	if err != nil || string(got) != "provisioned" {
+		t.Fatalf("provisioned database was not snapshotted: %q, %v", got, err)
+	}
+}
+
+func TestFirstInstallRestoreRemovesNewDatabaseWhenNoPreviousSnapshotExists(t *testing.T) {
+	backupDir := t.TempDir()
+	installDir := t.TempDir()
+	databasePath := filepath.Join(installDir, "data", "erp.db")
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
+		t.Fatalf("create database directory: %v", err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.WriteFile(databasePath+suffix, []byte("new"), 0o640); err != nil {
+			t.Fatalf("write new database %s: %v", suffix, err)
+		}
+	}
+	if err := restoreServerFilesWithDatabase(backupDir, installDir, databasePath); err != nil {
+		t.Fatalf("restore first-install snapshot: %v", err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if _, err := os.Stat(databasePath + suffix); !os.IsNotExist(err) {
+			t.Errorf("new database %s should be removed on first-install rollback: %v", suffix, err)
+		}
+	}
+}
+
+func TestResolveTrustedPublicKeyRequiresExternalBootstrapRoot(t *testing.T) {
+	installDir := t.TempDir()
+	if _, err := resolveTrustedPublicKeyPath(installDir); err == nil || !strings.Contains(err.Error(), "trusted-public-key") {
+		t.Fatalf("missing bootstrap trust root should fail clearly: %v", err)
+	}
+	public, _, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate public key: %v", err)
+	}
+	externalPath := filepath.Join(t.TempDir(), "trusted.pub")
+	if err := os.WriteFile(externalPath, []byte(public.String()), 0o600); err != nil {
+		t.Fatalf("write external public key: %v", err)
+	}
+	got, err := resolveTrustedPublicKeyPath(installDir, externalPath)
+	if err != nil || got != externalPath {
+		t.Fatalf("external bootstrap key = %q, err=%v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "update-public.key"), []byte(public.String()), 0o600); err != nil {
+		t.Fatalf("write installed public key: %v", err)
+	}
+	if got, err := resolveTrustedPublicKeyPath(installDir, externalPath); err != nil || got != filepath.Join(installDir, "update-public.key") {
+		t.Fatalf("installed key should be preferred: %q, err=%v", got, err)
 	}
 }
 
@@ -149,6 +222,34 @@ func TestReplaceServerFilesRefreshesVerificationKey(t *testing.T) {
 		if err != nil || string(got) != want {
 			t.Errorf("custom deployment file %s changed: %q, %v", name, got, err)
 		}
+	}
+}
+
+func TestReplaceServerFilesForCandidateRefreshesLauncher(t *testing.T) {
+	sourceDir := t.TempDir()
+	installDir := t.TempDir()
+	for name, contents := range map[string]string{
+		"bb-erp-server.exe":         "server",
+		"bb-erp-updater.exe":        "updater",
+		"bb-erp-upgrade-runner.bat": "runner",
+		"update-public.key":         "key",
+		"version.json":              `{"version":"2.0.0","server_version":"2.0.0"}`,
+		"启动服务端.bat":                 "set BB_ERP_UPDATE_MANIFEST_FILE=updates\\stable\\update-manifest.json",
+	} {
+		path := filepath.Join(sourceDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create source parent: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o640); err != nil {
+			t.Fatalf("write source %s: %v", name, err)
+		}
+	}
+	if err := replaceServerFilesForCandidate(sourceDir, installDir); err != nil {
+		t.Fatalf("replace candidate files: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(installDir, "启动服务端.bat"))
+	if err != nil || string(got) != "set BB_ERP_UPDATE_MANIFEST_FILE=updates\\stable\\update-manifest.json" {
+		t.Fatalf("candidate launcher = %q, err=%v", got, err)
 	}
 }
 

@@ -257,6 +257,7 @@ GET  /api/v1/system/permissions
 GET  /api/v1/system/audits
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
+GET  /api/v1/system/updates/client/download
 GET  /api/v1/system/updates/server/download
 GET  /api/v1/operator-employees
 ```
@@ -269,38 +270,38 @@ GET  /api/v1/operator-employees
 
 ## 版本与更新
 
-更新源是普通 HTTPS JSON 地址，不绑定 Gitee 或 GitHub API。服务启动后异步检查，之后按配置周期检查；失败不会阻止业务服务，并保留上一次成功状态和已校验缓存。
+正式更新源是服务端安装目录内的 `updates/stable/update-manifest.json`，由 Windows 发布任务在构建、签名和制品验证完成后原子切换。Go 服务不会请求 Gitee、GitHub或通过 HTTP 请求自身。服务启动后异步读取本地清单，之后按配置周期重新校验；失败不会阻止业务服务，并保留上一次成功状态。
 
 ```text
 GET  /api/v1/version
 GET  /api/v1/updates/client/status?current_version=1.2.2
-GET  /api/v1/updates/client/download
 GET  /api/v1/updates/client/plan?current_version=1.2.2&current_sha256=<sha256>&target=windows-x86_64&install_mode=portable
 GET  /api/v1/updates/client/tauri/windows/x86_64/1.2.2
 GET  /api/v1/updates/client/artifacts/<sha256>
 GET  /api/v1/system/updates/status
 POST /api/v1/system/updates/check
+GET  /api/v1/system/updates/client/download
 GET  /api/v1/system/updates/server/download
 ```
 
-- `/api/v1/version`、`status` 和 `download` 保持既有兼容；新客户端发现 `/plan` 为 `404` 时退回旧版完整 ZIP 体验。
+- `/api/v1/version` 和客户端 `status` 保留版本信息；人工恢复 ZIP 只能由拥有 `system:updates:write` 的已登录管理员从 `/api/v1/system/updates/client/download` 下载。当前没有已部署旧客户端，不实现旧协议迁移分支。
 - Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。
-- 客户端下载接口只分发已通过大小、SHA-256 和 ZIP 校验的本地缓存包。
-- `/plan` 仅支持 `windows-x86_64`，无更新返回 `204`；按精确版本、当前 EXE SHA、布局与缓存状态返回 `delta` 或 `full`，并始终带完整兜底资源。
+- 管理员恢复包接口在每次请求时重新验证 Minisign、大小、SHA-256 和 ZIP 路径安全；该 ZIP 不参与自动安装。
+- `/plan` 仅支持 `windows-x86_64`，无更新返回 `204`；协议 v3 固定返回 `strategy=full`，按 `install_mode=nsis|portable` 选择完整包。`current_sha256` 保留在请求契约中，但 v3 不据此选择差分。
 - `/tauri/{target}/{arch}/{current_version}` 返回 Tauri updater 的 `version/url/signature`，无更新返回 `204`。
-- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 v2 manifest 声明并缓存的资源，支持 `ETag`、`Content-Length` 与 HTTP Range。
-- `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；服务端必须配置对应 Minisign 公钥后才接受 v2 更新。
+- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 v3 payload 声明且位于 `updates/artifacts/<sha256>` 的资源，支持 `ETag`、`Content-Length` 与 HTTP Range；发布目录本身不作为静态目录公开。
+- `client_update_v3.payload` 是原始 JSON 字节的 Base64，`signature` 是 Tauri/Minisign detached signature。payload 绑定版本、目标、布局、资源类型、大小、SHA-256 和资源 Minisign 签名；`deltas` 必须为空，资源不携带或信任公网 URL。
 - `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
-- `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
-- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存，并在返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次下载。下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
-- 更新状态中的服务端 `download_url`/`download_path` 指向上述同源受保护接口，不再把外部下载地址直接交给 Tauri WebView；下载只提供升级包，不会自动替换当前进程。
+- `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即重新读取和校验本地 stable manifest，并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页保留历史成功状态并提示检查服务器计划任务日志。
+- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`，只在本机版本归档存在并通过可信公钥、大小、SHA-256、ZIP 安全边界和必需文件校验时提供服务端恢复包。自动服务端升级不依赖此接口，而由 Windows 计划任务直接调用 updater。
 
 更新状态示例：
 
 ```json
 {
   "enabled": true,
-  "manifest_url": "https://gitee.com/example/bb-erp-release/raw/main/update-manifest.json",
+  "manifest_url": "updates/stable/update-manifest.json",
+  "manifest_file": "updates/stable/update-manifest.json",
   "reachable": true,
   "checking": false,
   "check_interval": "6h0m0s",
@@ -313,8 +314,6 @@ GET  /api/v1/system/updates/server/download
     "latest_version": "1.2.3",
     "available": true,
     "file_name": "bb-erp-server-windows.zip",
-    "download_path": "/api/v1/system/updates/server/download",
-    "download_url": "/api/v1/system/updates/server/download",
     "size": 12345678,
     "sha256": "..."
   },
@@ -324,12 +323,11 @@ GET  /api/v1/system/updates/server/download
     "available": true,
     "cached": true,
     "file_name": "bb-erp-client-windows.zip",
-    "download_path": "/api/v1/updates/client/download"
+    "download_path": "/api/v1/system/updates/client/download"
   },
-  "client_protocol_version": 2,
+  "client_protocol_version": 3,
   "client_full_cached": true,
-  "client_delta_cached": true,
-  "client_delta_from_version": "1.2.2",
+  "client_delta_cached": false,
   "client_cache_bytes": 34567890,
   "client_delta_degraded": ""
 }

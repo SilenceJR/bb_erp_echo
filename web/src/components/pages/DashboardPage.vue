@@ -13,7 +13,10 @@
               v-if="desktopClient"
               compact
               :legacy-status="clientUpdate"
-              @download-recovery="downloadClientUpdate"
+              :can-download-recovery="canDownloadRecovery"
+              :recovery-downloading="recoveryDownloading"
+              :recovery-download-error="recoveryDownloadError"
+              @download-recovery="handleRecoveryDownload"
             />
           </div>
 
@@ -131,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import {computed, ref} from 'vue'
 import DesktopUpdatePanel from '../DesktopUpdatePanel.vue'
 import MetricCard from '../ui/MetricCard.vue'
 import PageState from '../ui/PageState.vue'
@@ -420,4 +424,21 @@ const {
   workorderNextAction,
   workorderActionLabel,
 } = useWorkspaceContext()
+
+const canDownloadRecovery = computed(() => Boolean(currentUser.value?.permissions?.includes('system:updates:write')))
+const recoveryDownloading = ref(false)
+const recoveryDownloadError = ref('')
+
+async function handleRecoveryDownload() {
+  if (!canDownloadRecovery.value || recoveryDownloading.value) return
+  recoveryDownloading.value = true
+  recoveryDownloadError.value = ''
+  try {
+    await downloadClientUpdate()
+  } catch (error) {
+    recoveryDownloadError.value = error instanceof Error ? error.message : '故障恢复包下载失败'
+  } finally {
+    recoveryDownloading.value = false
+  }
+}
 </script>

@@ -3,7 +3,7 @@
 //! Desktop update boundary. The webview may ask to check/apply an update, but
 //! every URL, signature and executable path is revalidated in this module.
 
-use crate::delta::{apply_patch, sha256_file, ALGORITHM};
+use crate::delta::sha256_file;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use minisign_verify::{PublicKey, Signature};
 use reqwest::{redirect::Policy, Client, Url};
@@ -21,7 +21,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const PLAN_PATH: &str = "/api/v1/updates/client/plan";
 const READY_TIMEOUT: Duration = Duration::from_secs(90);
-const PORTABLE_MARKER: &str = "bb-erp-portable.json";
+const UPDATE_RESULT_FILE: &str = "client-update-result.json";
+const MAX_UPDATE_RESULT_SIZE: u64 = 64 * 1024;
 
 #[derive(Default)]
 pub struct UpdateEngine {
@@ -39,6 +40,7 @@ pub struct UpdateSnapshot {
     pub total_bytes: Option<u64>,
     pub strategy: Option<String>,
     pub fallback_reason: Option<String>,
+    pub failed_stage: Option<String>,
 }
 
 impl Default for UpdateSnapshot {
@@ -50,6 +52,7 @@ impl Default for UpdateSnapshot {
             total_bytes: None,
             strategy: None,
             fallback_reason: None,
+            failed_stage: None,
         }
     }
 }
@@ -72,7 +75,7 @@ pub struct UpdateArtifact {
     pub target_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ClientUpdatePlan {
     pub protocol_version: u32,
     pub current_version: String,
@@ -99,34 +102,21 @@ struct SignedPayload {
     layout_version: u32,
     full: SignedFull,
     #[serde(default)]
-    deltas: Vec<SignedDelta>,
+    deltas: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 struct SignedFull {
-    nsis: SignedAsset,
+    #[serde(rename = "nsis")]
+    _nsis: SignedAsset,
     portable: SignedAsset,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 struct SignedAsset {
-    url: String,
+    kind: String,
     size: u64,
     sha256: String,
-    #[serde(default)]
-    signature: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct SignedDelta {
-    from_version: String,
-    from_sha256: String,
-    target_sha256: String,
-    algorithm: String,
-    url: String,
-    size: u64,
-    sha256: String,
-    #[serde(default)]
     signature: String,
 }
 
@@ -137,6 +127,12 @@ pub struct UpdateApplyResult {
     pub strategy: String,
     pub fallback_used: bool,
     pub message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+struct PersistedUpdateFailure {
+    message: String,
+    failed_stage: String,
 }
 
 pub fn update_public_key() -> Option<&'static str> {
@@ -152,6 +148,113 @@ fn emit(engine: &UpdateEngine, app: &AppHandle, snapshot: UpdateSnapshot) {
         *current = snapshot.clone();
     }
     let _ = app.emit("client-update-progress", snapshot);
+}
+
+fn failure_snapshot(engine: &UpdateEngine, message: String) -> UpdateSnapshot {
+    let inferred_stage = if message.contains("安装目录") || message.contains("更新助手") {
+        Some("Applying".into())
+    } else if message.contains("签名")
+        || message.contains("SHA-256")
+        || message.contains("大小校验")
+    {
+        Some("Verifying".into())
+    } else if message.contains("计划已变化") || message.contains("检查") {
+        Some("Checking".into())
+    } else {
+        None
+    };
+    let failed_stage = inferred_stage
+        .or_else(|| {
+            engine
+                .snapshot
+                .lock()
+                .ok()
+                .map(|snapshot| snapshot.state.clone())
+                .filter(|stage| {
+                    matches!(
+                        stage.as_str(),
+                        "Checking" | "Downloading" | "Verifying" | "Applying" | "Restarting"
+                    )
+                })
+        })
+        .or_else(|| Some("Checking".into()));
+    UpdateSnapshot {
+        state: "Failed".into(),
+        message: Some(message),
+        failed_stage,
+        ..Default::default()
+    }
+}
+
+fn update_result_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("updates");
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    Ok(directory.join(UPDATE_RESULT_FILE))
+}
+
+fn persist_update_failure(path: &Path, message: &str) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| error("更新结果路径不合法"))?;
+    fs::create_dir_all(parent).map_err(|e| format!("创建更新结果目录失败：{e}"))?;
+    let payload = PersistedUpdateFailure {
+        message: message.trim().to_string(),
+        failed_stage: "Restarting".into(),
+    };
+    if payload.message.is_empty() {
+        return Err(error("更新失败结果不能为空"));
+    }
+    let bytes = serde_json::to_vec(&payload).map_err(|e| e.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, bytes).map_err(|e| format!("写入更新失败结果失败：{e}"))?;
+    if path.is_file() {
+        fs::remove_file(path).map_err(|e| format!("替换旧更新失败结果失败：{e}"))?;
+    }
+    fs::rename(&temporary, path).map_err(|e| {
+        let _ = fs::remove_file(&temporary);
+        format!("发布更新失败结果失败：{e}")
+    })
+}
+
+fn consume_update_failure(path: &Path) -> Option<UpdateSnapshot> {
+    if !path.is_file() {
+        return None;
+    }
+    let result = (|| -> Result<PersistedUpdateFailure, String> {
+        let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+        if metadata.len() == 0 || metadata.len() > MAX_UPDATE_RESULT_SIZE {
+            return Err(error("更新失败结果文件大小不合法"));
+        }
+        let bytes = fs::read(path).map_err(|e| e.to_string())?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("更新失败结果格式无效：{e}"))
+    })();
+    let _ = fs::remove_file(path);
+    let failure = match result {
+        Ok(failure) if !failure.message.trim().is_empty() => failure,
+        Ok(_) => PersistedUpdateFailure {
+            message: "更新失败结果内容为空，请重新检查更新".into(),
+            failed_stage: "Restarting".into(),
+        },
+        Err(message) => PersistedUpdateFailure {
+            message,
+            failed_stage: "Restarting".into(),
+        },
+    };
+    Some(UpdateSnapshot {
+        state: "Failed".into(),
+        message: Some(failure.message),
+        failed_stage: Some(failure.failed_stage),
+        ..Default::default()
+    })
+}
+
+fn record_helper_failure(path: &Path, message: String) -> String {
+    match persist_update_failure(path, &message) {
+        Ok(()) => message,
+        Err(error) => format!("{message}；无法记录回滚结果：{error}"),
+    }
 }
 
 fn begin_task(engine: &UpdateEngine) -> Result<(), String> {
@@ -181,7 +284,7 @@ fn clean_origin(value: &str) -> Result<Url, String> {
         return Err(error("更新服务器地址必须是已验证的 HTTP(S) 主机和端口"));
     }
     if parsed.scheme() == "http" && !is_private_or_loopback_host(parsed.host_str()) {
-        return Err(error("公网更新服务器必须使用 HTTPS"));
+        return Err(error("非局域网服务器不得使用明文 HTTP"));
     }
     Ok(parsed)
 }
@@ -270,10 +373,7 @@ async fn fetch_plan(origin: &Url, app: &AppHandle) -> Result<Option<ClientUpdate
         .append_pair("current_version", &current_version(app))
         .append_pair("current_sha256", &hash)
         .append_pair("target", "windows-x86_64")
-        .append_pair(
-            "install_mode",
-            if is_portable()? { "portable" } else { "nsis" },
-        );
+        .append_pair("install_mode", "portable");
     let response = http_client()?
         .get(url)
         .send()
@@ -332,9 +432,15 @@ pub fn parse_signature_envelope(value: &str) -> Result<Signature, String> {
     Signature::decode(&decode_signature_envelope(value)?).map_err(|_| error("更新签名格式无效"))
 }
 
-fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result<(), String> {
-    if plan.protocol_version != 2 || plan.target != "windows-x86_64" {
+fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, _app: &AppHandle) -> Result<(), String> {
+    if plan.protocol_version != 3 || plan.target != "windows-x86_64" {
         return Err(error("不支持的更新协议或平台"));
+    }
+    if plan.install_mode != "portable" {
+        return Err(error("自动更新仅接受 Portable 完整包"));
+    }
+    if plan.strategy != "full" {
+        return Err(error("局域网更新协议仅允许完整更新"));
     }
     if plan.latest_version.trim().is_empty()
         || Version::parse(plan.latest_version.trim_start_matches('v')).is_err()
@@ -347,53 +453,17 @@ fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result
     verify_signature(&payload_bytes, &plan.signature)?;
     let payload: SignedPayload =
         serde_json::from_slice(&payload_bytes).map_err(|_| error("更新签名载荷格式无效"))?;
-    if payload.protocol_version != 2
+    if payload.protocol_version != 3
         || payload.layout_version != 1
         || payload.version != plan.latest_version
         || payload.target != plan.target
+        || !payload.deltas.is_empty()
     {
         return Err(error("更新签名载荷与更新计划不一致"));
     }
-    let expected_full = if plan.install_mode == "portable" {
-        &payload.full.portable
-    } else {
-        &payload.full.nsis
-    };
+    let expected_full = &payload.full.portable;
     verify_artifact_matches(&plan.full_fallback, expected_full, origin)?;
-    if plan.strategy == "delta" {
-        let current_hash = current_exe_hash()?;
-        let found = payload
-            .deltas
-            .iter()
-            .find(|delta| {
-                delta.from_version == current_version(app)
-                    && delta.from_sha256.eq_ignore_ascii_case(&current_hash)
-                    && delta.algorithm == ALGORITHM
-                    && delta.sha256.eq_ignore_ascii_case(&plan.artifact.sha256)
-            })
-            .ok_or_else(|| error("差分包与当前客户端不匹配"))?;
-        if plan.artifact.algorithm != ALGORITHM
-            || !found
-                .target_sha256
-                .eq_ignore_ascii_case(&plan.artifact.target_sha256)
-        {
-            return Err(error("差分包校验信息不一致"));
-        }
-        verify_artifact_matches(
-            &plan.artifact,
-            &SignedAsset {
-                url: found.url.clone(),
-                size: found.size,
-                sha256: found.sha256.clone(),
-                signature: found.signature.clone(),
-            },
-            origin,
-        )?;
-    } else if plan.strategy == "full" {
-        verify_artifact_matches(&plan.artifact, expected_full, origin)?;
-    } else {
-        return Err(error("未知更新策略"));
-    }
+    verify_artifact_matches(&plan.artifact, expected_full, origin)?;
     Ok(())
 }
 
@@ -402,21 +472,34 @@ fn verify_artifact_matches(
     signed: &SignedAsset,
     origin: &Url,
 ) -> Result<(), String> {
-    if actual.size != signed.size
+    if actual.kind != signed.kind
+        || actual.size != signed.size
+        || actual.size == 0
         || !actual.sha256.eq_ignore_ascii_case(&signed.sha256)
+        || actual.sha256.len() != 64
+        || !actual.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || actual.signature.is_empty()
         || actual.signature != signed.signature
+        || !actual.algorithm.is_empty()
+        || !actual.from_version.is_empty()
+        || !actual.from_sha256.is_empty()
+        || !actual.target_sha256.is_empty()
     {
         return Err(error("更新资源与签名载荷不一致"));
     }
+    if !matches!(actual.kind.as_str(), "nsis" | "portable") {
+        return Err(error("更新资源类型不合法"));
+    }
+    let expected_path = format!(
+        "/api/v1/updates/client/artifacts/{}",
+        actual.sha256.to_ascii_lowercase()
+    );
+    if actual.download_path != expected_path {
+        return Err(error("更新资源下载路径与内容哈希不一致"));
+    }
     let actual_url = artifact_url(origin, &actual.download_path)?;
-    let signed_url = Url::parse(&signed.url).map_err(|_| error("签名资源地址不合法"))?;
-    // The signed release URL may be Gitee while the ERP server proxies a
-    // cached artifact. Only the server-relative path is fetched by the app.
-    if signed_url.scheme() != "https"
-        || signed_url.host_str().is_none()
-        || !same_origin(origin, &actual_url)
-    {
-        return Err(error("签名资源地址或下载路径不合法"));
+    if !same_origin(origin, &actual_url) {
+        return Err(error("更新资源下载路径不合法"));
     }
     Ok(())
 }
@@ -493,6 +576,7 @@ async fn download_verified(
                 total_bytes: Some(artifact.size),
                 strategy: None,
                 fallback_reason: None,
+                failed_stage: None,
             },
         );
     }
@@ -521,16 +605,10 @@ async fn download_verified(
             total_bytes: Some(artifact.size),
             strategy: None,
             fallback_reason: None,
+            failed_stage: None,
         },
     );
     Ok(target)
-}
-
-fn is_portable() -> Result<bool, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(exe
-        .parent()
-        .is_some_and(|directory| directory.join(PORTABLE_MARKER).is_file()))
 }
 
 #[tauri::command]
@@ -589,22 +667,23 @@ pub async fn client_update_check(
         .await;
         finish_task(&engine);
         if let Err(ref message) = result {
-            emit(
-                &engine,
-                &app,
-                UpdateSnapshot {
-                    state: "Failed".into(),
-                    message: Some(message.clone()),
-                    ..Default::default()
-                },
-            );
+            emit(&engine, &app, failure_snapshot(&engine, message.clone()));
         }
         result
     }
 }
 
 #[tauri::command]
-pub fn client_update_status(engine: State<'_, UpdateEngine>) -> UpdateSnapshot {
+pub fn client_update_status(app: AppHandle, engine: State<'_, UpdateEngine>) -> UpdateSnapshot {
+    if let Some(snapshot) = update_result_path(&app)
+        .ok()
+        .and_then(|path| consume_update_failure(&path))
+    {
+        if let Ok(mut current) = engine.snapshot.lock() {
+            *current = snapshot.clone();
+        }
+        return snapshot;
+    }
     engine
         .snapshot
         .lock()
@@ -638,62 +717,11 @@ pub async fn client_update_apply(
             let current = fetch_plan(&origin, &app)
                 .await?
                 .ok_or_else(|| error("更新已不可用，请重新检查"))?;
-            if current.latest_version != plan.latest_version
-                || current.artifact.sha256 != plan.artifact.sha256
-            {
-                return Err(error("更新计划已变化，请重新检查"));
+            if current != plan {
+                return Err(error("更新计划已变化，请重新检查并再次确认"));
             }
             verify_plan(&current, &origin, &app)?;
-            emit(
-                &engine,
-                &app,
-                UpdateSnapshot {
-                    state: "Downloading".into(),
-                    message: Some("正在下载更新".into()),
-                    strategy: Some(current.strategy.clone()),
-                    ..Default::default()
-                },
-            );
-            if current.strategy == "delta" {
-                match apply_delta(&app, &engine, &origin, &current).await {
-                    Ok(message) => {
-                        return Ok(UpdateApplyResult {
-                            state: "Restarting".into(),
-                            strategy: "delta".into(),
-                            fallback_used: false,
-                            message,
-                        })
-                    }
-                    Err(reason) => {
-                        emit(
-                            &engine,
-                            &app,
-                            UpdateSnapshot {
-                                state: "Downloading".into(),
-                                message: Some("差分更新不可用，正在切换完整更新".into()),
-                                strategy: Some("full".into()),
-                                fallback_reason: Some(reason.clone()),
-                                ..Default::default()
-                            },
-                        );
-                        let message = apply_full(
-                            &app,
-                            &engine,
-                            &origin,
-                            &current.full_fallback,
-                            Some(reason),
-                        )
-                        .await?;
-                        return Ok(UpdateApplyResult {
-                            state: "Restarting".into(),
-                            strategy: "full".into(),
-                            fallback_used: true,
-                            message,
-                        });
-                    }
-                }
-            }
-            let message = apply_full(&app, &engine, &origin, &current.artifact, None).await?;
+            let message = apply_full(&app, &engine, &origin, &current.artifact).await?;
             Ok(UpdateApplyResult {
                 state: "Restarting".into(),
                 strategy: "full".into(),
@@ -704,47 +732,10 @@ pub async fn client_update_apply(
         .await;
         finish_task(&engine);
         if let Err(ref message) = result {
-            emit(
-                &engine,
-                &app,
-                UpdateSnapshot {
-                    state: "Failed".into(),
-                    message: Some(message.clone()),
-                    ..Default::default()
-                },
-            );
+            emit(&engine, &app, failure_snapshot(&engine, message.clone()));
         }
         result
     }
-}
-
-#[cfg(windows)]
-async fn apply_delta(
-    app: &AppHandle,
-    engine: &UpdateEngine,
-    origin: &Url,
-    plan: &ClientUpdatePlan,
-) -> Result<String, String> {
-    let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    ensure_target_parent_writable(&current)?;
-    let patch = download_verified(app, engine, origin, &plan.artifact).await?;
-    let rebuilt = cache_path(app, &plan.artifact.target_sha256)?.with_extension("exe.new");
-    emit(
-        engine,
-        app,
-        UpdateSnapshot {
-            state: "Applying".into(),
-            message: Some("正在重建增量更新".into()),
-            strategy: Some("delta".into()),
-            ..Default::default()
-        },
-    );
-    apply_patch(&current, &patch, &rebuilt).map_err(|e| format!("差分重建失败：{e}"))?;
-    let rebuilt_hash = sha256_file(&rebuilt).map_err(|e| e.to_string())?;
-    if !rebuilt_hash.eq_ignore_ascii_case(&plan.artifact.target_sha256) {
-        return Err(error("差分重建 SHA-256 校验失败"));
-    }
-    schedule_portable_replace(app, engine, &rebuilt)
 }
 
 #[cfg(windows)]
@@ -753,61 +744,11 @@ async fn apply_full(
     engine: &UpdateEngine,
     origin: &Url,
     artifact: &UpdateArtifact,
-    fallback_reason: Option<String>,
 ) -> Result<String, String> {
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    if should_use_portable_full(
-        is_portable()?,
-        ensure_target_parent_writable(&current).is_ok(),
-    ) {
-        let replacement = download_verified(app, engine, origin, artifact).await?;
-        emit(
-            engine,
-            app,
-            UpdateSnapshot {
-                state: "Applying".into(),
-                message: Some("正在准备完整客户端替换".into()),
-                strategy: Some("full".into()),
-                fallback_reason: fallback_reason.clone(),
-                ..Default::default()
-            },
-        );
-        return schedule_portable_replace(app, engine, &replacement);
-    }
-    apply_nsis_full(app, engine, origin, fallback_reason).await
-}
-
-fn should_use_portable_full(portable_marker: bool, target_writable: bool) -> bool {
-    portable_marker && target_writable
-}
-
-#[cfg(windows)]
-async fn apply_nsis_full(
-    app: &AppHandle,
-    engine: &UpdateEngine,
-    origin: &Url,
-    fallback_reason: Option<String>,
-) -> Result<String, String> {
-    use tauri_plugin_updater::UpdaterExt;
-    let endpoint = artifact_url(
-        origin,
-        &format!(
-            "/api/v1/updates/client/tauri/windows/x86_64/{}",
-            current_version(app)
-        ),
-    )?;
-    let updater = app
-        .updater_builder()
-        .endpoints(vec![endpoint])
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())?;
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| format!("完整更新检查失败：{e}"))?
-        .ok_or_else(|| error("完整更新已不可用"))?;
-    let mut total_downloaded = 0_u64;
+    ensure_target_parent_writable(&current).map_err(|_| {
+        error("客户端安装目录不可写，无法安全自动更新；请下载故障恢复 ZIP，或将客户端重新安装到当前账号可写目录")
+    })?;
     emit(
         engine,
         app,
@@ -815,55 +756,21 @@ async fn apply_nsis_full(
             state: "Downloading".into(),
             message: Some("正在下载完整更新".into()),
             strategy: Some("full".into()),
-            fallback_reason: fallback_reason.clone(),
             ..Default::default()
         },
     );
-    update
-        .download_and_install(
-            |chunk_size, total| {
-                total_downloaded += chunk_size as u64;
-                emit(
-                    engine,
-                    app,
-                    UpdateSnapshot {
-                        state: "Downloading".into(),
-                        message: Some("正在下载完整更新".into()),
-                        downloaded_bytes: Some(total_downloaded),
-                        total_bytes: total,
-                        strategy: Some("full".into()),
-                        fallback_reason: fallback_reason.clone(),
-                    },
-                )
-            },
-            || {
-                emit(
-                    engine,
-                    app,
-                    UpdateSnapshot {
-                        state: "Applying".into(),
-                        message: Some("正在验证并安装完整更新".into()),
-                        strategy: Some("full".into()),
-                        fallback_reason: fallback_reason.clone(),
-                        ..Default::default()
-                    },
-                )
-            },
-        )
-        .await
-        .map_err(|e| format!("完整更新安装失败：{e}"))?;
+    let replacement = download_verified(app, engine, origin, artifact).await?;
     emit(
         engine,
         app,
         UpdateSnapshot {
-            state: "Restarting".into(),
-            message: Some("完整更新安装完成，正在重启客户端".into()),
+            state: "Applying".into(),
+            message: Some("正在准备完整客户端替换".into()),
             strategy: Some("full".into()),
-            fallback_reason,
             ..Default::default()
         },
     );
-    Ok("完整安装程序已启动，客户端将重启".into())
+    schedule_portable_replace(app, engine, &replacement)
 }
 
 #[cfg(windows)]
@@ -890,6 +797,8 @@ fn schedule_portable_replace(
         .as_nanos();
     let helper = cache.join(format!("apply-{nonce}.exe"));
     let ready = cache.join(format!("ready-{nonce}.marker"));
+    let result = cache.join(UPDATE_RESULT_FILE);
+    let _ = fs::remove_file(&result);
     let staged_replacement = stage_replacement_for_target(replacement, &current)?;
     fs::copy(&current, &helper).map_err(|e| {
         let _ = fs::remove_file(&staged_replacement);
@@ -907,6 +816,8 @@ fn schedule_portable_replace(
             &pid.to_string(),
             "--ready-marker",
             &ready.to_string_lossy(),
+            "--result-file",
+            &result.to_string_lossy(),
         ])
         .spawn()
         .map_err(|e| {
@@ -964,6 +875,7 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     let target = helper_value(args, "--target")?;
     let replacement = helper_value(args, "--replacement")?;
     let ready = helper_value(args, "--ready-marker")?;
+    let result_file = helper_value(args, "--result-file")?;
     let parent_pid = args
         .iter()
         .position(|arg| arg == "--parent-pid")
@@ -974,12 +886,18 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     if !target.is_absolute()
         || !replacement.is_absolute()
         || !ready.is_absolute()
+        || !result_file.is_absolute()
         || !replacement.is_file()
     {
         return Err(error("更新助手路径不合法"));
     }
     if replacement.parent() != target.parent() {
         return Err(error("更新暂存文件必须位于客户端安装目录"));
+    }
+    if result_file.file_name().and_then(|name| name.to_str()) != Some(UPDATE_RESULT_FILE)
+        || result_file.parent() != ready.parent()
+    {
+        return Err(error("更新结果路径不合法"));
     }
     let backup = target.with_extension("old");
     let old_exit_deadline = phase_deadline(Instant::now());
@@ -988,20 +906,30 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     }
     if process_exists(parent_pid) {
         let _ = fs::remove_file(&replacement);
-        return Err(error("等待旧客户端退出超时"));
+        return Err(record_helper_failure(
+            &result_file,
+            "等待旧客户端退出超时，未替换当前版本".into(),
+        ));
     }
     let _ = fs::remove_file(&ready);
     let _ = fs::remove_file(&backup);
     if let Err(error) = fs::rename(&target, &backup) {
         let _ = fs::remove_file(&replacement);
+        let message = record_helper_failure(
+            &result_file,
+            format!("无法备份旧客户端：{error}；未替换当前版本"),
+        );
         let _ = restart_original(&target);
-        return Err(format!("无法备份旧客户端：{error}"));
+        return Err(message);
     }
     if let Err(e) = fs::rename(&replacement, &target) {
         let _ = fs::remove_file(&replacement);
-        let _ = fs::rename(&backup, &target);
-        let _ = restart_original(&target);
-        return Err(format!("无法替换客户端：{e}"));
+        return Err(recover_and_report(
+            &target,
+            &backup,
+            &result_file,
+            &format!("无法替换客户端：{e}"),
+        ));
     }
     let mut child = match Command::new(&target)
         .arg("--update-ready-marker")
@@ -1010,11 +938,11 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     {
         Ok(child) => child,
         Err(spawn_error) => {
-            let recovery = recover_original(&target, &backup, restart_original);
-            return Err(combine_update_errors(
-                "无法启动新客户端",
-                spawn_error.to_string(),
-                recovery,
+            return Err(recover_and_report(
+                &target,
+                &backup,
+                &result_file,
+                &format!("无法启动新客户端：{spawn_error}"),
             ));
         }
     };
@@ -1034,26 +962,49 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     if ready.is_file() {
         let _ = fs::remove_file(&backup);
         let _ = fs::remove_file(&ready);
+        let _ = fs::remove_file(&result_file);
         return Ok(());
     }
     if !exited_early {
         let _ = child.kill();
     }
     let _ = child.wait();
-    let recovery = recover_original(&target, &backup, restart_original);
     let reason = if exited_early {
         "新客户端提前退出"
     } else {
         "新客户端启动超时"
     };
-    match recovery {
-        Ok(()) => Err(format!("{reason}，已恢复旧版本")),
-        Err(recovery_error) => Err(format!("{reason}，且恢复旧版本失败：{recovery_error}")),
-    }
+    Err(recover_and_report(&target, &backup, &result_file, reason))
 }
 
 fn phase_deadline(now: std::time::Instant) -> std::time::Instant {
     now + READY_TIMEOUT
+}
+
+#[cfg(windows)]
+fn recover_and_report(target: &Path, backup: &Path, result_file: &Path, reason: &str) -> String {
+    let mut failures = Vec::new();
+    if let Err(error) = fs::remove_file(target) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            failures.push(format!("删除新客户端失败：{error}"));
+        }
+    }
+    if let Err(error) = fs::rename(backup, target) {
+        failures.push(format!("恢复旧客户端失败：{error}"));
+    }
+    if !failures.is_empty() {
+        return record_helper_failure(
+            result_file,
+            format!("{reason}；恢复旧版本失败：{}", failures.join("；")),
+        );
+    }
+
+    let restored = format!("{reason}；已恢复旧版本");
+    let recorded = record_helper_failure(result_file, restored);
+    if let Err(error) = restart_original(target) {
+        return record_helper_failure(result_file, format!("{recorded}；{error}"));
+    }
+    recorded
 }
 
 /// Restore the backed-up executable before reporting an update failure. The
@@ -1079,13 +1030,6 @@ where
         Ok(())
     } else {
         Err(failures.join("；"))
-    }
-}
-
-fn combine_update_errors(prefix: &str, primary: String, recovery: Result<(), String>) -> String {
-    match recovery {
-        Ok(()) => format!("{prefix}：{primary}；已恢复旧版本"),
-        Err(recovery_error) => format!("{prefix}：{primary}；恢复旧版本失败：{recovery_error}"),
     }
 }
 
@@ -1150,8 +1094,8 @@ fn hex_name(bytes: &[u8]) -> String {
 }
 
 /// Probe the target directory before the old process exits. Windows directory
-/// ACLs are authoritative for rename/create operations, so an installed app in
-/// Program Files safely falls back to the signed NSIS updater instead.
+/// ACLs are authoritative for rename/create operations. Automatic update stops
+/// when the directory is not writable; NSIS remains a manual recovery artifact.
 fn ensure_target_parent_writable(target: &Path) -> Result<(), String> {
     use std::{
         fs::OpenOptions,
@@ -1168,11 +1112,11 @@ fn ensure_target_parent_writable(target: &Path) -> Result<(), String> {
         .write(true)
         .create_new(true)
         .open(&probe)
-        .map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
+        .map_err(|_| error("客户端安装目录不可写，无法安全自动更新；请下载故障恢复 ZIP，或重新安装到当前账号可写目录"))?;
     file.write_all(b"probe")
         .and_then(|_| file.sync_all())
-        .map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
-    fs::remove_file(&probe).map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
+        .map_err(|_| error("客户端安装目录不可写，无法安全自动更新；请下载故障恢复 ZIP，或重新安装到当前账号可写目录"))?;
+    fs::remove_file(&probe).map_err(|_| error("客户端安装目录不可写，无法安全自动更新；请下载故障恢复 ZIP，或重新安装到当前账号可写目录"))?;
     Ok(())
 }
 
@@ -1220,6 +1164,37 @@ mod tests {
     }
 
     #[test]
+    fn lan_v3_artifact_binding_does_not_require_a_public_url() {
+        let origin = clean_origin("http://192.168.1.20:8080").unwrap();
+        let signed = SignedAsset {
+            kind: "portable".into(),
+            size: 123,
+            sha256: "a".repeat(64),
+            signature: "signed-artifact".into(),
+        };
+        let artifact = UpdateArtifact {
+            kind: "portable".into(),
+            algorithm: String::new(),
+            sha256: "a".repeat(64),
+            size: 123,
+            signature: "signed-artifact".into(),
+            download_path: format!("/api/v1/updates/client/artifacts/{}", "a".repeat(64)),
+            from_version: String::new(),
+            from_sha256: String::new(),
+            target_sha256: String::new(),
+        };
+        verify_artifact_matches(&artifact, &signed, &origin).unwrap();
+
+        let mut changed_kind = artifact.clone();
+        changed_kind.kind = "nsis".into();
+        assert!(verify_artifact_matches(&changed_kind, &signed, &origin).is_err());
+
+        let mut external_path = artifact;
+        external_path.download_path = "https://downloads.example.test/client.exe".into();
+        assert!(verify_artifact_matches(&external_path, &signed, &origin).is_err());
+    }
+
+    #[test]
     fn decodes_tauri_signature_transport_envelope() {
         let source =
             "untrusted comment: signature\nRkFLRQ==\ntrusted comment: timestamp:0\nRkFLRQ==";
@@ -1261,10 +1236,51 @@ mod tests {
     }
 
     #[test]
-    fn unwritable_portable_target_uses_the_nsis_fallback() {
-        assert!(should_use_portable_full(true, true));
-        assert!(!should_use_portable_full(true, false));
-        assert!(!should_use_portable_full(false, true));
+    fn failure_snapshot_preserves_or_infers_the_failed_phase() {
+        let engine = UpdateEngine::default();
+        *engine.snapshot.lock().unwrap() = UpdateSnapshot {
+            state: "Applying".into(),
+            ..Default::default()
+        };
+        let applying = failure_snapshot(&engine, "无法替换客户端".into());
+        assert_eq!(applying.failed_stage.as_deref(), Some("Applying"));
+
+        let verifying = failure_snapshot(&engine, "更新资源签名校验失败".into());
+        assert_eq!(verifying.failed_stage.as_deref(), Some("Verifying"));
+    }
+
+    #[test]
+    fn persisted_rollback_failure_is_consumed_once() {
+        let directory =
+            std::env::temp_dir().join(format!("bb-erp-update-result-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(UPDATE_RESULT_FILE);
+        persist_update_failure(&path, "新客户端启动超时；已恢复旧版本").unwrap();
+
+        let snapshot = consume_update_failure(&path).unwrap();
+        assert_eq!(snapshot.state, "Failed");
+        assert_eq!(snapshot.failed_stage.as_deref(), Some("Restarting"));
+        assert!(snapshot.message.unwrap().contains("已恢复旧版本"));
+        assert!(consume_update_failure(&path).is_none());
+        let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn damaged_persisted_result_is_consumed_as_a_restart_failure() {
+        let directory = std::env::temp_dir().join(format!(
+            "bb-erp-update-result-damaged-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(UPDATE_RESULT_FILE);
+        fs::write(&path, b"not-json").unwrap();
+
+        let snapshot = consume_update_failure(&path).unwrap();
+        assert_eq!(snapshot.state, "Failed");
+        assert_eq!(snapshot.failed_stage.as_deref(), Some("Restarting"));
+        assert!(snapshot.message.unwrap().contains("格式无效"));
+        assert!(!path.exists());
+        let _ = fs::remove_dir(directory);
     }
 
     #[test]

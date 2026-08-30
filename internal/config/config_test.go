@@ -40,6 +40,9 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Update.CheckInterval != 6*time.Hour || cfg.Update.ManifestTimeout != 20*time.Second || cfg.Update.DownloadTimeout != 10*time.Minute {
 		t.Fatalf("unexpected update durations: %+v", cfg.Update)
 	}
+	if cfg.Update.ManifestFile != "updates/stable/update-manifest.json" {
+		t.Fatalf("update manifest file = %q", cfg.Update.ManifestFile)
+	}
 }
 
 // TestLoadLogConfigFromEnv 验证日志配置可通过环境变量覆盖。
@@ -55,6 +58,7 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_UPDATE_CHECK_INTERVAL", "30m")
 	t.Setenv("BB_ERP_UPDATE_MANIFEST_TIMEOUT", "9s")
 	t.Setenv("BB_ERP_UPDATE_DOWNLOAD_TIMEOUT", "2m")
+	t.Setenv("BB_ERP_UPDATE_MANIFEST_FILE", "D:/bb-erp/updates/stable/update-manifest.json")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "direct-test-key")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE", "test-update-public.key")
 
@@ -89,6 +93,9 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Update.SigningPublicKey != "direct-test-key" || cfg.Update.SigningPublicKeyFile != "test-update-public.key" {
 		t.Fatalf("update signing public key config: %+v", cfg.Update)
+	}
+	if cfg.Update.ManifestFile != "D:/bb-erp/updates/stable/update-manifest.json" {
+		t.Fatalf("update manifest file: %q", cfg.Update.ManifestFile)
 	}
 }
 

@@ -3,6 +3,7 @@ package update
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -32,18 +33,23 @@ const (
 	maxServerPackageSize = int64(512 << 20)
 )
 
+var ErrClientPackageUnavailable = errors.New("client recovery package is unavailable")
+
 // ErrServerPackageUnavailable 表示尚无成功检查确认的服务端升级包。
 var ErrServerPackageUnavailable = errors.New("暂无可下载的服务端升级包，请先执行更新检查")
 
-// Manifest 是 Gitee、GitHub、对象存储或内网静态服务提供的更新清单。
+// Manifest 是服务端本机 stable manifest 的内容；HTTP 清单字段仅保留给历史部署兼容。
 type Manifest struct {
-	Version        string                      `json:"version"`
-	PublishedAt    time.Time                   `json:"published_at,omitempty"`
-	Notes          string                      `json:"notes,omitempty"`
-	Server         PackageManifest             `json:"server"`
-	Client         PackageManifest             `json:"client"`
-	AllInOne       PackageManifest             `json:"all_in_one,omitempty"`
-	Updater        PackageManifest             `json:"updater,omitempty"`
+	Version     string          `json:"version"`
+	PublishedAt time.Time       `json:"published_at,omitempty"`
+	Notes       string          `json:"notes,omitempty"`
+	Server      PackageManifest `json:"server"`
+	Client      PackageManifest `json:"client"`
+	AllInOne    PackageManifest `json:"all_in_one,omitempty"`
+	Updater     PackageManifest `json:"updater,omitempty"`
+	// ClientUpdateV3 is the LAN full-package payload. ClientUpdateV2 remains
+	// readable for already deployed clients and older remote manifests.
+	ClientUpdateV3 *SignedClientUpdateManifest `json:"client_update_v3,omitempty"`
 	ClientUpdateV2 *SignedClientUpdateManifest `json:"client_update_v2,omitempty"`
 }
 
@@ -92,6 +98,7 @@ type ClientComponentStatus struct {
 type SystemUpdateStatus struct {
 	Enabled               bool                  `json:"enabled"`
 	ManifestURL           string                `json:"manifest_url"`
+	ManifestFile          string                `json:"manifest_file,omitempty"`
 	Reachable             bool                  `json:"reachable"`
 	Checking              bool                  `json:"checking"`
 	CheckInterval         string                `json:"check_interval"`
@@ -130,6 +137,7 @@ type UpdateService interface {
 	Status(string) SystemUpdateStatus
 	ClientStatus(string) ClientUpdateStatus
 	CachedClientPackagePath() string
+	ClientRecoveryPackage() (string, error)
 	ServerPackage(context.Context) (path string, fileName string, err error)
 	ClientUpdatePlan(ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error)
 	TauriClientUpdate(target, currentVersion string) (TauriUpdateResponse, bool, error)
@@ -300,20 +308,21 @@ type Service struct {
 	planner       UpdatePlanner
 	verifierErr   error
 
-	mu              sync.RWMutex
-	serverPackageMu sync.Mutex
-	manifest        *Manifest
-	clientPayload   *ClientUpdatePayload
-	artifacts       map[string]ClientArtifact
-	deltaDegraded   string
-	lastAttemptAt   *time.Time
-	lastSuccessAt   *time.Time
-	nextCheckAt     *time.Time
-	lastError       string
-	reachable       bool
-	checking        bool
-	inflight        *checkCall
-	startOnce       sync.Once
+	mu                      sync.RWMutex
+	serverPackageMu         sync.Mutex
+	manifest                *Manifest
+	clientPayload           *ClientUpdatePayload
+	artifacts               map[string]ClientArtifact
+	legacyClientPackagePath string
+	deltaDegraded           string
+	lastAttemptAt           *time.Time
+	lastSuccessAt           *time.Time
+	nextCheckAt             *time.Time
+	lastError               string
+	reachable               bool
+	checking                bool
+	inflight                *checkCall
+	startOnce               sync.Once
 }
 
 // NewService 使用普通 HTTP 清单源与本地文件缓存创建更新服务。
@@ -327,10 +336,29 @@ func NewService(cfg config.UpdateConfig, serverVersion string) *Service {
 	manifestClient := &http.Client{Timeout: cfg.ManifestTimeout}
 	downloadClient := &http.Client{Timeout: cfg.DownloadTimeout}
 	verifier, verifierErr := LoadSignedManifestVerifier(cfg.SigningPublicKey, cfg.SigningPublicKeyFile)
+	var source ManifestSource
+	var packageStore PackageStore
+	var artifactStore ArtifactStore
+	if strings.TrimSpace(cfg.ManifestFile) != "" {
+		// A local stable manifest is authoritative for the Windows LAN deployment.
+		// Keep the package cache rooted at the configured cache directory while
+		// resolving content-addressed artifacts next to the selected manifest.
+		source = NewLocalManifestSource(cfg.ManifestFile)
+		packageStore = &LocalPackageStore{Root: cfg.CacheDir, Client: downloadClient}
+		artifactRoot := cfg.CacheDir
+		if root, err := localUpdatesRoot(source.Location()); err == nil {
+			artifactRoot = root
+		}
+		artifactStore = &LocalArtifactStore{Root: artifactRoot, Client: downloadClient, LocalOnly: true}
+	} else {
+		source = &HTTPManifestSource{URL: cfg.ManifestURL, Client: manifestClient}
+		packageStore = &LocalPackageStore{Root: cfg.CacheDir, Client: downloadClient}
+		artifactStore = &LocalArtifactStore{Root: cfg.CacheDir, Client: downloadClient}
+	}
 	return NewServiceWithAllDependencies(cfg, serverVersion,
-		&HTTPManifestSource{URL: cfg.ManifestURL, Client: manifestClient},
-		&LocalPackageStore{Root: cfg.CacheDir, Client: downloadClient},
-		&LocalArtifactStore{Root: cfg.CacheDir, Client: downloadClient},
+		source,
+		packageStore,
+		artifactStore,
 		verifier,
 		verifierErr,
 	)
@@ -345,7 +373,7 @@ func NewServiceWithDependencies(cfg config.UpdateConfig, serverVersion string, s
 		&LocalArtifactStore{Root: cfg.CacheDir, Client: &http.Client{Timeout: cfg.DownloadTimeout}}, nil, nil)
 }
 
-// NewServiceWithAllDependencies 允许测试或宿主注入 v2 签名验证和内容寻址缓存实现。
+// NewServiceWithAllDependencies 允许测试或宿主注入签名验证和内容寻址缓存实现。
 func NewServiceWithAllDependencies(cfg config.UpdateConfig, serverVersion string, source ManifestSource, store PackageStore, artifactStore ArtifactStore, verifier SignedManifestVerifier, verifierErr error) *Service {
 	if cfg.CheckInterval <= 0 {
 		cfg.CheckInterval = 6 * time.Hour
@@ -422,38 +450,52 @@ func (s *Service) performCheck(ctx context.Context) error {
 	s.mu.Lock()
 	s.reachable = true
 	s.mu.Unlock()
-	// v2 的验签和必需完整资源缓存必须先完成。若失败，不能覆盖旧客户端仍在使用的兼容 ZIP。
-	payload, artifacts, deltaDegraded, err := s.cacheV2ClientArtifacts(ctx, manifest)
+	// 当前 v3 的验签和必需完整资源缓存必须先完成。v2/delta 仅保留历史兼容，失败时不影响已发布状态。
+	payload, artifacts, deltaDegraded, err := s.cacheSignedClientArtifacts(ctx, manifest)
 	if err != nil {
 		return err
 	}
+	legacyClientPackagePath := ""
 	// 保持 v1 ZIP 缓存和下载接口，兼容已发布的 rc.3 及更旧客户端。
-	// 只有 v2 已成功准备后才能替换该恢复资产；内存状态则在两者都成功后才提交。
+	// 只有签名资源和兼容恢复 ZIP 都成功准备后才能提交内存状态。
 	if manifest.Client.URL != "" {
 		if _, _, err := s.store.Ensure(ctx, clientPackageName, manifest.Client); err != nil {
 			return fmt.Errorf("cache client package: %w", err)
+		}
+	} else if _, localSource := s.source.(*LocalManifestSource); localSource && manifest.Client.Size > 0 && isSHA256(manifest.Client.SHA256) {
+		var err error
+		legacyClientPackagePath, err = s.validateLocalRecoveryPackage(manifest)
+		if err != nil {
+			return fmt.Errorf("validate local client recovery package: %w", err)
 		}
 	}
 	s.mu.Lock()
 	s.manifest = cloneManifest(manifest)
 	s.clientPayload = cloneClientUpdatePayload(payload)
 	s.artifacts = artifacts
+	s.legacyClientPackagePath = legacyClientPackagePath
 	s.deltaDegraded = deltaDegraded
 	s.mu.Unlock()
 	return nil
 }
 
-// cacheV2ClientArtifacts 验证受签名 payload，并缓存完整包。差分缓存失败只降级为完整包。
-func (s *Service) cacheV2ClientArtifacts(ctx context.Context, manifest *Manifest) (*ClientUpdatePayload, map[string]ClientArtifact, string, error) {
-	if manifest == nil || manifest.ClientUpdateV2 == nil {
+// cacheSignedClientArtifacts 验证受签名 payload，并缓存完整包；v2 差分仅作历史兼容且失败时降级为完整包。
+func (s *Service) cacheSignedClientArtifacts(ctx context.Context, manifest *Manifest) (*ClientUpdatePayload, map[string]ClientArtifact, string, error) {
+	if manifest == nil || manifest.SignedClientUpdate() == nil {
 		return nil, nil, "", nil
 	}
 	if s.verifierErr != nil {
 		return nil, nil, "", fmt.Errorf("load client update signing public key: %w", s.verifierErr)
 	}
-	payload, err := DecodeSignedClientPayload(manifest.ClientUpdateV2, s.verifier)
+	payload, err := DecodeSignedClientPayload(manifest.SignedClientUpdate(), s.verifier)
 	if err != nil {
 		return nil, nil, "", err
+	}
+	if payload.ProtocolVersion == ClientUpdateProtocolV3 && len(payload.Deltas) != 0 {
+		return nil, nil, "", errors.New("client update protocol v3 must not contain delta artifacts")
+	}
+	if _, localSource := s.source.(*LocalManifestSource); localSource && payload.ProtocolVersion != ClientUpdateProtocolV3 {
+		return nil, nil, "", fmt.Errorf("local update manifest requires client protocol version %d", ClientUpdateProtocolV3)
 	}
 	if manifest.Version != "" && CompareVersions(manifest.Version, payload.Version) != 0 {
 		return nil, nil, "", errors.New("signed client update version does not match manifest version")
@@ -509,6 +551,9 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 		}},
 		ClientDeltaDegraded: s.deltaDegraded,
 	}
+	if localSource, ok := s.source.(*LocalManifestSource); ok && localSource != nil {
+		status.ManifestFile = localSource.Path
+	}
 	if s.manifest == nil {
 		return status
 	}
@@ -547,10 +592,10 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 	status.Client.Size = clientPkg.Size
 	status.Client.SHA256 = clientPkg.SHA256
 	status.Client.Manifest = clonePackage(&clientPkg)
-	if s.store.Cached(clientPackageName, clientPkg) {
+	if cached, _ := s.cachedClientPackage(clientPkg); cached {
 		status.Client.Cached = true
 		status.Client.FileName = clientPackageName
-		status.Client.DownloadPath = "/api/v1/updates/client/download"
+		status.Client.DownloadPath = "/api/v1/system/updates/client/download"
 		status.Client.DownloadURL = status.Client.DownloadPath
 		status.ClientCacheBytes += clientPkg.Size
 	}
@@ -574,8 +619,105 @@ func (s *Service) ClientStatus(currentVersion string) ClientUpdateStatus {
 	}
 }
 
+func (s *Service) cachedClientPackage(pkg PackageManifest) (bool, string) {
+	if _, localSource := s.source.(*LocalManifestSource); !localSource || strings.TrimSpace(pkg.URL) != "" {
+		path := s.store.Path(clientPackageName)
+		return s.store.Cached(clientPackageName, pkg), path
+	}
+	path := s.legacyClientPackagePath
+	if path == "" {
+		path, _ = s.localRecoveryPackagePath(pkg)
+	}
+	if path == "" || pkg.Size <= 0 || !isSHA256(pkg.SHA256) {
+		return false, path
+	}
+	return validateLocalPackageFile(path, pkg) == nil, path
+}
+
+func (s *Service) localRecoveryPackagePath(pkg PackageManifest) (string, error) {
+	localSource, ok := s.source.(*LocalManifestSource)
+	if !ok || localSource == nil {
+		return "", errors.New("local manifest source is not configured")
+	}
+	root, err := localUpdatesRoot(localSource.Path)
+	if err != nil {
+		return "", err
+	}
+	version := strings.TrimSpace(pkg.Version)
+	if version == "" {
+		version = strings.TrimSpace(s.cfg.ClientVersion)
+	}
+	version = normalizeVersion(version)
+	if version == "" {
+		return "", errors.New("local client recovery version is invalid")
+	}
+	version = strings.TrimPrefix(version, "v")
+	return filepath.Join(root, "releases", version, clientPackageName), nil
+}
+
+func (s *Service) validateLocalRecoveryPackage(manifest *Manifest) (string, error) {
+	if manifest == nil {
+		return "", errors.New("manifest is nil")
+	}
+	path, err := s.localRecoveryPackagePath(manifest.Client)
+	if err != nil {
+		return "", err
+	}
+	if err := validateLocalPackageFile(path, manifest.Client); err != nil {
+		return "", err
+	}
+	if s.verifierErr != nil {
+		return "", fmt.Errorf("load client recovery package signing public key: %w", s.verifierErr)
+	}
+	if s.verifier == nil || strings.TrimSpace(manifest.Client.Signature) == "" {
+		return "", errors.New("local client recovery package requires a Minisign signature and trusted public key")
+	}
+	if err := s.verifier.VerifyFile(path, manifest.Client.Signature); err != nil {
+		return "", fmt.Errorf("verify local client recovery package Minisign signature: %w", err)
+	}
+	return path, nil
+}
+
+func validateLocalPackageFile(path string, pkg PackageManifest) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("open local client package %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != pkg.Size {
+		return fmt.Errorf("local client package size mismatch: got %d want %d", info.Size(), pkg.Size)
+	}
+	if err := verifySHA256(path, pkg.SHA256); err != nil {
+		return err
+	}
+	return validateZip(path)
+}
+
 // CachedClientPackagePath 返回客户端缓存包路径。
-func (s *Service) CachedClientPackagePath() string { return s.store.Path(clientPackageName) }
+func (s *Service) CachedClientPackagePath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.legacyClientPackagePath != "" {
+		return s.legacyClientPackagePath
+	}
+	return s.store.Path(clientPackageName)
+}
+
+// ClientRecoveryPackage revalidates the signed manual recovery ZIP at request
+// time. Unlike automatic v3 artifacts, this administrator-only package is not
+// executed by the client updater.
+func (s *Service) ClientRecoveryPackage() (string, error) {
+	s.mu.RLock()
+	manifest := cloneManifest(s.manifest)
+	s.mu.RUnlock()
+	if manifest == nil {
+		return "", ErrClientPackageUnavailable
+	}
+	path, err := s.validateLocalRecoveryPackage(manifest)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
 
 // ServerPackage 按当前成功清单下载或复用服务端包，返回前验证大小、SHA-256 和 ZIP 结构。
 func (s *Service) ServerPackage(ctx context.Context) (path string, fileName string, err error) {
@@ -616,7 +758,7 @@ func (s *Service) ServerPackage(ctx context.Context) (path string, fileName stri
 	return path, fileName, nil
 }
 
-// ClientUpdatePlan 为 Windows x86_64 桌面端选择已缓存的差分或完整更新。
+// ClientUpdatePlan 为 Windows x86_64 桌面端生成全量更新计划；只有历史 v2 清单才可能选择差分。
 func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error) {
 	request.Target = strings.TrimSpace(strings.ToLower(request.Target))
 	if request.Target == "" {
@@ -657,8 +799,8 @@ func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdat
 		Strategy:        "full",
 		DownloadSize:    full.Size,
 		FullSize:        full.Size,
-		SignedPayload:   manifest.ClientUpdateV2.Payload,
-		Signature:       manifest.ClientUpdateV2.Signature,
+		SignedPayload:   manifest.SignedClientUpdate().Payload,
+		Signature:       manifest.SignedClientUpdate().Signature,
 		Artifact:        fullPlan,
 		FullFallback:    fullPlan,
 		Message:         deltaDegraded,
@@ -801,6 +943,9 @@ func NewManager(cfg config.UpdateConfig) *Manager {
 	if cfg.ManifestTimeout <= 0 {
 		cfg.ManifestTimeout = 20 * time.Second
 	}
+	if strings.TrimSpace(cfg.ManifestFile) != "" {
+		return &Manager{Config: cfg, Source: NewLocalManifestSource(cfg.ManifestFile)}
+	}
 	return &Manager{Config: cfg, Source: &HTTPManifestSource{
 		URL: cfg.ManifestURL, Client: &http.Client{Timeout: cfg.ManifestTimeout},
 	}}
@@ -911,14 +1056,35 @@ func verifySHA256(path, want string) error {
 	return nil
 }
 
-func validateZip(path string) error {
-	reader, err := zip.OpenReader(path)
+func validateZip(archivePath string) error {
+	const (
+		maxEntries      = 10_000
+		maxExpandedSize = uint64(1 << 30)
+	)
+	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return fmt.Errorf("validate update zip: %w", err)
 	}
 	defer reader.Close()
-	if len(reader.File) == 0 {
-		return errors.New("update zip is empty")
+	if len(reader.File) == 0 || len(reader.File) > maxEntries {
+		if len(reader.File) == 0 {
+			return errors.New("update zip is empty")
+		}
+		return fmt.Errorf("update zip contains too many entries: got %d max %d", len(reader.File), maxEntries)
+	}
+	var expandedSize uint64
+	for _, entry := range reader.File {
+		clean := path.Clean(strings.ReplaceAll(entry.Name, "\\", "/"))
+		if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) || strings.IndexByte(clean, 0) >= 0 {
+			return fmt.Errorf("unsafe update zip path %q", entry.Name)
+		}
+		if entry.FileInfo().Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("update zip contains a symbolic link: %q", entry.Name)
+		}
+		if entry.UncompressedSize64 > maxExpandedSize-expandedSize {
+			return fmt.Errorf("update zip expanded size exceeds %d bytes", maxExpandedSize)
+		}
+		expandedSize += entry.UncompressedSize64
 	}
 	return nil
 }
@@ -969,8 +1135,13 @@ func validateServerPackageArchive(archivePath, expectedVersion string) error {
 				Version       string `json:"version"`
 				ServerVersion string `json:"server_version"`
 			}
-			decodeErr := json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&metadata)
+			data, readErr := io.ReadAll(io.LimitReader(file, 1<<20))
 			_ = file.Close()
+			if readErr != nil {
+				return fmt.Errorf("read version.json: %w", readErr)
+			}
+			data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
+			decodeErr := json.NewDecoder(bytes.NewReader(data)).Decode(&metadata)
 			if decodeErr != nil {
 				return fmt.Errorf("decode version.json: %w", decodeErr)
 			}
@@ -1026,11 +1197,27 @@ func cloneManifest(manifest *Manifest) *Manifest {
 		return nil
 	}
 	copy := *manifest
+	if manifest.ClientUpdateV3 != nil {
+		envelope := *manifest.ClientUpdateV3
+		copy.ClientUpdateV3 = &envelope
+	}
 	if manifest.ClientUpdateV2 != nil {
 		envelope := *manifest.ClientUpdateV2
 		copy.ClientUpdateV2 = &envelope
 	}
 	return &copy
+}
+
+// SignedClientUpdate 返回当前清单中的签名客户端载荷。
+// v3 是局域网全量更新的首选；v2 仅作为历史远程清单兼容回退。
+func (m *Manifest) SignedClientUpdate() *SignedClientUpdateManifest {
+	if m == nil {
+		return nil
+	}
+	if m.ClientUpdateV3 != nil {
+		return m.ClientUpdateV3
+	}
+	return m.ClientUpdateV2
 }
 
 func cloneClientUpdatePayload(payload *ClientUpdatePayload) *ClientUpdatePayload {

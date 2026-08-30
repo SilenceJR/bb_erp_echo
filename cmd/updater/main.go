@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,9 +11,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,6 +28,7 @@ type updaterMetadata struct {
 	Version       string `json:"version"`
 	ServerVersion string `json:"server_version"`
 	ManifestURL   string `json:"manifest_url"`
+	ManifestFile  string `json:"manifest_file"`
 }
 
 var errAlreadyUpToDate = errors.New("server is already up to date")
@@ -35,24 +39,39 @@ func main() {
 	var manifestURL string
 	var packagePath string
 	var packageSignature string
+	var candidateManifest string
 	var installDir string
 	var serviceName string
 	var currentVersion string
+	var healthBaseURL string
+	var databasePath string
+	var trustedPublicKey string
+	var recoverInterrupted bool
 
-	flag.StringVar(&manifestURL, "manifest-url", "", "update-manifest.json URL from GitHub, Gitee, or intranet")
+	flag.StringVar(&manifestURL, "manifest-url", "", "legacy update-manifest.json URL")
 	flag.StringVar(&packagePath, "package", "", "local server zip package path")
 	flag.StringVar(&packageSignature, "package-signature", "", "base64 Minisign signature for a local server zip package")
+	flag.StringVar(&candidateManifest, "candidate-manifest", "", "independent local candidate update-manifest.json")
 	interactive := len(os.Args) == 1
 	flag.StringVar(&installDir, "install-dir", executableDirectory(), "server install directory")
 	flag.StringVar(&serviceName, "service", "", "optional Windows service name")
 	flag.StringVar(&currentVersion, "current-version", "", "current server version")
+	flag.StringVar(&healthBaseURL, "health-base-url", "", "base URL used to verify /ready, /api/v1/version and client plan after restart")
+	flag.StringVar(&databasePath, "database-path", "", "SQLite database path; relative paths are resolved from the install directory")
+	flag.StringVar(&trustedPublicKey, "trusted-public-key", "", "external Minisign public-key file used to bootstrap a first installation")
+	flag.BoolVar(&recoverInterrupted, "recover-interrupted", false, "recover an interrupted local upgrade transaction and exit")
 	flag.Parse()
 
 	output, closeLog, logPath, logErr := openUpgradeLog(installDir)
 	if logErr != nil {
 		fmt.Fprintln(os.Stderr, "warning: create updater log:", logErr)
 	}
-	err := runWithProgress(manifestURL, packagePath, packageSignature, installDir, serviceName, currentVersion, output)
+	var err error
+	if recoverInterrupted {
+		err = runInterruptedRecovery(installDir, serviceName, databasePath, output)
+	} else {
+		err = runWithProgress(manifestURL, packagePath, packageSignature, candidateManifest, installDir, serviceName, currentVersion, healthBaseURL, databasePath, output, trustedPublicKey)
+	}
 	if err != nil {
 		fmt.Fprintln(output, "upgrade failed:", err)
 	} else {
@@ -71,7 +90,24 @@ func main() {
 	}
 }
 
-func runWithProgress(manifestURL string, packagePath string, packageSignature string, installDir string, serviceName string, currentVersion string, output io.Writer) error {
+func runInterruptedRecovery(installDir, serviceName, databasePath string, output io.Writer) error {
+	installDir, err := filepath.Abs(installDir)
+	if err != nil {
+		return fmt.Errorf("resolve install dir: %w", err)
+	}
+	releaseLock, err := acquireUpgradeLock(installDir)
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+	databasePath, err = resolveDatabasePath(installDir, databasePath)
+	if err != nil {
+		return err
+	}
+	return recoverInterruptedUpgrade(installDir, serviceName, databasePath, output)
+}
+
+func runWithProgress(manifestURL string, packagePath string, packageSignature string, candidateManifest string, installDir string, serviceName string, currentVersion string, healthBaseURL string, databasePath string, output io.Writer, trustedPublicKey ...string) error {
 	if output == nil {
 		output = io.Discard
 	}
@@ -84,12 +120,29 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 		return err
 	}
 	defer releaseLock()
-	if packagePath == "" && manifestURL == "" {
+	databasePath, err = resolveDatabasePath(installDir, databasePath)
+	if err != nil {
+		return err
+	}
+	if err := recoverInterruptedUpgrade(installDir, serviceName, databasePath, output); err != nil {
+		return err
+	}
+	trustedPublicKeyPath, err := resolveTrustedPublicKeyPath(installDir, trustedPublicKey...)
+	if err != nil {
+		return err
+	}
+	if packagePath == "" && manifestURL == "" && candidateManifest == "" {
 		metadata, metadataErr := loadUpdaterMetadata(installDir)
 		if metadataErr != nil {
-			return fmt.Errorf("no -package or -manifest-url was supplied and installed version metadata is unavailable: %w", metadataErr)
+			return fmt.Errorf("no -package, -candidate-manifest, or -manifest-url was supplied and installed version metadata is unavailable: %w", metadataErr)
 		}
 		manifestURL = metadata.ManifestURL
+		if metadata.ManifestFile != "" {
+			candidateManifest = metadata.ManifestFile
+			if !filepath.IsAbs(candidateManifest) {
+				candidateManifest = filepath.Join(installDir, candidateManifest)
+			}
+		}
 		if currentVersion == "" {
 			currentVersion = metadata.ServerVersion
 		}
@@ -97,11 +150,36 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 			currentVersion = metadata.Version
 		}
 	}
+	if currentVersion == "" {
+		// Explicit candidate/package invocations still need the previous version
+		// for rollback health checks. A malformed or missing metadata file is not
+		// fatal here; package validation below remains authoritative.
+		if metadata, metadataErr := readUpdaterMetadata(installDir); metadataErr == nil {
+			currentVersion = metadata.ServerVersion
+			if currentVersion == "" {
+				currentVersion = metadata.Version
+			}
+		}
+	}
 	downloadedPackage := false
 	expectedVersion := ""
+	var candidate *candidateRelease
+	if strings.TrimSpace(candidateManifest) != "" {
+		candidate, err = loadCandidateReleaseWithPublicKey(candidateManifest, installDir, trustedPublicKeyPath)
+		if err != nil {
+			return err
+		}
+		expectedVersion = candidate.Manifest.Server.Version
+		if currentVersion != "" && update.CompareVersions(expectedVersion, currentVersion) <= 0 {
+			return fmt.Errorf("%w: current=%s latest=%s", errAlreadyUpToDate, currentVersion, expectedVersion)
+		}
+	}
 	if packagePath == "" {
+		if candidate != nil {
+			return errors.New("-candidate-manifest requires a local -package")
+		}
 		fmt.Fprintln(output, "[1/6] Downloading and verifying the server package...")
-		packagePath, expectedVersion, err = downloadServerPackage(manifestURL, currentVersion, filepath.Join(installDir, "update-public.key"))
+		packagePath, expectedVersion, err = downloadServerPackage(manifestURL, currentVersion, trustedPublicKeyPath)
 		if err != nil {
 			if errors.Is(err, errAlreadyUpToDate) {
 				fmt.Fprintln(output, err)
@@ -117,40 +195,75 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 	}
 	if downloadedPackage {
 		defer os.Remove(packagePath)
-	} else if err := verifyLocalServerPackage(packagePath, packageSignature, filepath.Join(installDir, "update-public.key")); err != nil {
-		return err
 	}
-
-	fmt.Fprintln(output, "[2/6] Extracting and validating the server package...")
+	packageInfo, err := os.Stat(packagePath)
+	if err != nil || !packageInfo.Mode().IsRegular() || packageInfo.Size() <= 0 || packageInfo.Size() > maxServerPackageSize {
+		return fmt.Errorf("server package is missing or outside the allowed size 1..%d: %s", maxServerPackageSize, packagePath)
+	}
 	tmpDir, err := os.MkdirTemp("", "bb-erp-upgrade-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
+	privatePackagePath := filepath.Join(tmpDir, "verified-server-package.zip")
+	if err := copyPath(packagePath, privatePackagePath); err != nil {
+		return fmt.Errorf("copy server package into private staging: %w", err)
+	}
+	packagePath = privatePackagePath
+	if !downloadedPackage {
+		if err := verifyLocalServerPackage(packagePath, packageSignature, trustedPublicKeyPath); err != nil {
+			return err
+		}
+	}
+	if candidate != nil {
+		if err := verifyCandidateServerPackage(packagePath, candidate.Manifest, trustedPublicKeyPath); err != nil {
+			return err
+		}
+	}
 
-	if err := extractZip(packagePath, tmpDir); err != nil {
+	fmt.Fprintln(output, "[2/6] Extracting and validating the server package...")
+	extractDir := filepath.Join(tmpDir, "extracted")
+	if err := os.MkdirAll(extractDir, 0o700); err != nil {
+		return fmt.Errorf("create extraction directory: %w", err)
+	}
+	if err := extractZip(packagePath, extractDir); err != nil {
+		return err
+	}
+	if err := rejectEmbeddedManifest(extractDir); err != nil {
 		return err
 	}
 
-	sourceDir := filepath.Join(tmpDir, "server")
-	if _, err := os.Stat(filepath.Join(sourceDir, "bb-erp-server.exe")); err != nil {
-		sourceDir = tmpDir
-	}
-	if _, err := os.Stat(filepath.Join(sourceDir, "bb-erp-server.exe")); err != nil {
-		return fmt.Errorf("server package does not contain bb-erp-server.exe: %w", err)
-	}
-	if err := validateServerPackage(sourceDir, expectedVersion); err != nil {
+	sourceDir, err := findServerPackageSourceDir(extractDir)
+	if err != nil {
 		return err
+	}
+	validatePackage := validateServerPackage
+	if candidate != nil {
+		validatePackage = validateServerPackageForCandidate
+	}
+	if err := validatePackage(sourceDir, expectedVersion); err != nil {
+		return err
+	}
+	if err := requireMatchingPublicKeys(trustedPublicKeyPath, filepath.Join(sourceDir, "update-public.key")); err != nil {
+		return fmt.Errorf("server package update-public.key is not the trusted key: %w", err)
 	}
 	if serviceName != "" {
 		if err := validateWindowsServiceTarget(serviceName, installDir); err != nil {
 			return err
 		}
 	}
+	recoveryUpdaterPath, recoveryUpdaterSHA256, err := prepareRecoveryUpdater(installDir)
+	if err != nil {
+		return err
+	}
 
 	wasRunning, err := serverRunning(serviceName, installDir)
 	if err != nil {
 		return fmt.Errorf("inspect current server state: %w", err)
+	}
+	previousServerInstalled, err := existingServerExecutable(installDir)
+	if err != nil {
+		return err
 	}
 	backupRoot := filepath.Join(installDir, "backups")
 	if err := os.MkdirAll(backupRoot, 0o755); err != nil {
@@ -160,12 +273,24 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 	if err != nil {
 		return fmt.Errorf("create unique backup directory: %w", err)
 	}
+	transaction := upgradeTransaction{
+		Phase: transactionPreparing, BackupDir: backupDir, DatabasePath: databasePath,
+		ServiceName: serviceName, WasRunning: wasRunning, PreviousVersion: currentVersion,
+		HealthBaseURL: healthBaseURL, UpdaterPath: recoveryUpdaterPath, UpdaterSHA256: recoveryUpdaterSHA256,
+	}
+	if err := writeUpgradeTransaction(installDir, transaction); err != nil {
+		return err
+	}
 	fmt.Fprintln(output, "[3/6] Stopping the current server...")
 	if err := stopServer(serviceName, installDir); err != nil {
 		return err
 	}
 	fmt.Fprintln(output, "[4/6] Backing up the current deployment to", backupDir)
-	if err := backupServerFiles(installDir, backupDir); err != nil {
+	// A first installation has no old executable to roll back to. Capture an
+	// empty/minimal snapshot in that case, while still preserving a pre-existing
+	// database if one was provisioned separately. Existing deployments require
+	// the complete rollback set and database snapshot.
+	if err := backupServerFilesWithDatabaseMode(installDir, backupDir, databasePath, previousServerInstalled, previousServerInstalled); err != nil {
 		if wasRunning {
 			if restartErr := startServer(serviceName, installDir); restartErr != nil {
 				return fmt.Errorf("backup failed (%v); previous server restart failed: %w", err, restartErr)
@@ -174,13 +299,46 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 		}
 		return err
 	}
+	transaction.Phase = transactionBackedUp
+	if err := writeUpgradeTransaction(installDir, transaction); err != nil {
+		return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+	}
 	fmt.Fprintln(output, "[5/6] Installing the verified server files...")
-	if err := replaceServerFiles(sourceDir, installDir); err != nil {
-		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
+	replaceFiles := replaceServerFiles
+	if candidate != nil {
+		replaceFiles = replaceServerFilesForCandidate
+	}
+	if err := replaceFiles(sourceDir, installDir); err != nil {
+		return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+	}
+	transaction.Phase = transactionInstalled
+	if err := writeUpgradeTransaction(installDir, transaction); err != nil {
+		return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+	}
+	if candidate != nil {
+		if err := activateCandidateManifest(candidate, installDir); err != nil {
+			return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+		}
+		transaction.Phase = transactionActivated
+		if err := writeUpgradeTransaction(installDir, transaction); err != nil {
+			return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+		}
 	}
 	fmt.Fprintln(output, "[6/6] Starting and verifying the updated server...")
 	if err := startServer(serviceName, installDir); err != nil {
-		return recoverFailedUpgrade(serviceName, installDir, backupDir, wasRunning, err)
+		return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+	}
+	transaction.Phase = transactionStarted
+	if err := writeUpgradeTransaction(installDir, transaction); err != nil {
+		return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+	}
+	if strings.TrimSpace(healthBaseURL) != "" {
+		if err := waitForServerHealth(healthBaseURL, expectedVersion, currentVersion, output); err != nil {
+			return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath, wasRunning, currentVersion, currentVersion, healthBaseURL, err)
+		}
+	}
+	if err := os.Remove(upgradeTransactionPath(installDir)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove completed upgrade transaction: %w", err)
 	}
 	return nil
 }
@@ -222,11 +380,13 @@ func readUpdaterMetadata(installDir string) (updaterMetadata, error) {
 	if err != nil {
 		return updaterMetadata{}, fmt.Errorf("read %s: %w", path, err)
 	}
+	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
 	var metadata updaterMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return updaterMetadata{}, fmt.Errorf("decode %s: %w", path, err)
 	}
 	metadata.ManifestURL = strings.TrimSpace(metadata.ManifestURL)
+	metadata.ManifestFile = strings.TrimSpace(metadata.ManifestFile)
 	metadata.ServerVersion = strings.TrimSpace(metadata.ServerVersion)
 	metadata.Version = strings.TrimSpace(metadata.Version)
 	return metadata, nil
@@ -237,13 +397,20 @@ func loadUpdaterMetadata(installDir string) (updaterMetadata, error) {
 	if err != nil {
 		return updaterMetadata{}, err
 	}
-	if metadata.ManifestURL == "" {
-		return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url", filepath.Join(installDir, "version.json"))
+	if metadata.ManifestURL == "" && metadata.ManifestFile == "" {
+		return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url or manifest_file", filepath.Join(installDir, "version.json"))
 	}
 	return metadata, nil
 }
 
 func validateServerPackage(sourceDir, expectedVersion string) error {
+	for _, name := range []string{"update-manifest.json", "updates/stable/update-manifest.json"} {
+		if _, err := os.Stat(filepath.Join(sourceDir, filepath.FromSlash(name))); err == nil {
+			return fmt.Errorf("server package must not embed %s; pass it separately with -candidate-manifest", name)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect embedded %s: %w", name, err)
+		}
+	}
 	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat"} {
 		info, err := os.Stat(filepath.Join(sourceDir, name))
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
@@ -273,6 +440,33 @@ func validateServerPackage(sourceDir, expectedVersion string) error {
 		return fmt.Errorf("validate server package version.json: package=%s manifest=%s", packageVersion, expectedVersion)
 	}
 	return nil
+}
+
+func validateServerPackageForCandidate(sourceDir, expectedVersion string) error {
+	if err := validateServerPackage(sourceDir, expectedVersion); err != nil {
+		return err
+	}
+	launcher := filepath.Join(sourceDir, "启动服务端.bat")
+	info, err := os.Stat(launcher)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return errors.New("candidate server package must contain a non-empty 启动服务端.bat")
+	}
+	return nil
+}
+
+func rejectEmbeddedManifest(root string) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(entry.Name(), "update-manifest.json") {
+			return fmt.Errorf("server package must not embed update-manifest.json at %s; pass it separately with -candidate-manifest", strings.TrimPrefix(path, root+string(os.PathSeparator)))
+		}
+		return nil
+	})
 }
 
 func downloadServerPackage(manifestURL string, currentVersion string, trustedPublicKeyPath string) (string, string, error) {
@@ -539,29 +733,237 @@ func windowsServicesForProcessIDs(pids []uint32) ([]string, error) {
 	return strings.Fields(string(output)), nil
 }
 
+const defaultDatabasePath = "data/erp.db"
+
+func resolveDatabasePath(installDir, configured string) (string, error) {
+	installDir, err := filepath.Abs(filepath.Clean(installDir))
+	if err != nil {
+		return "", fmt.Errorf("resolve install directory for database: %w", err)
+	}
+	configured = strings.TrimSpace(configured)
+	if configured == "" {
+		configured = defaultDatabasePath
+	}
+	if !filepath.IsAbs(configured) {
+		configured = filepath.Join(installDir, configured)
+	}
+	databasePath, err := filepath.Abs(filepath.Clean(configured))
+	if err != nil {
+		return "", fmt.Errorf("resolve database path: %w", err)
+	}
+	if filepath.Base(databasePath) == "." || filepath.Base(databasePath) == string(filepath.Separator) {
+		return "", fmt.Errorf("database path must name a file: %q", configured)
+	}
+	return databasePath, nil
+}
+
+func existingServerExecutable(installDir string) (bool, error) {
+	path := filepath.Join(installDir, "bb-erp-server.exe")
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect installed server executable: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return false, fmt.Errorf("installed server executable is not a non-empty regular file: %s", path)
+	}
+	return true, nil
+}
+
+func regularFileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
+func resolveTrustedPublicKeyPath(installDir string, configured ...string) (string, error) {
+	installedPath := filepath.Join(installDir, "update-public.key")
+	externalPath := ""
+	if len(configured) > 0 {
+		externalPath = strings.TrimSpace(configured[0])
+	}
+	if externalPath != "" {
+		if !filepath.IsAbs(externalPath) {
+			externalPath = filepath.Join(installDir, externalPath)
+		}
+		var err error
+		externalPath, err = filepath.Abs(filepath.Clean(externalPath))
+		if err != nil {
+			return "", fmt.Errorf("resolve external trusted public key: %w", err)
+		}
+		if !regularFileExists(externalPath) {
+			return "", fmt.Errorf("external trusted public key is missing or not a regular file: %s", externalPath)
+		}
+	}
+	if regularFileExists(installedPath) {
+		if externalPath != "" {
+			if err := requireMatchingPublicKeys(installedPath, externalPath); err != nil {
+				return "", err
+			}
+		}
+		return installedPath, nil
+	}
+	if externalPath == "" {
+		return "", errors.New("installed update-public.key is unavailable; first installation requires -trusted-public-key")
+	}
+	return externalPath, nil
+}
+
+func requireMatchingPublicKeys(firstPath, secondPath string) error {
+	first, err := os.ReadFile(firstPath)
+	if err != nil {
+		return fmt.Errorf("read trusted public key %s: %w", firstPath, err)
+	}
+	second, err := os.ReadFile(secondPath)
+	if err != nil {
+		return fmt.Errorf("read external trusted public key %s: %w", secondPath, err)
+	}
+	firstCanonical, err := update.CanonicalMinisignPublicKey(string(first))
+	if err != nil {
+		return fmt.Errorf("parse trusted public key %s: %w", firstPath, err)
+	}
+	secondCanonical, err := update.CanonicalMinisignPublicKey(string(second))
+	if err != nil {
+		return fmt.Errorf("parse external trusted public key %s: %w", secondPath, err)
+	}
+	if firstCanonical != secondCanonical {
+		return fmt.Errorf("external trusted public key %s does not match installed update-public.key", secondPath)
+	}
+	return nil
+}
+
+func findServerPackageSourceDir(root string) (string, error) {
+	for _, candidate := range []string{filepath.Join(root, "server"), root} {
+		if regularFileExists(filepath.Join(candidate, "bb-erp-server.exe")) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("server package does not contain bb-erp-server.exe: %s", root)
+}
+
 func backupServerFiles(installDir string, backupDir string) error {
+	databasePath, err := resolveDatabasePath(installDir, "")
+	if err != nil {
+		return err
+	}
+	return backupServerFilesWithDatabase(installDir, backupDir, databasePath)
+}
+
+// backupServerFilesWithDatabase captures the minimum rollback set after the
+// server has stopped. It intentionally excludes logs, uploads and the large
+// updates/{artifacts,releases,pending} tree; only the stable manifest and the
+// SQLite database (including WAL/SHM sidecars) participate in the transaction.
+func backupServerFilesWithDatabase(installDir, backupDir, databasePath string) error {
+	return backupServerFilesWithDatabaseMode(installDir, backupDir, databasePath, true, true)
+}
+
+// backupServerFilesWithDatabaseMode permits a first-install snapshot. When
+// requireServer is false, absent old runtime files are expected and are not
+// copied; an already provisioned database is still copied when present. Once
+// an installed server exists, both the executable and database are mandatory
+// so a later rollback cannot silently become a partial restore.
+func backupServerFilesWithDatabaseMode(installDir, backupDir, databasePath string, requireServer, requireDatabase bool) error {
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return fmt.Errorf("create backup dir: %w", err)
 	}
-	// Keep the rollback snapshot self-contained. Runtime configuration is supplied
-	// through environment variables and must be backed up by the deployment system,
-	// not copied into an upgrade archive.
-	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "web", "data", "static", "updates", "logs", "update-public.key", "version.json"} {
-		source := filepath.Join(installDir, name)
+	databasePath, err := resolveDatabasePath(installDir, databasePath)
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{
+		"bb-erp-server.exe", "启动服务端.bat", "web", "update-public.key", "version.json",
+		"updates/stable/update-manifest.json",
+	} {
+		source := filepath.Join(installDir, filepath.FromSlash(name))
 		if _, err := os.Stat(source); err != nil {
-			if os.IsNotExist(err) && name != "bb-erp-server.exe" {
+			if os.IsNotExist(err) && (!requireServer || name != "bb-erp-server.exe") {
 				continue
 			}
 			return fmt.Errorf("inspect %s for backup: %w", name, err)
 		}
-		if err := copyPath(source, filepath.Join(backupDir, name)); err != nil {
+		if err := copyPath(source, filepath.Join(backupDir, filepath.FromSlash(name))); err != nil {
 			return fmt.Errorf("backup %s: %w", name, err)
+		}
+	}
+	databaseBackupRoot, err := databaseBackupRoot(installDir, backupDir, databasePath)
+	if err != nil {
+		return err
+	}
+	if err := backupDatabaseFilesMode(databasePath, databaseBackupRoot, requireDatabase); err != nil {
+		return err
+	}
+	return nil
+}
+
+func databaseBackupRoot(installDir, backupDir, databasePath string) (string, error) {
+	installDir, err := filepath.Abs(filepath.Clean(installDir))
+	if err != nil {
+		return "", err
+	}
+	databasePath, err = filepath.Abs(filepath.Clean(databasePath))
+	if err != nil {
+		return "", err
+	}
+	relative, err := filepath.Rel(installDir, databasePath)
+	if err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
+		return filepath.Join(backupDir, relative), nil
+	}
+	base := filepath.Base(databasePath)
+	if base == "." || base == "" || base == string(filepath.Separator) {
+		return "", fmt.Errorf("database path must name a file: %q", databasePath)
+	}
+	return filepath.Join(backupDir, "database", base), nil
+}
+
+func backupDatabaseFiles(databasePath, backupPath string) error {
+	return backupDatabaseFilesMode(databasePath, backupPath, true)
+}
+
+func backupDatabaseFilesMode(databasePath, backupPath string, required bool) error {
+	mainInfo, err := os.Stat(databasePath)
+	if err != nil {
+		if !required && os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect SQLite database %s: %w", databasePath, err)
+	}
+	if mainInfo.IsDir() || !mainInfo.Mode().IsRegular() {
+		return fmt.Errorf("SQLite database path is not a regular file: %s", databasePath)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		source := databasePath + suffix
+		info, statErr := os.Stat(source)
+		if statErr != nil {
+			if suffix != "" && os.IsNotExist(statErr) {
+				continue
+			}
+			return fmt.Errorf("inspect SQLite file %s: %w", source, statErr)
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			return fmt.Errorf("SQLite file is not a regular file: %s", source)
+		}
+		if err := copyPath(source, backupPath+suffix); err != nil {
+			return fmt.Errorf("backup SQLite file %s: %w", source, err)
 		}
 	}
 	return nil
 }
 
 func replaceServerFiles(sourceDir string, installDir string) error {
+	return replaceServerFilesInternal(sourceDir, installDir, false)
+}
+
+// replaceServerFilesForCandidate installs the packaged launcher along with
+// runtime files. Candidate releases must carry 启动服务端.bat so ordinary
+// process deployments retain the production environment (manifest path,
+// update settings and HTTP bind configuration) after an upgrade. Windows
+// Service deployments validate the file but start the service directly.
+func replaceServerFilesForCandidate(sourceDir, installDir string) error {
+	return replaceServerFilesInternal(sourceDir, installDir, true)
+}
+
+func replaceServerFilesInternal(sourceDir string, installDir string, replaceLauncher bool) error {
 	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-server.exe"), filepath.Join(installDir, "bb-erp-server.exe")); err != nil {
 		return fmt.Errorf("replace server exe: %w", err)
 	}
@@ -576,6 +978,11 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 	}
 	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-upgrade-runner.bat"), filepath.Join(installDir, "bb-erp-upgrade-runner.pending.bat")); err != nil {
 		return fmt.Errorf("stage next updater runner: %w", err)
+	}
+	if replaceLauncher {
+		if err := replaceFileSafely(filepath.Join(sourceDir, "启动服务端.bat"), filepath.Join(installDir, "启动服务端.bat")); err != nil {
+			return fmt.Errorf("replace server launcher: %w", err)
+		}
 	}
 	webSource := filepath.Join(sourceDir, "web")
 	if _, err := os.Stat(webSource); err == nil {
@@ -592,8 +999,14 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 }
 
 func recoverFailedUpgrade(serviceName, installDir, backupDir string, restartPrevious bool, cause error) error {
-	_ = stopServer(serviceName, installDir)
-	restoreErr := restoreServerFiles(backupDir, installDir)
+	return recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, "", restartPrevious, "", "", "", cause)
+}
+
+func recoverFailedUpgradeWithHealth(serviceName, installDir, backupDir, databasePath string, restartPrevious bool, previousVersion, currentVersion, healthBaseURL string, cause error) error {
+	if stopErr := stopServer(serviceName, installDir); stopErr != nil {
+		return fmt.Errorf("upgrade failed (%v); stop failed before rollback: %w", cause, stopErr)
+	}
+	restoreErr := restoreServerFilesWithDatabase(backupDir, installDir, databasePath)
 	if restoreErr != nil {
 		return fmt.Errorf("upgrade failed (%v); restore backup failed: %w", cause, restoreErr)
 	}
@@ -601,16 +1014,36 @@ func recoverFailedUpgrade(serviceName, installDir, backupDir string, restartPrev
 		if restartErr := startServer(serviceName, installDir); restartErr != nil {
 			return fmt.Errorf("upgrade failed (%v); backup restored but previous server restart failed: %w", cause, restartErr)
 		}
+		if strings.TrimSpace(healthBaseURL) != "" {
+			if healthErr := waitForServerHealth(healthBaseURL, previousVersion, currentVersion, nil); healthErr != nil {
+				return fmt.Errorf("upgrade failed (%v); previous version was restored but health verification failed: %w", cause, healthErr)
+			}
+		}
+		if err := os.Remove(upgradeTransactionPath(installDir)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("upgrade failed (%v); previous version was restored but transaction journal cleanup failed: %w", cause, err)
+		}
 		return fmt.Errorf("upgrade failed and previous version was restored and restarted: %w", cause)
+	}
+	if err := os.Remove(upgradeTransactionPath(installDir)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("upgrade failed (%v); previous stopped version was restored but transaction journal cleanup failed: %w", cause, err)
 	}
 	return fmt.Errorf("upgrade failed and previous stopped version was restored: %w", cause)
 }
 
 func restoreServerFiles(backupDir, installDir string) error {
+	databasePath, err := resolveDatabasePath(installDir, "")
+	if err != nil {
+		return err
+	}
+	return restoreServerFilesWithDatabase(backupDir, installDir, databasePath)
+}
+
+func restoreServerFilesWithDatabase(backupDir, installDir, databasePath string) error {
 	for _, name := range []string{
 		"bb-erp-server.exe",
 		"bb-erp-updater.pending.exe", "bb-erp-upgrade-runner.pending.bat",
-		"update-public.key", "version.json", "web",
+		"update-public.key", "version.json", "启动服务端.bat", "web",
+		"updates/stable/update-manifest.json",
 	} {
 		source := filepath.Join(backupDir, name)
 		target := filepath.Join(installDir, name)
@@ -631,6 +1064,63 @@ func restoreServerFiles(backupDir, installDir string) error {
 		}
 		if err != nil {
 			return fmt.Errorf("restore %s: %w", name, err)
+		}
+	}
+	databasePath, err := resolveDatabasePath(installDir, databasePath)
+	if err != nil {
+		return err
+	}
+	databaseRoot, err := databaseBackupRoot(installDir, backupDir, databasePath)
+	if err != nil {
+		return err
+	}
+	// A snapshot without the old server executable is the explicit first-
+	// install snapshot. In that case an absent database backup means the new
+	// database must be removed on rollback; older snapshots from an existing
+	// deployment may legitimately predate database snapshots and are preserved.
+	_, serverBackupErr := os.Stat(filepath.Join(backupDir, "bb-erp-server.exe"))
+	removeMissingDatabase := os.IsNotExist(serverBackupErr)
+	if err := restoreDatabaseFiles(databaseRoot, databasePath, removeMissingDatabase); err != nil {
+		return err
+	}
+	return nil
+}
+
+func restoreDatabaseFiles(backupPath, databasePath string, removeMissing ...bool) error {
+	mainBackup := backupPath
+	if _, err := os.Stat(mainBackup); os.IsNotExist(err) {
+		if len(removeMissing) > 0 && removeMissing[0] {
+			for _, suffix := range []string{"", "-wal", "-shm"} {
+				if err := os.Remove(databasePath + suffix); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove new SQLite file %s: %w", databasePath+suffix, err)
+				}
+			}
+			return nil
+		}
+		// Older rollback snapshots did not include an explicit database copy.
+		// Keep their behavior for manual recovery, while every new transaction
+		// always has the main database and therefore takes this path.
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect backed up SQLite database %s: %w", mainBackup, err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		source := mainBackup + suffix
+		target := databasePath + suffix
+		info, statErr := os.Stat(source)
+		if statErr != nil && os.IsNotExist(statErr) {
+			if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove current SQLite sidecar %s: %w", target, err)
+			}
+			continue
+		} else if statErr != nil {
+			return fmt.Errorf("inspect backed up SQLite file %s: %w", source, statErr)
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			return fmt.Errorf("backed up SQLite file is not a regular file: %s", source)
+		}
+		if err := replaceFileSafely(source, target); err != nil {
+			return fmt.Errorf("restore SQLite file %s: %w", target, err)
 		}
 	}
 	return nil
@@ -749,7 +1239,20 @@ func extractZip(path string, dest string) error {
 		expandedBytes += item.UncompressedSize64
 	}
 	for _, item := range reader.File {
-		target := filepath.Join(dest, item.Name)
+		// ZIP names always use slash separators, even when the updater runs on
+		// Windows. Normalize before filepath.Join so a crafted `..\\` entry
+		// cannot evade the traversal check on Unix tests or on the production
+		// Windows host. The same check also rejects absolute and NUL-containing
+		// names before any destination path is created.
+		archiveName := strings.ReplaceAll(item.Name, "\\", "/")
+		cleanName := pathpkg.Clean(archiveName)
+		if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") || pathpkg.IsAbs(cleanName) || strings.IndexByte(cleanName, 0) >= 0 {
+			return fmt.Errorf("unsafe zip path: %s", item.Name)
+		}
+		if item.FileInfo().Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("zip contains symbolic link: %s", item.Name)
+		}
+		target := filepath.Join(dest, filepath.FromSlash(cleanName))
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) {
 			return fmt.Errorf("unsafe zip path: %s", item.Name)
 		}
@@ -795,12 +1298,25 @@ func copyPath(source string, target string) error {
 		}
 		return nil
 	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
 	input, err := os.Open(source)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	return writeFile(target, input, info.Mode())
+	hash := sha256.New()
+	if err := writeFile(target, io.TeeReader(input, hash), info.Mode()); err != nil {
+		return err
+	}
+	if err := verifyFileSize(target, info.Size()); err != nil {
+		return fmt.Errorf("verify durable backup size: %w", err)
+	}
+	if err := verifySHA256(target, hex.EncodeToString(hash.Sum(nil))); err != nil {
+		return fmt.Errorf("verify durable backup content: %w", err)
+	}
+	return nil
 }
 
 func writeFile(target string, reader io.Reader, mode os.FileMode) error {
@@ -808,9 +1324,15 @@ func writeFile(target string, reader io.Reader, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer output.Close()
-	_, err = io.Copy(output, reader)
-	return err
+	if _, err := io.Copy(output, reader); err != nil {
+		_ = output.Close()
+		return err
+	}
+	if err := output.Sync(); err != nil {
+		_ = output.Close()
+		return err
+	}
+	return output.Close()
 }
 
 func downloadFile(url string, path string, expectedSize int64, expectedSHA256 string) error {
@@ -829,10 +1351,15 @@ func downloadFile(url string, path string, expectedSize int64, expectedSHA256 st
 	}
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(res.Body, expectedSize+1))
-	closeErr := file.Close()
 	if copyErr != nil {
+		_ = file.Close()
 		return fmt.Errorf("write package file: %w", copyErr)
 	}
+	if syncErr := file.Sync(); syncErr != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync package file: %w", syncErr)
+	}
+	closeErr := file.Close()
 	if closeErr != nil {
 		return fmt.Errorf("close package file: %w", closeErr)
 	}

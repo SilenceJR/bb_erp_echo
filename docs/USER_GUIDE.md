@@ -336,10 +336,10 @@ completed          完成
 
 - `GET /api/v1/version`
 - `GET /api/v1/updates/client/status`
-- `GET /api/v1/updates/client/download`
+- `GET /api/v1/system/updates/client/download`（需更新管理权限，仅供管理员人工恢复）
 - `POST /api/v1/system/updates/check`
 
-服务端更新检查默认关闭，需要配置更新清单地址后再启用。
+正式局域网方案不配置外部更新地址。Windows 计划任务完成构建、签名和服务端健康检查后，原子激活安装目录内的 `updates/stable/update-manifest.json`；Go 服务从该本机文件读取更新状态和分发资源，不访问 Gitee、GitHub 或自身 HTTP 地址。管理员恢复 ZIP 仅在登录后按更新管理权限人工下载，客户端自动更新仍须由用户确认。
 
 ## 8. 权限说明
 

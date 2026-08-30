@@ -109,23 +109,26 @@ type AdminConfig struct {
 	Name string `koanf:"name"`
 }
 
-// UpdateConfig 描述 GitHub、Gitee 或内网更新源配置。
+// UpdateConfig 描述本机发布目录或兼容 HTTP 更新源配置。
 type UpdateConfig struct {
-	// Enabled 表示是否允许服务端主动检查远端更新清单。
+	// Enabled 表示是否允许服务端主动检查更新清单。
 	Enabled bool `koanf:"enabled"`
-	// ManifestURL 是 update-manifest.json 的地址，可来自 GitHub、Gitee 或内网静态服务。
+	// ManifestURL 是兼容 HTTP(S) 更新清单地址。当 ManifestFile 非空时不使用该字段。
 	ManifestURL string `koanf:"manifest_url"`
+	// ManifestFile 是本机 stable manifest 文件路径；它优先于 ManifestURL。
+	// 默认值 updates/stable/update-manifest.json 适用于服务端安装目录。
+	ManifestFile string `koanf:"manifest_file"`
 	// CacheDir 是服务端缓存客户端升级包的目录。
 	CacheDir string `koanf:"cache_dir"`
 	// ClientVersion 是当前随服务端发布的客户端版本，用于判断是否需要缓存新客户端包。
 	ClientVersion string `koanf:"client_version"`
 	// CheckInterval 是自动检查更新的周期。
 	CheckInterval time.Duration `koanf:"check_interval"`
-	// ManifestTimeout 是读取远端清单的超时时间。
+	// ManifestTimeout 是读取兼容 HTTP 清单的超时时间；本机 stable manifest 不使用网络。
 	ManifestTimeout time.Duration `koanf:"manifest_timeout"`
 	// DownloadTimeout 是下载客户端升级包的超时时间。
 	DownloadTimeout time.Duration `koanf:"download_timeout"`
-	// SigningPublicKey 是 Minisign 公钥内容。非空时用于验证 v2 客户端更新签名。
+	// SigningPublicKey 是 Minisign 公钥内容，用于验证 stable manifest 的 v3 客户端更新签名。
 	SigningPublicKey string `koanf:"signing_public_key"`
 	// SigningPublicKeyFile 是 Minisign 公钥文件路径；SigningPublicKey 非空时优先使用直接值。
 	SigningPublicKeyFile string `koanf:"signing_public_key_file"`
@@ -165,6 +168,7 @@ func Load() (*Config, error) {
 		"admin.name":                     "系统管理员",
 		"update.enabled":                 false,
 		"update.manifest_url":            "",
+		"update.manifest_file":           "updates/stable/update-manifest.json",
 		"update.cache_dir":               "updates",
 		"update.client_version":          buildinfo.Version,
 		"update.check_interval":          "6h",
@@ -232,6 +236,11 @@ func Load() (*Config, error) {
 	cfg.Update.Enabled = k.Bool("update.enabled")
 	if manifestURL := k.String("update.manifest.url"); manifestURL != "" {
 		cfg.Update.ManifestURL = manifestURL
+	}
+	// manifest_file 与 manifest_url 一样包含语义下划线，直接读取原始环境变量，
+	// 避免 envKey 将其拆成 update.manifest.file 后无法覆盖默认路径。
+	if manifestFile, ok := os.LookupEnv("BB_ERP_UPDATE_MANIFEST_FILE"); ok {
+		cfg.Update.ManifestFile = strings.TrimSpace(manifestFile)
 	}
 	if cacheDir := k.String("update.cache.dir"); cacheDir != "" {
 		cfg.Update.CacheDir = cacheDir
@@ -316,10 +325,13 @@ func validateProductionConfig(cfg Config) error {
 		return nil
 	}
 
-	manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
-	parsedURL, err := url.Parse(manifestURL)
-	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
-		return fmt.Errorf("production update manifest URL must be an HTTP(S) URL")
+	manifestFile := strings.TrimSpace(cfg.Update.ManifestFile)
+	if manifestFile == "" {
+		manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
+		parsedURL, err := url.Parse(manifestURL)
+		if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
+			return fmt.Errorf("production update manifest URL must be an HTTP(S) URL when local manifest file is not configured")
+		}
 	}
 
 	if strings.TrimSpace(cfg.Update.SigningPublicKey) == "" {

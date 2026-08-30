@@ -139,7 +139,7 @@ func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 		t.Fatalf("unexpected first status: %+v", status)
 	}
 	if status.Server.DownloadURL != serverDownloadPath || status.Server.DownloadPath != serverDownloadPath ||
-		status.Server.FileName != "server.zip" || status.Client.DownloadURL != "/api/v1/updates/client/download" || status.CheckInterval != "1h" {
+		status.Server.FileName != "server.zip" || status.Client.DownloadURL != "/api/v1/system/updates/client/download" || status.CheckInterval != "1h" {
 		t.Fatalf("unexpected local download/interval fields: %+v", status)
 	}
 	if _, err := service.Check(context.Background()); err != nil {

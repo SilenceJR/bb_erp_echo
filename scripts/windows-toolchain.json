@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "architecture": "x86_64",
+  "supported_os": {
+    "windows_server_minimum": "2016",
+    "windows_10_minimum_build": 18363
+  },
+  "go": {
+    "version": "1.27.0",
+    "install_policy": "manual",
+    "download_url": "https://go.dev/dl/"
+  },
+  "node": {
+    "version": "22.21.1",
+    "npm_version": "10.9.4",
+    "installer_url": "https://nodejs.org/dist/v22.21.1/node-v22.21.1-x64.msi",
+    "checksums_url": "https://nodejs.org/dist/v22.21.1/SHASUMS256.txt"
+  },
+  "rust": {
+    "version": "1.97.1",
+    "toolchain": "1.97.1-x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc",
+    "components": ["rustfmt"],
+    "rustup_installer_url": "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe",
+    "rustup_installer_sha256": "86478e53f769379d7f0ebfa7c9aa97cb76ca92233f79aa2cc0dbee2efaac73c7"
+  },
+  "tauri": {
+    "cli_version": "2.11.4",
+    "install_policy": "client/package-lock.json"
+  },
+  "visual_studio": {
+    "major_version": "17",
+    "bootstrapper_url": "https://aka.ms/vs/17/release/vs_BuildTools.exe",
+    "workload": "Microsoft.VisualStudio.Workload.VCTools",
+    "windows_sdk_component": "Microsoft.VisualStudio.Component.Windows10SDK.19041"
+  },
+  "webview2": {
+    "installer_url": "https://go.microsoft.com/fwlink/p/?LinkId=2124701"
+  },
+  "msys2": {
+    "install_dir": "C:\\msys64",
+    "installer_version": "2026-06-11",
+    "installer_url": "https://github.com/msys2/msys2-installer/releases/download/2026-06-11/msys2-base-x86_64-20260611.sfx.exe",
+    "installer_sha256": "c105946e64e08f099ac0e4647461ce762b95333ad211777666476a9a41451d65",
+    "gcc_package": "mingw-w64-x86_64-gcc"
+  }
+}
