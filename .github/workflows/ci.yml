@@ -702,10 +702,11 @@ jobs:
             (Join-Path $allInOneRoot "server/一键升级服务端.bat")
           )) {
             $updaterLoaderText = Get-Content -LiteralPath $updaterLoader -Raw
-            if ($updaterLoaderText -notmatch 'bb-erp-updater[.]pending[.]exe' -or
-                $updaterLoaderText -notmatch 'bb-erp-upgrade-runner[.]pending[.]bat' -or
-                $updaterLoaderText -notmatch 'call bb-erp-upgrade-runner[.]bat' -or
-                $updaterLoaderText -notmatch '(?m)^pause\r?$') {
+            $updaterLoaderLines = @($updaterLoaderText -split '\r?\n' | ForEach-Object { $_.Trim() })
+            if ($updaterLoaderLines -notcontains 'if exist bb-erp-updater.pending.exe (' -or
+                $updaterLoaderLines -notcontains 'if exist bb-erp-upgrade-runner.pending.bat (' -or
+                $updaterLoaderLines -notcontains 'call bb-erp-upgrade-runner.bat' -or
+                $updaterLoaderLines -notcontains 'pause') {
               throw "Server updater loader cannot activate staged updater files: $updaterLoader"
             }
           }
@@ -772,10 +773,11 @@ jobs:
               (Join-Path $allInOneVerifyRoot "server/一键升级服务端.bat")
             )) {
               $archivedUpdaterLoaderText = Get-Content -LiteralPath $archivedUpdaterLoader -Raw
-              if ($archivedUpdaterLoaderText -notmatch 'bb-erp-updater[.]pending[.]exe' -or
-                  $archivedUpdaterLoaderText -notmatch 'bb-erp-upgrade-runner[.]pending[.]bat' -or
-                  $archivedUpdaterLoaderText -notmatch 'call bb-erp-upgrade-runner[.]bat' -or
-                  $archivedUpdaterLoaderText -notmatch '(?m)^pause\r?$') {
+              $archivedUpdaterLoaderLines = @($archivedUpdaterLoaderText -split '\r?\n' | ForEach-Object { $_.Trim() })
+              if ($archivedUpdaterLoaderLines -notcontains 'if exist bb-erp-updater.pending.exe (' -or
+                  $archivedUpdaterLoaderLines -notcontains 'if exist bb-erp-upgrade-runner.pending.bat (' -or
+                  $archivedUpdaterLoaderLines -notcontains 'call bb-erp-upgrade-runner.bat' -or
+                  $archivedUpdaterLoaderLines -notcontains 'pause') {
                 throw "Archived server updater loader cannot activate staged updater files: $archivedUpdaterLoader"
               }
             }
