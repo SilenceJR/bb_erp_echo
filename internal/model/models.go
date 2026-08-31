@@ -169,14 +169,54 @@ type AuditLog struct {
 	Result                 string `json:"result" gorm:"size:40"`
 }
 
-// Customer 是客户档案主模型，并维护该客户的联系人关系。
-type Customer struct {
-	BaseModel
-	Name     string    `json:"name" gorm:"size:160;not null"`
-	Code     string    `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Phone    string    `json:"phone" gorm:"size:60;"`
-	Contacts []Contact `json:"contacts" gorm:"foreignKey:CustomerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	Address  string    `json:"address" gorm:"size:255;"`
+// CustomerCode 是可以被多个客户资料复用的稳定客户编码。
+//
+// 客户编码和客户资料分开建模：编码是后续送货单、开票和订单统计的关联
+// 锚点，资料则保存某个编码下的具体抬头、地址和联系人信息。该模型刻意
+// 不嵌入 BaseModel，保证客户模块采用物理删除且不产生 DeletedAt。
+type CustomerCode struct {
+	ID        uint              `json:"id" gorm:"primaryKey"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+	Code      string            `json:"code" gorm:"size:80;not null;uniqueIndex"`
+	Profiles  []CustomerProfile `json:"profiles,omitempty" gorm:"foreignKey:CustomerCodeID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
+}
+
+// CustomerProfile 是客户编码下的一份具体客户资料。
+//
+// 联系人及联系电话随资料一起维护，均允许为空。一个 CustomerCode 有资料
+// 时必须恰好一条 IsDefault=true；条件唯一索引只负责数据库层面的“最多一条”，
+// 服务事务负责“至少一条”和默认切换的业务不变量。
+type CustomerProfile struct {
+	ID             uint         `json:"id" gorm:"primaryKey"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	CustomerCodeID uint         `json:"customer_code_id" gorm:"not null;index;index:idx_customer_profiles_default,unique,where:is_default = 1"`
+	CustomerCode   CustomerCode `json:"-" gorm:"foreignKey:CustomerCodeID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
+	ShortName      string       `json:"short_name" gorm:"size:160"`
+	Name           string       `json:"name" gorm:"size:160"`
+	Address        string       `json:"address" gorm:"size:255"`
+	Phone          string       `json:"phone" gorm:"size:60"`
+	ContactName    string       `json:"contact_name" gorm:"size:120"`
+	ContactPhone   string       `json:"contact_phone" gorm:"size:60"`
+	Salesperson    string       `json:"salesperson" gorm:"size:120"`
+	IsDefault      bool         `json:"is_default" gorm:"not null;default:false;index:idx_customer_profiles_default,unique,where:is_default = 1"`
+}
+
+// ImportSession 保存一次 Excel 预览授权，不保存原始文件。
+//
+// TokenHash 只保存预览令牌摘要；提交接口必须由同一用户重新上传相同 SHA-256
+// 文件，ConsumedAt 在资料写入同一事务内设置，从而保证令牌只能成功消费一次。
+type ImportSession struct {
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	UserID     uint       `json:"user_id" gorm:"not null;index"`
+	Module     string     `json:"module" gorm:"size:80;not null;index"`
+	FileHash   string     `json:"file_hash" gorm:"size:64;not null;index"`
+	TokenHash  string     `json:"-" gorm:"size:64;not null;uniqueIndex"`
+	ExpiresAt  time.Time  `json:"expires_at" gorm:"not null;index"`
+	ConsumedAt *time.Time `json:"consumed_at,omitempty" gorm:"index"`
 }
 
 // Supplier 是采购入库使用的供应商档案。
@@ -188,26 +228,6 @@ type Supplier struct {
 	Phone   string `json:"phone" gorm:"size:60"`
 	Address string `json:"address" gorm:"size:255"`
 	Status  string `json:"status" gorm:"size:30;not null;default:active"`
-}
-
-// Contact 是客户联系人模型，并维护联系人的电话明细。
-type Contact struct {
-	BaseModel
-	CustomerID uint           `json:"customer_id" gorm:"not null;index"`
-	Name       string         `json:"name" gorm:"size:120;not null"`
-	Phones     []ContactPhone `json:"phones" gorm:"foreignKey:ContactID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-}
-
-// ContactPhone 是联系人电话明细表，支持一个联系人维护多个号码。
-//
-// 业务说明：
-// 一个联系人可以维护手机、座机、微信同号等多个联系方式，并标记主号码。
-type ContactPhone struct {
-	BaseModel
-	ContactID uint   `json:"contact_id" gorm:"not null;index"`
-	Phone     string `json:"phone" gorm:"size:60;not null"`
-	Label     string `json:"label" gorm:"size:40"`
-	Primary   bool   `json:"primary" gorm:"not null;default:false"`
 }
 
 // Warehouse 是单仓库模式下的仓库配置模型，MAIN 编码代表系统默认仓库。
@@ -287,6 +307,7 @@ type InventoryDocument struct {
 	BusinessType              string                  `json:"business_type" gorm:"size:40;index"`
 	SupplierID                *uint                   `json:"supplier_id" gorm:"index"`
 	CustomerID                *uint                   `json:"customer_id" gorm:"index"`
+	Customer                  CustomerProfile         `json:"-" gorm:"foreignKey:CustomerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	DepartmentID              *uint                   `json:"department_id" gorm:"index"`
 	OriginalDocumentID        *uint                   `json:"original_document_id" gorm:"index"`
 	IdempotencyKey            string                  `json:"idempotency_key" gorm:"size:120;uniqueIndex:idx_inventory_documents_idempotency_key,where:idempotency_key <> ''"`
@@ -360,6 +381,7 @@ type WorkOrder struct {
 	Status          string           `json:"status" gorm:"size:40;not null;default:draft;index"`
 	Priority        string           `json:"priority" gorm:"size:30;not null;default:normal;index"`
 	CustomerID      *uint            `json:"customer_id" gorm:"index"`
+	Customer        CustomerProfile  `json:"-" gorm:"foreignKey:CustomerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	ProductID       *uint            `json:"product_id" gorm:"index"`
 	ProductName     string           `json:"product_name" gorm:"size:160"`
 	PlannedQuantity int64            `json:"planned_quantity" gorm:"not null;default:0"`
@@ -430,10 +452,10 @@ func AllModels() []any {
 		&UserRole{},
 		&RolePermission{},
 		&AuditLog{},
-		&Customer{},
+		&CustomerCode{},
+		&CustomerProfile{},
+		&ImportSession{},
 		&Supplier{},
-		&Contact{},
-		&ContactPhone{},
 		&Warehouse{},
 		&Location{},
 		&InventoryBalance{},

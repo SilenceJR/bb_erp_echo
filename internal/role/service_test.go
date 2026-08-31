@@ -3,6 +3,7 @@ package role
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"bb_erp_echo/internal/config"
@@ -136,6 +137,31 @@ func TestDefaultPermissionsIncludeTemporaryProductWrite(t *testing.T) {
 		return
 	}
 	t.Fatalf("default permissions do not include %q", TemporaryProductWriteCode)
+}
+
+func TestDefaultPermissionsUseNewCustomerMatrix(t *testing.T) {
+	want := map[string]struct {
+		object string
+		action string
+	}{
+		"customers:read":   {object: "/api/v1/customers", action: "read"},
+		"customers:write":  {object: "/api/v1/customers", action: "write"},
+		"customers:import": {object: "/api/v1/customers/import", action: "import"},
+	}
+	for _, permission := range DefaultPermissions() {
+		if strings.HasPrefix(permission.Code, "contacts:") {
+			t.Fatalf("legacy contact permission remains: %+v", permission)
+		}
+		if expected, ok := want[permission.Code]; ok {
+			if permission.Object != expected.object || permission.Action != expected.action {
+				t.Fatalf("permission %s = %+v", permission.Code, permission)
+			}
+			delete(want, permission.Code)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing customer permissions: %+v", want)
+	}
 }
 
 func TestSeedSystemDataGivesTerminalOperatorWarehouseRead(t *testing.T) {

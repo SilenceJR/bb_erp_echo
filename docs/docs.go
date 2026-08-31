@@ -277,47 +277,51 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/contacts": {
+        "/api/v1/customer-codes": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回联系人列表，并预加载联系人电话明细。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "联系人"
+                    "客户"
                 ],
-                "summary": "查询联系人列表",
+                "summary": "客户编码分组列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "编码或资料关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "all、multiple 或 empty",
+                        "name": "filter",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/contact.ContactResponse"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.CodePage"
                         }
                     }
                 }
@@ -328,7 +332,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建联系人时必须携带 customer_id，由联系人接口建立客户与联系人的关联关系。",
                 "consumes": [
                     "application/json"
                 ],
@@ -336,17 +339,16 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "联系人"
+                    "客户"
                 ],
-                "summary": "创建联系人",
+                "summary": "创建客户编码",
                 "parameters": [
                     {
-                        "description": "创建联系人参数",
+                        "description": "编码留空时自动生成",
                         "name": "body",
                         "in": "body",
-                        "required": true,
                         "schema": {
-                            "$ref": "#/definitions/contact.CreateContactRequest"
+                            "$ref": "#/definitions/customer.CodeRequest"
                         }
                     }
                 ],
@@ -354,120 +356,66 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/contact.ContactResponse"
+                            "$ref": "#/definitions/customer.CodeResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/api/v1/contacts/{id}": {
+        "/api/v1/customer-codes/next": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "通过联系人 ID 查询联系人详情，并预加载电话明细。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "联系人"
+                    "客户"
                 ],
-                "summary": "查询联系人详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "联系人 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
+                "summary": "查询下一个客户编码建议值",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/contact.ContactResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
-            },
+            }
+        },
+        "/api/v1/customer-codes/{id}": {
             "delete": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "软删除联系人，并同步软删除其电话明细。",
                 "tags": [
-                    "联系人"
+                    "客户"
                 ],
-                "summary": "删除联系人",
+                "summary": "删除空客户编码",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "联系人 ID",
+                        "description": "客户编码 ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -477,34 +425,16 @@ const docTemplate = `{
                     "204": {
                         "description": "No Content"
                     },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     }
                 }
@@ -515,7 +445,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "更新联系人基础信息，并按请求内容整体替换联系人电话明细。",
                 "consumes": [
                     "application/json"
                 ],
@@ -523,24 +452,24 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "联系人"
+                    "客户"
                 ],
-                "summary": "更新联系人",
+                "summary": "修改客户编码",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "联系人 ID",
+                        "description": "客户编码 ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "更新联系人参数",
+                        "description": "客户编码",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/contact.UpdateContactRequest"
+                            "$ref": "#/definitions/customer.CodeRequest"
                         }
                     }
                 ],
@@ -548,37 +477,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/contact.ContactResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.CodeResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/contact.ErrorResponse"
+                            "$ref": "#/definitions/customer.ErrorResponse"
                         }
                     }
                 }
@@ -591,40 +502,38 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回客户档案列表，并预加载联系人和联系人电话明细。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "客户"
                 ],
-                "summary": "查询客户列表",
+                "summary": "查询客户资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "客户关键词",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/customer.CustomerResponse"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/customer.ProfilePage"
                         }
                     }
                 }
@@ -635,7 +544,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建客户名称、编码和客户座机；客户联系人关系在创建联系人时通过 customer_id 建立。",
                 "consumes": [
                     "application/json"
                 ],
@@ -645,15 +553,15 @@ const docTemplate = `{
                 "tags": [
                     "客户"
                 ],
-                "summary": "创建客户",
+                "summary": "创建客户资料",
                 "parameters": [
                     {
-                        "description": "创建客户参数",
+                        "description": "客户资料",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.CreateCustomerRequest"
+                            "$ref": "#/definitions/customer.ProfileInput"
                         }
                     }
                 ],
@@ -661,29 +569,56 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/customer.CustomerResponse"
+                            "$ref": "#/definitions/customer.ProfileResponse"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "导出客户资料 XLSX",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "current 或 all",
+                        "name": "scope",
+                        "in": "query",
+                        "required": true
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    {
+                        "type": "string",
+                        "description": "关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "all、multiple 或 empty",
+                        "name": "filter",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "type": "file"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
@@ -691,47 +626,241 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/customers/{id}": {
-            "delete": {
+        "/api/v1/customers/export/preview": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "软删除客户本体，不删除联系人；联系人和联系人电话明细保留用于转移或历史追溯。",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "客户"
                 ],
-                "summary": "删除客户",
+                "summary": "预览客户资料 XLSX 导出",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "current 或 all",
+                        "name": "scope",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "all、multiple 或 empty",
+                        "name": "filter",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
-                        "description": "客户 ID",
-                        "name": "id",
-                        "in": "path",
+                        "description": "预览页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "50 或 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/spreadsheet.SpreadsheetDocument"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/import-template": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "下载客户资料导入模板",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/import/commit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "确认客户 Excel 导入",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "与预览相同的文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "30 分钟一次性预览令牌",
+                        "name": "token",
+                        "in": "formData",
                         "required": true
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ImportResult"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/import/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "校验客户 Excel 导入",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "客户资料 .xls 或 .xlsx",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ImportPreview"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "查询客户资料选择项",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "编码、简称或名称",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/customer.OptionResponse"
+                            }
                         }
-                    },
-                    "403": {
-                        "description": "Forbidden",
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "查询客户资料详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户资料 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/customer.ProfileResponse"
                         }
                     },
                     "404": {
@@ -739,9 +868,47 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "默认资料仍有同码其他资料时必须通过 replacement_id 指定替代默认资料；被业务引用时返回 409。",
+                "tags": [
+                    "客户"
+                ],
+                "summary": "物理删除客户资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户资料 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    {
+                        "type": "integer",
+                        "description": "同编码替代默认资料 ID",
+                        "name": "replacement_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
@@ -754,7 +921,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "通过客户 ID 更新客户档案；联系人和电话明细请使用联系人接口维护。",
                 "consumes": [
                     "application/json"
                 ],
@@ -764,22 +930,22 @@ const docTemplate = `{
                 "tags": [
                     "客户"
                 ],
-                "summary": "更新客户",
+                "summary": "修改客户资料",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "客户 ID",
+                        "description": "客户资料 ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "更新客户参数",
+                        "description": "客户资料；不能更换所属编码",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.UpdateCustomerRequest"
+                            "$ref": "#/definitions/customer.ProfileUpdate"
                         }
                     }
                 ],
@@ -787,25 +953,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.CustomerResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/customer.ProfileResponse"
                         }
                     },
                     "404": {
@@ -813,9 +961,42 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/customers/{id}/default": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "客户"
+                ],
+                "summary": "设为默认客户资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "客户资料 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/customer.ProfileResponse"
+                        }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/customer.ErrorResponse"
                         }
@@ -5743,309 +5924,62 @@ const docTemplate = `{
                 }
             }
         },
-        "contact.ContactPhoneRequest": {
-            "type": "object",
-            "required": [
-                "phone"
-            ],
-            "properties": {
-                "label": {
-                    "description": "Label 是号码标签，例如手机、座机、微信同号。",
-                    "type": "string",
-                    "example": "手机"
-                },
-                "phone": {
-                    "description": "Phone 是电话号码。",
-                    "type": "string",
-                    "example": "13800000000"
-                },
-                "primary": {
-                    "description": "Primary 表示是否为主联系电话。",
-                    "type": "boolean",
-                    "example": true
-                }
-            }
-        },
-        "contact.ContactPhoneResponse": {
+        "customer.CodePage": {
             "type": "object",
             "properties": {
-                "contact_id": {
-                    "description": "ContactID 是所属联系人 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "created_at": {
-                    "description": "CreatedAt 是创建时间。",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID 是电话明细 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "label": {
-                    "description": "Label 是号码标签。",
-                    "type": "string",
-                    "example": "手机"
-                },
-                "phone": {
-                    "description": "Phone 是电话号码。",
-                    "type": "string",
-                    "example": "13800000000"
-                },
-                "primary": {
-                    "description": "Primary 表示是否主联系电话。",
-                    "type": "boolean",
-                    "example": true
-                },
-                "updated_at": {
-                    "description": "UpdatedAt 是更新时间。",
-                    "type": "string"
-                }
-            }
-        },
-        "contact.ContactResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "description": "CreatedAt 是创建时间。",
-                    "type": "string"
-                },
-                "customer_id": {
-                    "description": "CustomerID 是所属客户 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "id": {
-                    "description": "ID 是联系人 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "name": {
-                    "description": "Name 是联系人姓名。",
-                    "type": "string",
-                    "example": "张三"
-                },
-                "phones": {
-                    "description": "Phones 是联系人电话明细。",
+                "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/contact.ContactPhoneResponse"
+                        "$ref": "#/definitions/customer.CodeResponse"
                     }
                 },
-                "updated_at": {
-                    "description": "UpdatedAt 是更新时间。",
+                "keyword": {
                     "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
-        "contact.CreateContactRequest": {
-            "type": "object",
-            "required": [
-                "customer_id",
-                "name"
-            ],
-            "properties": {
-                "customer_id": {
-                    "description": "CustomerID 是联系人所属客户 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "name": {
-                    "description": "Name 是联系人姓名。",
-                    "type": "string",
-                    "example": "张三"
-                },
-                "phones": {
-                    "description": "Phones 是联系人电话明细。",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/contact.ContactPhoneRequest"
-                    }
-                }
-            }
-        },
-        "contact.ErrorResponse": {
+        "customer.CodeRequest": {
             "type": "object",
             "properties": {
                 "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
                     "type": "string"
                 }
             }
         },
-        "contact.UpdateContactRequest": {
+        "customer.CodeResponse": {
             "type": "object",
-            "required": [
-                "customer_id",
-                "name"
-            ],
-            "properties": {
-                "customer_id": {
-                    "description": "CustomerID 是联系人所属客户 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "name": {
-                    "description": "Name 是联系人姓名。",
-                    "type": "string",
-                    "example": "张三-更新"
-                },
-                "phones": {
-                    "description": "Phones 是联系人电话明细；更新时整体替换旧电话。",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/contact.ContactPhoneRequest"
-                    }
-                }
-            }
-        },
-        "customer.CreateCustomerRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "name"
-            ],
             "properties": {
                 "code": {
-                    "description": "Code 是客户编码，用于内部检索和去重。",
-                    "type": "string",
-                    "example": "CUST-001"
-                },
-                "name": {
-                    "description": "Name 是客户名称。",
-                    "type": "string",
-                    "example": "测试客户"
-                },
-                "phone": {
-                    "description": "Phone 是客户座机或主要联系电话。",
-                    "type": "string",
-                    "example": "0755-88888888"
-                }
-            }
-        },
-        "customer.CustomerContactResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "description": "CreatedAt 是创建时间。",
                     "type": "string"
                 },
-                "customer_id": {
-                    "description": "CustomerID 是所属客户 ID。",
-                    "type": "integer",
-                    "example": 1
+                "created_at": {
+                    "type": "string"
+                },
+                "default_profile": {
+                    "$ref": "#/definitions/customer.ProfileResponse"
                 },
                 "id": {
-                    "description": "ID 是联系人 ID。",
-                    "type": "integer",
-                    "example": 1
+                    "type": "integer"
                 },
-                "name": {
-                    "description": "Name 是联系人姓名。",
-                    "type": "string",
-                    "example": "张三"
+                "profile_count": {
+                    "type": "integer"
                 },
-                "phones": {
-                    "description": "Phones 是联系人电话明细。",
+                "profiles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/customer.CustomerPhoneResponse"
+                        "$ref": "#/definitions/model.CustomerProfile"
                     }
                 },
                 "updated_at": {
-                    "description": "UpdatedAt 是更新时间。",
-                    "type": "string"
-                }
-            }
-        },
-        "customer.CustomerPhoneResponse": {
-            "type": "object",
-            "properties": {
-                "contact_id": {
-                    "description": "ContactID 是所属联系人 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "created_at": {
-                    "description": "CreatedAt 是创建时间。",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID 是电话明细 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "label": {
-                    "description": "Label 是号码标签。",
-                    "type": "string",
-                    "example": "手机"
-                },
-                "phone": {
-                    "description": "Phone 是电话号码。",
-                    "type": "string",
-                    "example": "13800000000"
-                },
-                "primary": {
-                    "description": "Primary 表示是否主联系电话。",
-                    "type": "boolean",
-                    "example": true
-                },
-                "updated_at": {
-                    "description": "UpdatedAt 是更新时间。",
-                    "type": "string"
-                }
-            }
-        },
-        "customer.CustomerResponse": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "description": "Address 是客户地址。",
-                    "type": "string",
-                    "example": "深圳市宝安区"
-                },
-                "code": {
-                    "description": "Code 是客户编码。",
-                    "type": "string",
-                    "example": "CUST-001"
-                },
-                "contacts": {
-                    "description": "Contacts 是客户联系人列表。",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/customer.CustomerContactResponse"
-                    }
-                },
-                "created_at": {
-                    "description": "CreatedAt 是创建时间。",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID 是客户 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "name": {
-                    "description": "Name 是客户名称。",
-                    "type": "string",
-                    "example": "测试客户"
-                },
-                "phone": {
-                    "description": "Phone 是旧版客户电话字段；新接口不再写入，电话请维护到联系人电话明细。",
-                    "type": "string",
-                    "example": ""
-                },
-                "updated_at": {
-                    "description": "UpdatedAt 是更新时间。",
                     "type": "string"
                 }
             }
@@ -6067,32 +6001,199 @@ const docTemplate = `{
                 }
             }
         },
-        "customer.UpdateCustomerRequest": {
+        "customer.ImportPreview": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/spreadsheet.CellError"
+                    }
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/customer.ImportSummary"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "customer.ImportResult": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "imported_codes": {
+                    "type": "integer"
+                },
+                "imported_profiles": {
+                    "type": "integer"
+                }
+            }
+        },
+        "customer.ImportSummary": {
+            "type": "object",
+            "properties": {
+                "multiple_code_groups": {
+                    "type": "integer"
+                },
+                "new_codes": {
+                    "type": "integer"
+                },
+                "new_profiles": {
+                    "type": "integer"
+                },
+                "total_rows": {
+                    "type": "integer"
+                }
+            }
+        },
+        "customer.OptionResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "customer.ProfileInput": {
             "type": "object",
             "required": [
-                "code",
-                "name"
+                "customer_code_id"
             ],
             "properties": {
                 "address": {
-                    "description": "Address 是客户地址。",
-                    "type": "string",
-                    "example": "深圳市宝安区"
+                    "type": "string"
                 },
-                "code": {
-                    "description": "Code 是客户编码，用于内部检索和去重。",
-                    "type": "string",
-                    "example": "CUST-001"
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "customer_code_id": {
+                    "type": "integer"
                 },
                 "name": {
-                    "description": "Name 是客户名称。",
-                    "type": "string",
-                    "example": "测试客户-更新"
+                    "type": "string"
                 },
                 "phone": {
-                    "description": "Phone 是客户座机或主要联系电话。",
-                    "type": "string",
-                    "example": "0755-66666666"
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "customer.ProfilePage": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/customer.ProfileResponse"
+                    }
+                },
+                "keyword": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "customer.ProfileResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "customer_code_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "customer.ProfileUpdate": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
                 }
             }
         },
@@ -6511,6 +6612,47 @@ const docTemplate = `{
                 "unit": {
                     "type": "string",
                     "example": "个"
+                }
+            }
+        },
+        "model.CustomerProfile": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "customer_code_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -7128,6 +7270,84 @@ const docTemplate = `{
                 }
             }
         },
+        "spreadsheet.CellError": {
+            "type": "object",
+            "properties": {
+                "column": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "spreadsheet.Column": {
+            "type": "object",
+            "properties": {
+                "alignment": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            }
+        },
+        "spreadsheet.SpreadsheetDocument": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/spreadsheet.Column"
+                    }
+                },
+                "empty": {
+                    "type": "boolean"
+                },
+                "has_more": {
+                    "type": "boolean"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "sheet_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "total_rows": {
+                    "type": "integer"
+                }
+            }
+        },
         "statistics.AuditStatistics": {
             "type": "object",
             "properties": {
@@ -7349,9 +7569,6 @@ const docTemplate = `{
         "statistics.Summary": {
             "type": "object",
             "properties": {
-                "contacts": {
-                    "type": "integer"
-                },
                 "customers": {
                     "type": "integer"
                 },

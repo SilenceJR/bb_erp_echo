@@ -65,11 +65,17 @@ function connectionError(error: unknown, serverUrl = currentServerUrl): Error {
   return new Error(`无法连接 ${serverUrl}，请先点击“测试连接”确认服务器地址。${detail}`)
 }
 
+function isFileTransferPath(path: string): boolean {
+  return path.startsWith('/api/v1/files')
+    || path.startsWith('/api/v1/customers/import')
+    || path.startsWith('/api/v1/customers/export')
+}
+
 async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl): Promise<Response> {
   const controller = new AbortController()
   const requestTimeoutMs = path.startsWith('/api/v1/system/updates/server/download')
       ? serverUpdateDownloadTimeoutMs
-      : path.startsWith('/api/v1/files')
+      : isFileTransferPath(path)
         ? fileRequestTimeoutMs
         : defaultRequestTimeoutMs
   // 合并调用方取消信号与桌面端请求超时，避免上传下载请求过早中断。

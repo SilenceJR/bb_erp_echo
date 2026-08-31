@@ -1,10 +1,11 @@
-// Package customer 负责客户档案接口。
+// Package customer 提供全新的客户编码与客户资料接口。
 package customer
 
 import (
 	"errors"
 	"net/http"
-	"time"
+	"strconv"
+	"strings"
 
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
@@ -14,299 +15,302 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrorResponse 是统一错误响应的 Swagger 文档别名。
 type ErrorResponse = response.ErrorBody
-
-// CustomerPhoneResponse 是客户列表中联系人电话明细的文档响应结构。
-//
-// 参数说明：
-// - ID：电话明细 ID。
-// - ContactID：所属联系人 ID。
-// - Phone：电话号码。
-// - Label：号码标签。
-// - Primary：是否主联系电话。
-type CustomerPhoneResponse struct {
-	// ID 是电话明细 ID。
-	ID uint `json:"id" example:"1"`
-	// CreatedAt 是创建时间。
-	CreatedAt time.Time `json:"created_at"`
-	// UpdatedAt 是更新时间。
-	UpdatedAt time.Time `json:"updated_at"`
-	// ContactID 是所属联系人 ID。
-	ContactID uint `json:"contact_id" example:"1"`
-	// Phone 是电话号码。
-	Phone string `json:"phone" example:"13800000000"`
-	// Label 是号码标签。
-	Label string `json:"label" example:"手机"`
-	// Primary 表示是否主联系电话。
-	Primary bool `json:"primary" example:"true"`
+type CodeRequest struct {
+	Code string `json:"code"`
 }
 
-// CustomerContactResponse 是客户列表中联系人明细的文档响应结构。
-//
-// 参数说明：
-// - ID：联系人 ID。
-// - CustomerID：所属客户 ID。
-// - Name：联系人姓名。
-// - Phones：联系人电话明细。
-type CustomerContactResponse struct {
-	// ID 是联系人 ID。
-	ID uint `json:"id" example:"1"`
-	// CreatedAt 是创建时间。
-	CreatedAt time.Time `json:"created_at"`
-	// UpdatedAt 是更新时间。
-	UpdatedAt time.Time `json:"updated_at"`
-	// CustomerID 是所属客户 ID。
-	CustomerID uint `json:"customer_id" example:"1"`
-	// Name 是联系人姓名。
-	Name string `json:"name" example:"张三"`
-	// Phones 是联系人电话明细。
-	Phones []CustomerPhoneResponse `json:"phones"`
-}
-
-// CustomerResponse 是客户档案的文档响应结构。
-//
-// 参数说明：
-// - ID：客户 ID。
-// - Name：客户名称。
-// - Code：客户编码。
-// - Address：客户地址。
-// - Contacts：客户联系人列表。
-type CustomerResponse struct {
-	// ID 是客户 ID。
-	ID uint `json:"id" example:"1"`
-	// CreatedAt 是创建时间。
-	CreatedAt time.Time `json:"created_at"`
-	// UpdatedAt 是更新时间。
-	UpdatedAt time.Time `json:"updated_at"`
-	// Name 是客户名称。
-	Name string `json:"name" example:"测试客户"`
-	// Code 是客户编码。
-	Code string `json:"code" example:"CUST-001"`
-	// Phone 是旧版客户电话字段；新接口不再写入，电话请维护到联系人电话明细。
-	Phone string `json:"phone" example:""`
-	// Address 是客户地址。
-	Address string `json:"address" example:"深圳市宝安区"`
-	// Contacts 是客户联系人列表。
-	Contacts []CustomerContactResponse `json:"contacts"`
-}
-
-// CreateCustomerRequest 是创建客户档案的请求体。
-//
-// 参数说明：
-// - Name：客户名称，必填。
-// - Code：客户编码，必填且在数据库中唯一。
-// - Phone：客户座机或主要联系电话，可选。
-type CreateCustomerRequest struct {
-	// Name 是客户名称。
-	Name string `json:"name" validate:"required" example:"测试客户"`
-	// Code 是客户编码，用于内部检索和去重。
-	Code string `json:"code" validate:"required" example:"CUST-001"`
-	// Phone 是客户座机或主要联系电话。
-	Phone string `json:"phone" example:"0755-88888888"`
-}
-
-// UpdateCustomerRequest 是更新客户档案的请求体。
-//
-// 参数说明：
-// - Name：客户名称，必填。
-// - Code：客户编码，必填且在数据库中唯一。
-// - Phone：客户座机或主要联系电话，可选。
-// - Address：客户地址，可选。
-type UpdateCustomerRequest struct {
-	// Name 是客户名称。
-	Name string `json:"name" validate:"required" example:"测试客户-更新"`
-	// Code 是客户编码，用于内部检索和去重。
-	Code string `json:"code" validate:"required" example:"CUST-001"`
-	// Phone 是客户座机或主要联系电话。
-	Phone string `json:"phone" example:"0755-66666666"`
-	// Address 是客户地址。
-	Address string `json:"address" example:"深圳市宝安区"`
-}
-
-// Handler 处理客户与联系人模块接口。
 type Handler struct {
-	Service Service
+	Service *Service
+	DB      *gorm.DB
 }
 
-// NewHandler 创建客户模块接口处理器。
-//
-// 参数说明：
-// - db：GORM 数据库连接。
-func NewHandler(db *gorm.DB) *Handler {
-	return NewHandlerWithService(NewService(db))
-}
+func NewHandler(db *gorm.DB) *Handler { return &Handler{Service: NewService(db), DB: db} }
 
-// NewHandlerWithService 支持注入替代实现或测试替身。
-func NewHandlerWithService(service Service) *Handler {
-	return &Handler{Service: service}
-}
-
-// RegisterRoutes 注册客户业务模块路由。
-//
-// 参数说明：
-// - v1：/api/v1 受保护业务路由组。
-// - require：权限中间件工厂。
-// - audit：操作审计中间件，用于记录客户资料读写操作。
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
-	group := v1.Group("/customers", audit)
-	group.GET("", h.ListCustomers, require("/api/v1/customers", "read"))
-	group.POST("", h.CreateCustomer, require("/api/v1/customers", "write"))
-	group.PATCH("/:id", h.UpdateCustomer, require("/api/v1/customers", "write"))
-	group.DELETE("/:id", h.DeleteCustomer, require("/api/v1/customers", "write"))
+	codes := v1.Group("/customer-codes", audit)
+	codes.GET("", h.listCodes, require("/api/v1/customers", "read"))
+	codes.GET("/next", h.nextCode, require("/api/v1/customers", "read"))
+	codes.POST("", h.createCode, require("/api/v1/customers", "write"))
+	codes.PATCH("/:id", h.updateCode, require("/api/v1/customers", "write"))
+	codes.DELETE("/:id", h.deleteCode, require("/api/v1/customers", "write"))
+	customers := v1.Group("/customers", audit)
+	customers.GET("", h.listProfiles, require("/api/v1/customers", "read"))
+	customers.GET("/options", h.options, require("/api/v1/customers", "read"))
+	h.registerExcelRoutes(customers, require)
+	customers.POST("", h.createProfile, require("/api/v1/customers", "write"))
+	customers.GET("/:id", h.getProfile, require("/api/v1/customers", "read"))
+	customers.PATCH("/:id", h.updateProfile, require("/api/v1/customers", "write"))
+	customers.PUT("/:id/default", h.setDefault, require("/api/v1/customers", "write"))
+	customers.DELETE("/:id", h.deleteProfile, require("/api/v1/customers", "write"))
 }
 
-// ListCustomers 查询客户列表。
-//
-// 参数说明：
-// - c：Echo 请求上下文。
-//
-// 返回说明：
-// - 返回按 ID 倒序排列的客户档案列表。
-//
-// @Summary 查询客户列表
-// @Description 返回客户档案列表，并预加载联系人和联系人电话明细。
+// @Summary 客户编码分组列表
 // @Tags 客户
 // @Security BearerAuth
 // @Produce json
-// @Success 200 {array} CustomerResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v1/customers [get]
-func (h *Handler) ListCustomers(c *echo.Context) error {
-	result, err := h.Service.List(pagination.FromEcho(c))
+// @Param page query int false "页码"
+// @Param page_size query int false "每页条数"
+// @Param q query string false "编码或资料关键词"
+// @Param filter query string false "all、multiple 或 empty"
+// @Success 200 {object} CodePage
+// @Router /api/v1/customer-codes [get]
+func (h *Handler) listCodes(c *echo.Context) error {
+	result, err := h.Service.ListCodes(pagination.FromEcho(c), strings.TrimSpace(c.QueryParam("filter")))
 	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, result)
 }
 
-// CreateCustomer 创建客户档案。
-//
-// 请求参数：
-// - name：客户名称，必填。
-// - code：客户编码，必填且在数据库中唯一。
-// - phone：客户座机或主要联系电话，可选。
-//
-// 返回说明：
-// - 创建成功返回 201 和新客户记录。
-//
-// @Summary 创建客户
-// @Description 创建客户名称、编码和客户座机；客户联系人关系在创建联系人时通过 customer_id 建立。
+// @Summary 查询下一个客户编码建议值
 // @Tags 客户
 // @Security BearerAuth
-// @Accept json
 // @Produce json
-// @Param body body CreateCustomerRequest true "创建客户参数"
-// @Success 201 {object} CustomerResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v1/customers [post]
-func (h *Handler) CreateCustomer(c *echo.Context) error {
-	var req CreateCustomerRequest
-	if err := request.BindAndValidate(c, &req); err != nil {
-		return err
-	}
-
-	customer, err := h.Service.Create(req)
+// @Success 200 {object} map[string]string
+// @Router /api/v1/customer-codes/next [get]
+func (h *Handler) nextCode(c *echo.Context) error {
+	code, err := h.Service.NextCode()
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusCreated, customer)
+	return c.JSON(http.StatusOK, map[string]string{"code": code})
 }
 
-// UpdateCustomer 通过客户 ID 更新客户档案。
-//
-// 路径参数：
-// - id：客户 ID，必填且必须为正整数。
-//
-// 请求参数：
-// - name：客户名称，必填。
-// - code：客户编码，必填且在数据库中唯一。
-// - phone：客户座机或主要联系电话，可选。
-// - address：客户地址，可选。
-//
-// 返回说明：
-// - 更新成功返回 200 和更新后的客户记录。
-// - 客户不存在返回 404。
-//
-// @Summary 更新客户
-// @Description 通过客户 ID 更新客户档案；联系人和电话明细请使用联系人接口维护。
+// @Summary 创建客户编码
 // @Tags 客户
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "客户 ID"
-// @Param body body UpdateCustomerRequest true "更新客户参数"
-// @Success 200 {object} CustomerResponse
+// @Param body body CodeRequest false "编码留空时自动生成"
+// @Success 201 {object} CodeResponse
 // @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /api/v1/customer-codes [post]
+func (h *Handler) createCode(c *echo.Context) error {
+	var body CodeRequest
+	if c.Request().ContentLength != 0 {
+		if err := request.BindAndValidate(c, &body); err != nil {
+			return err
+		}
+	}
+	item, err := h.Service.CreateCode(body.Code)
+	if err != nil {
+		return customerHTTPError(err)
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+// @Summary 修改客户编码
+// @Tags 客户
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "客户编码 ID"
+// @Param body body CodeRequest true "客户编码"
+// @Success 200 {object} CodeResponse
 // @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v1/customers/{id} [patch]
-func (h *Handler) UpdateCustomer(c *echo.Context) error {
+// @Failure 409 {object} ErrorResponse
+// @Router /api/v1/customer-codes/{id} [patch]
+func (h *Handler) updateCode(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
-
-	var req UpdateCustomerRequest
-	if err := request.BindAndValidate(c, &req); err != nil {
+	var body CodeRequest
+	if err = request.BindAndValidate(c, &body); err != nil {
 		return err
 	}
-
-	customer, err := h.Service.Update(id, req)
+	item, err := h.Service.UpdateCode(id, body.Code)
 	if err != nil {
-		if errors.Is(err, ErrCustomerNotFound) {
-			return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
-		}
-		return err
+		return customerHTTPError(err)
 	}
-
-	return c.JSON(http.StatusOK, customer)
+	return c.JSON(http.StatusOK, item)
 }
 
-// DeleteCustomer 通过客户 ID 删除客户档案。
-//
-// 路径参数：
-// - id：客户 ID，必填且必须为正整数。
-//
-// 业务说明：
-// 当前模型使用 BaseModel 软删除。删除客户只代表客户档案被删除，
-// 不代表联系人被删除；联系人和电话明细保留，后续可单独转移、删除或做历史追溯。
-//
-// 返回说明：
-// - 删除成功返回 204。
-// - 客户不存在返回 404。
-//
-// @Summary 删除客户
-// @Description 软删除客户本体，不删除联系人；联系人和联系人电话明细保留用于转移或历史追溯。
+// @Summary 删除空客户编码
 // @Tags 客户
 // @Security BearerAuth
-// @Param id path int true "客户 ID"
+// @Param id path int true "客户编码 ID"
 // @Success 204
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/v1/customers/{id} [delete]
-func (h *Handler) DeleteCustomer(c *echo.Context) error {
+// @Failure 409 {object} ErrorResponse
+// @Router /api/v1/customer-codes/{id} [delete]
+func (h *Handler) deleteCode(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
 	}
+	if err = h.Service.DeleteCode(id); err != nil {
+		return customerHTTPError(err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
 
-	if err := h.Service.Delete(id); err != nil {
-		if errors.Is(err, ErrCustomerNotFound) {
-			return echo.NewHTTPError(http.StatusNotFound, "客户不存在")
+// @Summary 查询客户资料
+// @Tags 客户
+// @Security BearerAuth
+// @Produce json
+// @Param page query int false "页码"
+// @Param page_size query int false "每页条数"
+// @Param q query string false "客户关键词"
+// @Success 200 {object} ProfilePage
+// @Router /api/v1/customers [get]
+func (h *Handler) listProfiles(c *echo.Context) error {
+	result, err := h.Service.ListProfiles(pagination.FromEcho(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// @Summary 查询客户资料选择项
+// @Tags 客户
+// @Security BearerAuth
+// @Produce json
+// @Param q query string false "编码、简称或名称"
+// @Success 200 {array} OptionResponse
+// @Router /api/v1/customers/options [get]
+func (h *Handler) options(c *echo.Context) error {
+	items, err := h.Service.Options(strings.TrimSpace(c.QueryParam("q")))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+// @Summary 创建客户资料
+// @Tags 客户
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body ProfileInput true "客户资料"
+// @Success 201 {object} ProfileResponse
+// @Router /api/v1/customers [post]
+func (h *Handler) createProfile(c *echo.Context) error {
+	var body ProfileInput
+	if err := request.BindAndValidate(c, &body); err != nil {
+		return err
+	}
+	item, err := h.Service.CreateProfile(body)
+	if err != nil {
+		return customerHTTPError(err)
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+// @Summary 查询客户资料详情
+// @Tags 客户
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "客户资料 ID"
+// @Success 200 {object} ProfileResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /api/v1/customers/{id} [get]
+func (h *Handler) getProfile(c *echo.Context) error {
+	id, err := request.ParamID(c)
+	if err != nil {
+		return err
+	}
+	item, err := h.Service.GetProfile(id)
+	if err != nil {
+		return customerHTTPError(err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+// @Summary 修改客户资料
+// @Tags 客户
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "客户资料 ID"
+// @Param body body ProfileUpdate true "客户资料；不能更换所属编码"
+// @Success 200 {object} ProfileResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /api/v1/customers/{id} [patch]
+func (h *Handler) updateProfile(c *echo.Context) error {
+	id, err := request.ParamID(c)
+	if err != nil {
+		return err
+	}
+	var body ProfileUpdate
+	if err = request.BindAndValidate(c, &body); err != nil {
+		return err
+	}
+	item, err := h.Service.UpdateProfile(id, body)
+	if err != nil {
+		return customerHTTPError(err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+// @Summary 设为默认客户资料
+// @Tags 客户
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "客户资料 ID"
+// @Success 200 {object} ProfileResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /api/v1/customers/{id}/default [put]
+func (h *Handler) setDefault(c *echo.Context) error {
+	id, err := request.ParamID(c)
+	if err != nil {
+		return err
+	}
+	item, err := h.Service.SetDefault(id)
+	if err != nil {
+		return customerHTTPError(err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+// @Summary 物理删除客户资料
+// @Description 默认资料仍有同码其他资料时必须通过 replacement_id 指定替代默认资料；被业务引用时返回 409。
+// @Tags 客户
+// @Security BearerAuth
+// @Param id path int true "客户资料 ID"
+// @Param replacement_id query int false "同编码替代默认资料 ID"
+// @Success 204
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /api/v1/customers/{id} [delete]
+func (h *Handler) deleteProfile(c *echo.Context) error {
+	id, err := request.ParamID(c)
+	if err != nil {
+		return err
+	}
+	var replacement uint64
+	if raw := strings.TrimSpace(c.QueryParam("replacement_id")); raw != "" {
+		replacement, err = strconv.ParseUint(raw, 10, 64)
+		if err != nil || replacement == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "replacement_id 无效")
+		}
+	}
+	if err = h.Service.DeleteProfile(id, uint(replacement)); err != nil {
+		return customerHTTPError(err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func customerHTTPError(err error) error {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "客户编码或客户资料不存在")
+	case errors.Is(err, ErrCodeConflict):
+		return echo.NewHTTPError(http.StatusConflict, "客户编码已存在")
+	case errors.Is(err, ErrCodeHasProfiles):
+		return echo.NewHTTPError(http.StatusConflict, "客户编码仍有关联资料，不能删除")
+	case errors.Is(err, ErrProfileReferenced):
+		return echo.NewHTTPError(http.StatusConflict, "客户资料已被业务记录引用，不能删除")
+	case errors.Is(err, ErrReplacementNeeded):
+		return echo.NewHTTPError(http.StatusConflict, "删除默认资料前必须选择替代默认资料")
+	case errors.Is(err, ErrInvalidReplacement):
+		return echo.NewHTTPError(http.StatusBadRequest, "替代默认资料无效")
+	default:
+		if strings.Contains(err.Error(), "客户编码") {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		return err
 	}
-
-	return c.NoContent(http.StatusNoContent)
 }

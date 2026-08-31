@@ -88,33 +88,48 @@ Authorization: Bearer {{token}}
   "new_password": "newAdmin123456"
 }
 
-### 创建客户
+### 创建客户编码（自动规范为 BB-001）
+POST http://127.0.0.1:8080/api/v1/customer-codes
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "1"
+}
+
+> {% client.global.set("customer_code_id", response.body.id); %}
+
+### 创建客户资料（联系人属于该资料）
 POST http://127.0.0.1:8080/api/v1/customers
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
+  "customer_code_id": {{customer_code_id}},
+  "short_name": "测试简称",
   "name": "测试客户",
-  "code": "CUST-001",
-  "phone": "0755-88888888"
+  "phone": "0755-88888888",
+  "contact_name": "张三",
+  "contact_phone": "13800000000"
 }
 
 > {% client.global.set("customer_id", response.body.id); %}
 
-### 分页模糊查询客户
-GET http://127.0.0.1:8080/api/v1/customers?page=1&page_size=10&q=测试
+### 按编码分组查询客户
+GET http://127.0.0.1:8080/api/v1/customer-codes?page=1&page_size=10&q=测试&filter=all
 Authorization: Bearer {{token}}
 
-### 更新客户
+### 更新客户资料（不能更换所属编码）
 PATCH http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
   "name": "测试客户-更新",
-  "code": "CUST-001",
   "phone": "0755-66666666",
-  "address": "深圳市宝安区"
+  "address": "深圳市宝安区",
+  "contact_name": "张三",
+  "contact_phone": "13800000000"
 }
 
 ### 查看单仓库
@@ -592,57 +607,20 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8080/api/v1/statistics
 Authorization: Bearer {{token}}
 
-### 添加客户联系人
-POST http://127.0.0.1:8080/api/v1/contacts
-Content-Type: application/json
+### 客户导出预览（最终 XLSX 同一九列数据源）
+GET http://127.0.0.1:8080/api/v1/customers/export/preview?scope=current&filter=all&page=1&page_size=50
 Authorization: Bearer {{token}}
 
-{
-  "customer_id": {{customer_id}},
-  "name": "张三",
-  "phones": [
-    {
-      "phone": "13800000000",
-      "label": "手机",
-      "primary": true
-    },
-    {
-      "phone": "0755-88888888",
-      "label": "座机",
-      "primary": false
-    }
-  ]
-}
-
-> {% client.global.set("contact_id", response.body.id); %}
-
-### 查询联系人详情
-GET http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
+### 下载客户 XLSX
+GET http://127.0.0.1:8080/api/v1/customers/export?scope=current&filter=all
 Authorization: Bearer {{token}}
 
-### 更新客户联系人
-PATCH http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
-Content-Type: application/json
-Authorization: Bearer {{token}}
-
-{
-  "customer_id": {{customer_id}},
-  "name": "张三-更新",
-  "phones": [
-    {
-      "phone": "13600000000",
-      "label": "新手机",
-      "primary": true
-    }
-  ]
-}
-
-### 删除联系人
-DELETE http://127.0.0.1:8080/api/v1/contacts/{{contact_id}}
-Authorization: Bearer {{token}}
-
-### 删除客户
+### 删除客户资料；删除同码默认资料且仍有其他资料时传 replacement_id
 DELETE http://127.0.0.1:8080/api/v1/customers/{{customer_id}}
+Authorization: Bearer {{token}}
+
+### 删除空客户编码
+DELETE http://127.0.0.1:8080/api/v1/customer-codes/{{customer_code_id}}
 Authorization: Bearer {{token}}
 
 ### 查询服务端版本（兼容接口）

@@ -121,6 +121,8 @@ flowchart TB
 | 更新显示 | 只能展示后端提供的正式版状态 | 可以检查、下载并执行正式版桌面更新；RC 使用独立便携 EXE 测试包 |
 | 业务 API | 与 Client 使用同样的路径和字段 | 与 Web 使用同样的路径和字段 |
 
+长期决策采用“共用优先”：业务效果一致时只维护一套 Vue/Web；只有 Tauri/Rust 在安全、系统集成、可靠性或性能上有明确收益时，先说明差异、代价和 Web 降级方案并取得确认。现状审查与分阶段计划见 [WEB_CLIENT_ARCHITECTURE_REVIEW.md](WEB_CLIENT_ARCHITECTURE_REVIEW.md)。
+
 ## 5. 前端核心交互时序图
 
 ### 5.1 Web 登录、加载工作台和显示权限

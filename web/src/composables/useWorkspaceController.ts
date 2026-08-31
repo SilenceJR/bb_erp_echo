@@ -76,6 +76,7 @@ function createIdempotencyKey(): string {
  * after destructuring, while each API workflow still keeps its cancellation state local.
  */
 export function useWorkspaceController() {
+let activeModuleLeaveGuard: (() => Promise<boolean>) | null = null
 type FormField = {
   key: string
   label: string
@@ -326,12 +327,11 @@ const filteredEmptyDescription = computed(() => hasActiveFilters.value
     : activePageReadonly.value
       ? '当前账号仅可查看，暂无可显示的记录；如需新增，请联系具备编辑权限的人员。'
       : '当前暂无可显示的记录。')
-const isMasterDataValidationPage = computed(() => ['customers', 'suppliers'].includes(activeKey.value))
+const isMasterDataValidationPage = computed(() => activeKey.value === 'suppliers')
 const hasRenderableData = computed(() => activeKey.value === 'statistics'
   ? Boolean(statisticsData.value)
   : rows.value.length > 0)
 const listSearchPlaceholder = computed(() => {
-  if (activeKey.value === 'customers') return '搜索客户名称、编码、电话或地址'
   if (activeKey.value === 'suppliers') return '搜索供应商名称、编码、联系人或电话'
   return '输入名称、编号、电话等关键字'
 })
@@ -351,7 +351,6 @@ const genericIdentityColumns = computed(() => {
     roles: ['name', 'code'],
     permissions: ['name', 'code'],
     audits: ['operator_employee_name', 'action'],
-    contacts: ['name', 'phone'],
   }
   const configured = preferred[activeKey.value] || [columns.value[0] || 'id', columns.value[1] || '']
   const primary = columns.value.includes(configured[0]) ? configured[0] : (columns.value[0] || 'id')
@@ -426,9 +425,9 @@ const businessGroups = computed(() => [
   },
   {
     title: '客户与生产',
-    caption: '客户、联系人与生产资料',
+    caption: '客户资料与生产档案',
     icon: '◫',
-    items: businessItems.value.filter((item) => ['customers', 'contacts', 'suppliers', 'molds', 'workorder'].includes(item.key)),
+    items: businessItems.value.filter((item) => ['customers', 'suppliers', 'molds', 'workorder'].includes(item.key)),
   },
   {
     title: '数据与报表',
@@ -608,7 +607,7 @@ const statisticsCards = computed<MetricCardItem[]>(() => {
     {label: '低库存', value: String(lowStock), caption: '低于或等于安全库存', tone: lowStock ? 'danger' : 'success', statusLabel: lowStock ? '需处理' : '正常', statusTone: lowStock ? 'danger' : 'success'},
     {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${urgent} · 待确认 ${pendingClose}`, tone: urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
     {label: '模具关注', value: String(moldsNeedCare), caption: `模具总数 ${summary.molds || 0}`, tone: moldsNeedCare ? 'warning' : 'success'},
-    {label: '客户/联系人', value: `${summary.customers || 0}/${summary.contacts || 0}`, caption: '客户档案 / 联系人', tone: 'neutral'},
+    {label: '客户编码', value: String(summary.customers || 0), caption: '稳定关联编码总数', tone: 'neutral'},
     {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
   ]
 })
@@ -675,13 +674,6 @@ const formSchema = computed<FormField[]>(() => {
         {key: 'name', label: '角色名称', required: true},
         {key: 'code', label: '角色编码', required: true},
         {key: 'description', label: '说明'},
-      ]
-    case 'customers':
-      return [
-        {key: 'name', label: '客户名称'},
-        {key: 'code', label: '客户编码'},
-        {key: 'phone', label: '座机'},
-        {key: 'address', label: '地址'},
       ]
     case 'suppliers':
       return [
@@ -800,6 +792,7 @@ async function switchModule(key: string) {
   if (showCreateForm.value && createFormDirty()) {
     try { await appMessageBox.confirm('当前表单尚未保存，确认离开？', '放弃修改', {type: 'warning'}) } catch { return }
   }
+  if (activeModuleLeaveGuard && !(await activeModuleLeaveGuard())) return
   if (warehouseDrawerVisible.value) {
     const canClose = await requestWarehouseClose()
     if (!canClose) return
@@ -819,6 +812,10 @@ async function switchModule(key: string) {
   resetListQuery()
   clearForm()
   void loadActiveModule()
+}
+
+function registerModuleLeaveGuard(guard: (() => Promise<boolean>) | null) {
+  activeModuleLeaveGuard = guard
 }
 
 function selectMobileModule(key: string) {
@@ -1292,7 +1289,13 @@ async function loadActiveModule() {
   listError.value = ''
   skeletonResult.value = null
   try {
-    if (item.key === 'updates') {
+    if (item.key === 'customers') {
+      // CustomerPage owns its grouped query, filter and paging state. Keep the
+      // workspace controller from issuing the retired generic customer request.
+      rows.value = []
+      columns.value = []
+      pageTotal.value = 0
+    } else if (item.key === 'updates') {
       rows.value = []
       columns.value = []
       pageTotal.value = 0
@@ -1323,6 +1326,14 @@ async function loadList(key: string, applyToPanel: boolean) {
   // is the stock master list; keep this mapping here instead of changing module metadata.
   const item = modules.find((moduleItem) => moduleItem.key === key)
   let path = item?.path
+  if (key === 'customers' && !applyToPanel) {
+    const options = await request<BasicItem[]>('/api/v1/customers/options', {}, token.value)
+    cache[key] = options.map((option) => ({
+      ...option,
+      name: String(option.short_name || option.name || option.code || `#${option.id}`),
+    }))
+    return
+  }
   if (key === 'warehouse_records') {
     path = '/api/v1/warehouses'
   }
@@ -1538,7 +1549,6 @@ function inferColumns(data: BasicItem[], item: ModuleItem): string[] {
     departments: ['id', 'organization_id', 'name', 'code', 'status'],
     terminals: ['id', 'department_id', 'code', 'name', 'location', 'status'],
     roles: ['id', 'name', 'code', 'description'],
-    customers: ['id', 'name', 'code', 'phone', 'address'],
     suppliers: ['id', 'name', 'code', 'contact', 'phone', 'address', 'status'],
     warehouses: ['id', 'item_type', 'category', 'name', 'code', 'unit', 'spec', 'safety_stock', 'status'],
     materials: ['id', 'name', 'code', 'category', 'unit', 'spec', 'safety_stock', 'status'],
@@ -1621,7 +1631,7 @@ function permissionDomainKey(option: BasicItem): string {
   const aliases: Record<string, string> = {
     system: 'system', users: 'system', roles: 'system', permissions: 'system', audits: 'system', updates: 'system', departments: 'system', employees: 'system', terminals: 'system',
     warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'warehouse', products: 'warehouse',
-    workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers', contacts: 'customers',
+    workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers',
     supplier: 'suppliers', suppliers: 'suppliers', statistics: 'statistics', cost: 'cost',
   }
   for (const candidate of candidates) {
@@ -3131,6 +3141,7 @@ onBeforeUnmount(() => {
     canReadModule,
     canWriteModule,
     switchModule,
+    registerModuleLeaveGuard,
     selectMobileModule,
     restoreMobileMenuFocus,
     handleUserCommand,

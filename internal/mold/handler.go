@@ -97,6 +97,9 @@ func (h *Handler) CreateMold(c *echo.Context) error {
 	}
 	item, err := h.Service.Create(req)
 	if err != nil {
+		if errors.Is(err, ErrCustomerProfileNotFound) {
+			return echo.NewHTTPError(http.StatusBadRequest, "客户资料不存在")
+		}
 		return err
 	}
 	return c.JSON(http.StatusCreated, item)
@@ -116,6 +119,9 @@ func (h *Handler) UpdateMold(c *echo.Context) error {
 	if err != nil {
 		if errors.Is(err, ErrMoldNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "模具不存在")
+		}
+		if errors.Is(err, ErrCustomerProfileNotFound) {
+			return echo.NewHTTPError(http.StatusBadRequest, "客户资料不存在")
 		}
 		return err
 	}

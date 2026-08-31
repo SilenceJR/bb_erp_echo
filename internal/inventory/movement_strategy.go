@@ -128,7 +128,7 @@ func (context requestMovementValidationContext) RequireSupplier(id uint) error {
 }
 
 func (context requestMovementValidationContext) RequireCustomer(id uint) error {
-	return context.handler.requireRecordDB(context.db, &model.Customer{}, id, "客户不存在")
+	return context.handler.requireRecordDB(context.db, &model.CustomerProfile{}, id, "客户资料不存在")
 }
 
 func (context requestMovementValidationContext) RequireDepartment(id uint) error {

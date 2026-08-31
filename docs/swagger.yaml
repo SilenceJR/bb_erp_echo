@@ -127,233 +127,43 @@ definitions:
     required:
     - refresh_token
     type: object
-  contact.ContactPhoneRequest:
+  customer.CodePage:
     properties:
-      label:
-        description: Label 是号码标签，例如手机、座机、微信同号。
-        example: 手机
-        type: string
-      phone:
-        description: Phone 是电话号码。
-        example: "13800000000"
-        type: string
-      primary:
-        description: Primary 表示是否为主联系电话。
-        example: true
-        type: boolean
-    required:
-    - phone
-    type: object
-  contact.ContactPhoneResponse:
-    properties:
-      contact_id:
-        description: ContactID 是所属联系人 ID。
-        example: 1
-        type: integer
-      created_at:
-        description: CreatedAt 是创建时间。
-        type: string
-      id:
-        description: ID 是电话明细 ID。
-        example: 1
-        type: integer
-      label:
-        description: Label 是号码标签。
-        example: 手机
-        type: string
-      phone:
-        description: Phone 是电话号码。
-        example: "13800000000"
-        type: string
-      primary:
-        description: Primary 表示是否主联系电话。
-        example: true
-        type: boolean
-      updated_at:
-        description: UpdatedAt 是更新时间。
-        type: string
-    type: object
-  contact.ContactResponse:
-    properties:
-      created_at:
-        description: CreatedAt 是创建时间。
-        type: string
-      customer_id:
-        description: CustomerID 是所属客户 ID。
-        example: 1
-        type: integer
-      id:
-        description: ID 是联系人 ID。
-        example: 1
-        type: integer
-      name:
-        description: Name 是联系人姓名。
-        example: 张三
-        type: string
-      phones:
-        description: Phones 是联系人电话明细。
+      items:
         items:
-          $ref: '#/definitions/contact.ContactPhoneResponse'
+          $ref: '#/definitions/customer.CodeResponse'
         type: array
-      updated_at:
-        description: UpdatedAt 是更新时间。
+      keyword:
         type: string
-    type: object
-  contact.CreateContactRequest:
-    properties:
-      customer_id:
-        description: CustomerID 是联系人所属客户 ID。
-        example: 1
+      page:
         type: integer
-      name:
-        description: Name 是联系人姓名。
-        example: 张三
-        type: string
-      phones:
-        description: Phones 是联系人电话明细。
-        items:
-          $ref: '#/definitions/contact.ContactPhoneRequest'
-        type: array
-    required:
-    - customer_id
-    - name
+      page_size:
+        type: integer
+      total:
+        type: integer
     type: object
-  contact.ErrorResponse:
+  customer.CodeRequest:
     properties:
       code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  contact.UpdateContactRequest:
-    properties:
-      customer_id:
-        description: CustomerID 是联系人所属客户 ID。
-        example: 1
-        type: integer
-      name:
-        description: Name 是联系人姓名。
-        example: 张三-更新
-        type: string
-      phones:
-        description: Phones 是联系人电话明细；更新时整体替换旧电话。
-        items:
-          $ref: '#/definitions/contact.ContactPhoneRequest'
-        type: array
-    required:
-    - customer_id
-    - name
-    type: object
-  customer.CreateCustomerRequest:
+  customer.CodeResponse:
     properties:
       code:
-        description: Code 是客户编码，用于内部检索和去重。
-        example: CUST-001
         type: string
-      name:
-        description: Name 是客户名称。
-        example: 测试客户
-        type: string
-      phone:
-        description: Phone 是客户座机或主要联系电话。
-        example: 0755-88888888
-        type: string
-    required:
-    - code
-    - name
-    type: object
-  customer.CustomerContactResponse:
-    properties:
       created_at:
-        description: CreatedAt 是创建时间。
         type: string
-      customer_id:
-        description: CustomerID 是所属客户 ID。
-        example: 1
-        type: integer
+      default_profile:
+        $ref: '#/definitions/customer.ProfileResponse'
       id:
-        description: ID 是联系人 ID。
-        example: 1
         type: integer
-      name:
-        description: Name 是联系人姓名。
-        example: 张三
-        type: string
-      phones:
-        description: Phones 是联系人电话明细。
+      profile_count:
+        type: integer
+      profiles:
         items:
-          $ref: '#/definitions/customer.CustomerPhoneResponse'
+          $ref: '#/definitions/model.CustomerProfile'
         type: array
       updated_at:
-        description: UpdatedAt 是更新时间。
-        type: string
-    type: object
-  customer.CustomerPhoneResponse:
-    properties:
-      contact_id:
-        description: ContactID 是所属联系人 ID。
-        example: 1
-        type: integer
-      created_at:
-        description: CreatedAt 是创建时间。
-        type: string
-      id:
-        description: ID 是电话明细 ID。
-        example: 1
-        type: integer
-      label:
-        description: Label 是号码标签。
-        example: 手机
-        type: string
-      phone:
-        description: Phone 是电话号码。
-        example: "13800000000"
-        type: string
-      primary:
-        description: Primary 表示是否主联系电话。
-        example: true
-        type: boolean
-      updated_at:
-        description: UpdatedAt 是更新时间。
-        type: string
-    type: object
-  customer.CustomerResponse:
-    properties:
-      address:
-        description: Address 是客户地址。
-        example: 深圳市宝安区
-        type: string
-      code:
-        description: Code 是客户编码。
-        example: CUST-001
-        type: string
-      contacts:
-        description: Contacts 是客户联系人列表。
-        items:
-          $ref: '#/definitions/customer.CustomerContactResponse'
-        type: array
-      created_at:
-        description: CreatedAt 是创建时间。
-        type: string
-      id:
-        description: ID 是客户 ID。
-        example: 1
-        type: integer
-      name:
-        description: Name 是客户名称。
-        example: 测试客户
-        type: string
-      phone:
-        description: Phone 是旧版客户电话字段；新接口不再写入，电话请维护到联系人电话明细。
-        example: ""
-        type: string
-      updated_at:
-        description: UpdatedAt 是更新时间。
         type: string
     type: object
   customer.ErrorResponse:
@@ -368,27 +178,133 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  customer.UpdateCustomerRequest:
+  customer.ImportPreview:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/spreadsheet.CellError'
+        type: array
+      expires_at:
+        type: string
+      summary:
+        $ref: '#/definitions/customer.ImportSummary'
+      token:
+        type: string
+    type: object
+  customer.ImportResult:
+    properties:
+      completed_at:
+        type: string
+      imported_codes:
+        type: integer
+      imported_profiles:
+        type: integer
+    type: object
+  customer.ImportSummary:
+    properties:
+      multiple_code_groups:
+        type: integer
+      new_codes:
+        type: integer
+      new_profiles:
+        type: integer
+      total_rows:
+        type: integer
+    type: object
+  customer.OptionResponse:
+    properties:
+      code:
+        type: string
+      id:
+        type: integer
+      is_default:
+        type: boolean
+      name:
+        type: string
+      short_name:
+        type: string
+    type: object
+  customer.ProfileInput:
     properties:
       address:
-        description: Address 是客户地址。
-        example: 深圳市宝安区
         type: string
-      code:
-        description: Code 是客户编码，用于内部检索和去重。
-        example: CUST-001
+      contact_name:
         type: string
+      contact_phone:
+        type: string
+      customer_code_id:
+        type: integer
       name:
-        description: Name 是客户名称。
-        example: 测试客户-更新
         type: string
       phone:
-        description: Phone 是客户座机或主要联系电话。
-        example: 0755-66666666
+        type: string
+      salesperson:
+        type: string
+      short_name:
         type: string
     required:
-    - code
-    - name
+    - customer_code_id
+    type: object
+  customer.ProfilePage:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/customer.ProfileResponse'
+        type: array
+      keyword:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  customer.ProfileResponse:
+    properties:
+      address:
+        type: string
+      code:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      customer_code_id:
+        type: integer
+      id:
+        type: integer
+      is_default:
+        type: boolean
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  customer.ProfileUpdate:
+    properties:
+      address:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
     type: object
   employee.DepartmentSummary:
     properties:
@@ -675,6 +591,33 @@ definitions:
     - code
     - name
     - operator_employee_id
+    type: object
+  model.CustomerProfile:
+    properties:
+      address:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      customer_code_id:
+        type: integer
+      id:
+        type: integer
+      is_default:
+        type: boolean
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
+      updated_at:
+        type: string
     type: object
   model.Department:
     properties:
@@ -1088,6 +1031,57 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
+  spreadsheet.CellError:
+    properties:
+      column:
+        type: string
+      reason:
+        type: string
+      row:
+        type: integer
+      value:
+        type: string
+    type: object
+  spreadsheet.Column:
+    properties:
+      alignment:
+        type: string
+      key:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      width:
+        type: number
+    type: object
+  spreadsheet.SpreadsheetDocument:
+    properties:
+      columns:
+        items:
+          $ref: '#/definitions/spreadsheet.Column'
+        type: array
+      empty:
+        type: boolean
+      has_more:
+        type: boolean
+      page:
+        type: integer
+      page_size:
+        type: integer
+      rows:
+        items:
+          items:
+            type: string
+          type: array
+        type: array
+      sheet_name:
+        type: string
+      title:
+        type: string
+      total_rows:
+        type: integer
+    type: object
   statistics.AuditStatistics:
     properties:
       by_result:
@@ -1233,8 +1227,6 @@ definitions:
     type: object
   statistics.Summary:
     properties:
-      contacts:
-        type: integer
       customers:
         type: integer
       inventory_amount:
@@ -1964,83 +1956,70 @@ paths:
       summary: 刷新登录会话
       tags:
       - 登录认证
-  /api/v1/contacts:
+  /api/v1/customer-codes:
     get:
-      description: 返回联系人列表，并预加载联系人电话明细。
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 编码或资料关键词
+        in: query
+        name: q
+        type: string
+      - description: all、multiple 或 empty
+        in: query
+        name: filter
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/contact.ContactResponse'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
+            $ref: '#/definitions/customer.CodePage'
       security:
       - BearerAuth: []
-      summary: 查询联系人列表
+      summary: 客户编码分组列表
       tags:
-      - 联系人
+      - 客户
     post:
       consumes:
       - application/json
-      description: 创建联系人时必须携带 customer_id，由联系人接口建立客户与联系人的关联关系。
       parameters:
-      - description: 创建联系人参数
+      - description: 编码留空时自动生成
         in: body
         name: body
-        required: true
         schema:
-          $ref: '#/definitions/contact.CreateContactRequest'
+          $ref: '#/definitions/customer.CodeRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/contact.ContactResponse'
+            $ref: '#/definitions/customer.CodeResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "401":
-          description: Unauthorized
+            $ref: '#/definitions/customer.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
+            $ref: '#/definitions/customer.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 创建联系人
+      summary: 创建客户编码
       tags:
-      - 联系人
-  /api/v1/contacts/{id}:
+      - 客户
+  /api/v1/customer-codes/{id}:
     delete:
-      description: 软删除联系人，并同步软删除其电话明细。
       parameters:
-      - description: 联系人 ID
+      - description: 客户编码 ID
         in: path
         name: id
         required: true
@@ -2048,270 +2027,384 @@ paths:
       responses:
         "204":
           description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "500":
-          description: Internal Server Error
+            $ref: '#/definitions/customer.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
+            $ref: '#/definitions/customer.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 删除联系人
+      summary: 删除空客户编码
       tags:
-      - 联系人
-    get:
-      description: 通过联系人 ID 查询联系人详情，并预加载电话明细。
-      parameters:
-      - description: 联系人 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/contact.ContactResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询联系人详情
-      tags:
-      - 联系人
+      - 客户
     patch:
       consumes:
       - application/json
-      description: 更新联系人基础信息，并按请求内容整体替换联系人电话明细。
       parameters:
-      - description: 联系人 ID
+      - description: 客户编码 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: 更新联系人参数
+      - description: 客户编码
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/contact.UpdateContactRequest'
+          $ref: '#/definitions/customer.CodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/contact.ContactResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/contact.ErrorResponse'
+            $ref: '#/definitions/customer.CodeResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
-        "500":
-          description: Internal Server Error
+            $ref: '#/definitions/customer.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
-            $ref: '#/definitions/contact.ErrorResponse'
+            $ref: '#/definitions/customer.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 更新联系人
+      summary: 修改客户编码
       tags:
-      - 联系人
-  /api/v1/customers:
+      - 客户
+  /api/v1/customer-codes/next:
     get:
-      description: 返回客户档案列表，并预加载联系人和联系人电话明细。
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/customer.CustomerResponse'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
-      summary: 查询客户列表
+      summary: 查询下一个客户编码建议值
+      tags:
+      - 客户
+  /api/v1/customers:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 客户关键词
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/customer.ProfilePage'
+      security:
+      - BearerAuth: []
+      summary: 查询客户资料
       tags:
       - 客户
     post:
       consumes:
       - application/json
-      description: 创建客户名称、编码和客户座机；客户联系人关系在创建联系人时通过 customer_id 建立。
       parameters:
-      - description: 创建客户参数
+      - description: 客户资料
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/customer.CreateCustomerRequest'
+          $ref: '#/definitions/customer.ProfileInput'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/customer.CustomerResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/customer.ProfileResponse'
       security:
       - BearerAuth: []
-      summary: 创建客户
+      summary: 创建客户资料
       tags:
       - 客户
   /api/v1/customers/{id}:
     delete:
-      description: 软删除客户本体，不删除联系人；联系人和联系人电话明细保留用于转移或历史追溯。
+      description: 默认资料仍有同码其他资料时必须通过 replacement_id 指定替代默认资料；被业务引用时返回 409。
       parameters:
-      - description: 客户 ID
+      - description: 客户资料 ID
         in: path
         name: id
         required: true
+        type: integer
+      - description: 同编码替代默认资料 ID
+        in: query
+        name: replacement_id
         type: integer
       responses:
         "204":
           description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
         "404":
           description: Not Found
           schema:
             $ref: '#/definitions/customer.ErrorResponse'
-        "500":
-          description: Internal Server Error
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/customer.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 删除客户
+      summary: 物理删除客户资料
       tags:
       - 客户
-    patch:
-      consumes:
-      - application/json
-      description: 通过客户 ID 更新客户档案；联系人和电话明细请使用联系人接口维护。
+    get:
       parameters:
-      - description: 客户 ID
+      - description: 客户资料 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: 更新客户参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/customer.UpdateCustomerRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.CustomerResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/customer.ProfileResponse'
         "404":
           description: Not Found
           schema:
             $ref: '#/definitions/customer.ErrorResponse'
-        "500":
-          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 查询客户资料详情
+      tags:
+      - 客户
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 客户资料 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 客户资料；不能更换所属编码
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/customer.ProfileUpdate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/customer.ProfileResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/customer.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: 更新客户
+      summary: 修改客户资料
+      tags:
+      - 客户
+  /api/v1/customers/{id}/default:
+    put:
+      parameters:
+      - description: 客户资料 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/customer.ProfileResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/customer.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 设为默认客户资料
+      tags:
+      - 客户
+  /api/v1/customers/export:
+    get:
+      parameters:
+      - description: current 或 all
+        in: query
+        name: scope
+        required: true
+        type: string
+      - description: 关键词
+        in: query
+        name: q
+        type: string
+      - description: all、multiple 或 empty
+        in: query
+        name: filter
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/customer.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 导出客户资料 XLSX
+      tags:
+      - 客户
+  /api/v1/customers/export/preview:
+    get:
+      parameters:
+      - description: current 或 all
+        in: query
+        name: scope
+        required: true
+        type: string
+      - description: 关键词
+        in: query
+        name: q
+        type: string
+      - description: all、multiple 或 empty
+        in: query
+        name: filter
+        type: string
+      - description: 预览页码
+        in: query
+        name: page
+        type: integer
+      - description: 50 或 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/spreadsheet.SpreadsheetDocument'
+      security:
+      - BearerAuth: []
+      summary: 预览客户资料 XLSX 导出
+      tags:
+      - 客户
+  /api/v1/customers/import-template:
+    get:
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      security:
+      - BearerAuth: []
+      summary: 下载客户资料导入模板
+      tags:
+      - 客户
+  /api/v1/customers/import/commit:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: 与预览相同的文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 30 分钟一次性预览令牌
+        in: formData
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/customer.ImportResult'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/customer.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 确认客户 Excel 导入
+      tags:
+      - 客户
+  /api/v1/customers/import/preview:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: 客户资料 .xls 或 .xlsx
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/customer.ImportPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/customer.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 校验客户 Excel 导入
+      tags:
+      - 客户
+  /api/v1/customers/options:
+    get:
+      parameters:
+      - description: 编码、简称或名称
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/customer.OptionResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: 查询客户资料选择项
       tags:
       - 客户
   /api/v1/files:

@@ -235,6 +235,15 @@ func (h *Handler) Create(c *echo.Context) error {
 		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
 			return err
 		}
+		if item.CustomerID != nil {
+			var customer model.CustomerProfile
+			if err := tx.First(&customer, *item.CustomerID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return echo.NewHTTPError(http.StatusBadRequest, "客户资料不存在")
+				}
+				return err
+			}
+		}
 		if err := h.validateTargetDepartmentsDB(tx, c, req.TargetDepartmentIDs); err != nil {
 			return err
 		}

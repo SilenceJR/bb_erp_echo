@@ -39,7 +39,6 @@ type DashboardResponse struct {
 type Summary struct {
 	Customers          int64 `json:"customers"`
 	Suppliers          int64 `json:"suppliers"`
-	Contacts           int64 `json:"contacts"`
 	WarehouseItems     int64 `json:"warehouse_items"`
 	InventoryQuantity  int64 `json:"inventory_quantity"`
 	InventoryAmount    int64 `json:"inventory_amount,omitempty"`
@@ -193,9 +192,8 @@ func (h *Handler) fillSummary(result *DashboardResponse) error {
 		model any
 		out   *int64
 	}{
-		{&model.Customer{}, &result.Summary.Customers},
+		{&model.CustomerCode{}, &result.Summary.Customers},
 		{&model.Supplier{}, &result.Summary.Suppliers},
-		{&model.Contact{}, &result.Summary.Contacts},
 		{&model.Mold{}, &result.Summary.Molds},
 	}
 	for _, item := range counts {
@@ -320,8 +318,7 @@ func (h *Handler) fillBusiness(result *DashboardResponse) error {
 		name  string
 		model any
 	}{
-		{"客户", &model.Customer{}},
-		{"联系人", &model.Contact{}},
+		{"客户", &model.CustomerCode{}},
 		{"供应商", &model.Supplier{}},
 		{"产品", &model.Product{}},
 		{"物料", &model.Material{}},

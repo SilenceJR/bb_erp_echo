@@ -523,7 +523,7 @@
           >
             <div class="master-data-desktop">
               <el-table :data="rows" row-key="id" stripe class="data-table master-data-table">
-                <el-table-column :label="activeKey === 'customers' ? '客户' : '供应商'" min-width="190">
+                <el-table-column label="供应商" min-width="190">
                   <template #default="{row}">
                     <span class="item-name">{{ row.name }}</span>
                     <small class="item-code">{{ row.code || '未设置编码' }}</small>

@@ -175,6 +175,79 @@ export interface PaginatedResponse<T> {
   keyword?: string
 }
 
+export interface CustomerProfile {
+  id: number
+  created_at: string
+  updated_at: string
+  customer_code_id: number
+  code?: string
+  short_name: string
+  name: string
+  address: string
+  phone: string
+  contact_name: string
+  contact_phone: string
+  salesperson: string
+  is_default: boolean
+}
+
+export interface CustomerCodeItem {
+  id: number
+  created_at: string
+  updated_at: string
+  code: string
+  profiles: CustomerProfile[]
+  profile_count: number
+  default_profile?: CustomerProfile
+}
+
+export interface CustomerOption {
+  id: number
+  code: string
+  short_name: string
+  name: string
+  is_default: boolean
+}
+
+export interface SpreadsheetColumn {
+  key: string
+  title: string
+  width: number
+  type: 'text' | 'number' | 'date' | 'bool'
+  alignment?: 'left' | 'center' | 'right' | string
+}
+
+export interface SpreadsheetDocument {
+  sheet_name: string
+  title?: string
+  columns: SpreadsheetColumn[]
+  rows: string[][]
+  total_rows: number
+  page?: number
+  page_size?: number
+  empty: boolean
+  has_more: boolean
+}
+
+export interface SpreadsheetCellError {
+  row: number
+  column: string
+  value?: string
+  reason: string
+}
+
+export interface CustomerImportPreview {
+  token?: string
+  expires_at?: string
+  summary: {
+    total_rows: number
+    new_codes: number
+    new_profiles: number
+    multiple_code_groups: number
+  }
+  errors: SpreadsheetCellError[]
+}
+
 // 图片元数据，对应文件服务返回结构；content_url 只作为元数据保留，不直接用于渲染。
 export interface ImageFile {
   id: number

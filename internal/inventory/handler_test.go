@@ -435,13 +435,17 @@ func TestItemMovementBusinessPartiesAndReturn(t *testing.T) {
 	db := openInventoryTestDB(t)
 	handler := NewHandler(db)
 	supplier := model.Supplier{Name: "供应商", Code: "SUP-002", Status: model.StatusActive}
-	customer := model.Customer{Name: "客户", Code: "CUST-MOVE"}
+	customerCode := model.CustomerCode{Code: "BB-901"}
 	department := model.Department{Name: "生产部", Code: "PROD", OrganizationID: 1, Status: model.StatusActive}
 	product := model.Product{Name: "成品", Code: "PROD-MOVE", Unit: "个", Status: model.StatusActive}
-	for _, value := range []any{&supplier, &customer, &department, &product} {
+	for _, value := range []any{&supplier, &customerCode, &department, &product} {
 		if err := db.Create(value).Error; err != nil {
 			t.Fatal(err)
 		}
+	}
+	customer := model.CustomerProfile{CustomerCodeID: customerCode.ID, Name: "客户", IsDefault: true}
+	if err := db.Create(&customer).Error; err != nil {
+		t.Fatal(err)
 	}
 	allPermissions := []string{"suppliers:read", "customers:read", "system:departments:read"}
 	cases := []map[string]any{
@@ -476,7 +480,7 @@ func openInventoryTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Warehouse{}, &model.Location{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.Customer{}, &model.Department{}, &model.Employee{}, &model.EmployeeDepartment{}, &model.User{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
+	if err := db.AutoMigrate(&model.Warehouse{}, &model.Location{}, &model.Material{}, &model.Product{}, &model.Supplier{}, &model.CustomerCode{}, &model.CustomerProfile{}, &model.Department{}, &model.Employee{}, &model.EmployeeDepartment{}, &model.User{}, &model.InventoryDocument{}, &model.InventoryDocumentLine{}, &model.InventoryBalance{}, &model.InventoryLedger{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	department := model.Department{Name: "测试部门", Code: "TEST-DEPT", OrganizationID: 1, Status: model.StatusActive}

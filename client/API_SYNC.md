@@ -4,6 +4,8 @@
 
 ## 同步规则
 
+- 长期决策原则：Web 与 Tauri 的业务效果一致时，直接在 `web/` 共用 Vue 源码实现，不建立桌面端分支。只有原生能力对安全、系统集成、可靠性或性能有明显收益时，先向维护者说明收益、代价、Web 降级方案和后续维护责任，征得确认后再扩展 Rust/Tauri。具体审查见 `docs/WEB_CLIENT_ARCHITECTURE_REVIEW.md`。
+
 - Web 生产环境使用相对 API 路径，推荐由 Go 同时托管 Web 静态文件，浏览器始终访问同源服务。
 - 桌面端通过 `@tauri-apps/plugin-http` 从 Rust 层发送 HTTP 请求，不依赖 macOS/Windows WebView 的跨域行为。
 - 共用请求层通过 `HttpTransport` 接口选择浏览器或桌面传输，业务 API 不感知运行平台。
@@ -25,6 +27,8 @@
 - 产品选择和任务详情的库存采用“选择即查/打开即查 + 手动刷新”，不轮询；Web 与 Tauri 共用取消请求和请求序号保护，快速切换时旧响应不得覆盖当前产品。
 - 操作日志、任务流转和库存历史以“员工｜动作”为主要信息，同时保留登录账号与终端责任信息；所选员工是登录账号对现场责任人的申报，不等同于员工本人完成二次认证。旧记录没有员工快照时显示“历史记录未记录员工”。
 - 桌面端只负责 Rust/Tauri 壳、窗口配置、平台打包配置，不维护另一套业务 API。
+- 客户模块完全复用 `CustomerPage.vue`、`CustomerProfileDrawer.vue`、`CustomerImportDialog.vue` 和 `CustomerExportDialog.vue`。导入使用共用 `FormData` 请求，导出先读取 `/api/v1/customers/export/preview` 再通过共用 Blob 下载 `/api/v1/customers/export`；Tauri 传输层对这些文件请求使用 60 秒超时。当前无必要增加桌面专用文件选择；原生保存位置能力仅在真实 WebView 下载验证证明有明显收益并经维护者确认后实施。
+- 其他业务模块选择客户时调用 `GET /api/v1/customers/options`，选项 ID 是具体客户资料 ID，标签由客户编码与简称/名称组成，默认资料优先显示但不限制选择其他资料。
 - 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本；Rust 更新引擎计算当前 EXE SHA 并向 Go 请求更新计划。Vue 只触发检查/安装并展示状态，不接触本机路径、任意下载 URL或签名决策；Web 端不显示桌面自动安装按钮。
 
 ## 更新请求

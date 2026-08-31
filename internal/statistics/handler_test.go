@@ -57,7 +57,7 @@ func openStatisticsTestDB(t *testing.T) *gorm.DB {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(
-		&model.Customer{}, &model.Supplier{}, &model.Contact{},
+		&model.CustomerCode{}, &model.CustomerProfile{}, &model.Supplier{},
 		&model.Department{}, &model.Product{}, &model.Material{},
 		&model.InventoryBalance{}, &model.InventoryLedger{},
 		&model.WorkOrder{}, &model.DepartmentTask{},
@@ -73,14 +73,14 @@ func seedStatisticsData(t *testing.T, db *gorm.DB) {
 	department := model.Department{Name: "注塑部", Code: "INJECTION", OrganizationID: 1, Status: model.StatusActive}
 	product := model.Product{Name: "白壳", Code: "P-001", Unit: "个", SafetyStock: 100000, Status: model.StatusActive}
 	material := model.Material{Name: "ABS", Code: "M-001", Category: "生产物资", Unit: "kg", SafetyStock: 200000, Status: model.StatusActive}
-	customer := model.Customer{Name: "客户", Code: "C-001"}
+	customerCode := model.CustomerCode{Code: "BB-001"}
 	supplier := model.Supplier{Name: "供应商", Code: "S-001", Status: model.StatusActive}
-	for _, item := range []any{&department, &product, &material, &customer, &supplier} {
+	for _, item := range []any{&department, &product, &material, &customerCode, &supplier} {
 		if err := db.Create(item).Error; err != nil {
 			t.Fatalf("seed item: %v", err)
 		}
 	}
-	if err := db.Create(&model.Contact{CustomerID: customer.ID, Name: "联系人"}).Error; err != nil {
+	if err := db.Create(&model.CustomerProfile{CustomerCodeID: customerCode.ID, Name: "客户", ContactName: "联系人", IsDefault: true}).Error; err != nil {
 		t.Fatal(err)
 	}
 	next := time.Now().AddDate(0, 0, 3)

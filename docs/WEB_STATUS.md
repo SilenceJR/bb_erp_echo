@@ -1,13 +1,13 @@
 # Web 与 Tauri Client 端进度与维护规范
 
-> 基准日期：2026-08-29
+> 基准日期：2026-09-01
 > 适用范围：`web/` Vue Web 应用、`client/` Tauri 桌面壳及两者共用的前端源码
 >
 > 当前整体仍处于测试阶段，未确认正式业务数据；交互和 API 以目标流程为准，不为未投入使用的旧页面或旧字段保留双轨实现。桌面更新与已生成发布包之间的兼容契约仍单独维护。
 
 ## 1. 状态结论
 
-Web 模块化代码改造、员工与部门专用页面、业务操作人选择、统一弹窗样式以及 Tauri Client 对共用源码的构建接入已经完成。构建与运行态结论以第 5 节为准。
+Web 模块化代码改造、员工与部门专用页面、客户模块全量重建、业务操作人选择、统一弹窗样式以及 Tauri Client 对共用源码的构建接入已经完成。客户模块在 Web 与 Tauri 中效果一致，因此使用同一套 Vue 页面、业务状态和 API 请求，未增加平台分支。构建与运行态结论以第 5 节为准。
 
 完整浏览器运行态验收尚未完成，尤其是需要真实 Go API、登录账号和业务数据的流程。业务专属 CSS 仍有一部分保留在 `web/src/styles.css`，用于维持跨页面、跨子组件和响应式样式的一致性；后续可以继续按组件拆分，但不应直接删除全局规则。
 
@@ -23,6 +23,7 @@ Web 模块化代码改造、员工与部门专用页面、业务操作人选择�
 | 应用壳层与导航 | 已完成 | 顶栏、侧边栏、移动端抽屉导航独立于 `AppWorkspace.vue`，继续使用 `activeKey`。 |
 | 首页仪表盘 | 已完成 | 首页指标、快捷入口、业务分组和更新提示拆至 `DashboardPage.vue`。 |
 | 通用资料模块 | 已完成 | 列表、分页、搜索、筛选、新增、编辑和空状态由 `ModulePage.vue` 编排。 |
+| 客户模块 | 已完成 | 客户资料不再走通用资料页；`CustomerPage.vue` 按每批 200 个编码取得不超过约 1000 条的完整快照，搜索、筛选和分页在内存完成，刷新成功后原子替换旧列表。列表只保留高频识别字段与详情入口，低频的同码新增、默认切换和删除留在 Drawer；Excel 导入与后端分页导出预览已接入。旧联系人独立入口已移除。 |
 | 部门与员工 | 已完成 | 系统设置按部门、员工档案、用户账号、终端排列；支持员工桌面表格/移动卡片、筛选、Drawer 编辑与启停，以及部门编辑、启停和多人原子配置。 |
 | 统计报表 | 已完成 | 统计数据加载和展示已纳入模块页与工作台控制器。 |
 | 库存模块 | 已完成 | 库存详情、流水、出入库、快速新增供应商、直接输入最多 4 位小数的入库校准数量和关闭未提交表单确认已拆至库存抽屉及 `useWarehouse` 状态组合式函数。 |
@@ -32,6 +33,7 @@ Web 模块化代码改造、员工与部门专用页面、业务操作人选择�
 | 角色与账号权限 | 已完成 | 权限配置、角色分配、选项缓存、权限禁用规则由 `useAssignment` 管理。 |
 | 图片管理 | 已完成 | `ImageGallery.vue` 支持一次选择多张图片并通过共用请求层批量提交；删除确认继续使用统一弹窗封装。 |
 | Web/Tauri 复用 | 已完成 | `client/src/main.ts` 继续直接复用 `web/src/main.ts`、同一套业务组件和认证续期逻辑。 |
+| Web/Tauri 能力决策 | 已记录 | 效果一致时优先共用 Vue/Web；只有安全、系统集成、可靠性或性能存在明显原生收益时，先向维护者说明收益、代价和 Web 降级方案并征得确认。整体审查见 `docs/WEB_CLIENT_ARCHITECTURE_REVIEW.md`。 |
 | Client HTTP 传输 | 已完成 | Tauri 通过 `desktop-http.ts` 注入 Rust HTTP 传输；回环/私网 ERP 服务强制直连，公网 HTTPS 保留系统代理，业务请求继续使用共用的 `HttpTransport` 抽象。 |
 | Client 服务器地址 | 已完成 | 首次默认地址、登录页设置、顶栏设置和保存后的地址优先级遵循 `client/API_SYNC.md`。 |
 | Client 更新入口 | 已完成 | Vue 仅展示更新状态并触发桌面更新流程；版本、EXE 哈希、签名和本机路径由 Tauri/Rust 负责。 |
@@ -57,6 +59,10 @@ web/src/components/app/
 web/src/components/pages/
   DashboardPage.vue     首页仪表盘
   ModulePage.vue        通用资料、库存列表、统计和系统页面
+  CustomerPage.vue      客户编码分组列表、编码管理和 Excel 入口
+  CustomerProfileDrawer.vue  客户资料查看、新增、编辑、默认与删除
+  CustomerImportDialog.vue   Excel 模板、文件校验、预览与原子提交
+  CustomerExportDialog.vue   导出范围、工作表预览、分页与 XLSX 下载
   DepartmentPage.vue    部门编辑、启停和成员管理
   EmployeePage.vue      员工筛选、桌面表格和移动卡片
   WorkorderActionDialog.vue  任务动作统一确认表单
@@ -100,6 +106,8 @@ client/
 ### 4.2 API、权限和字段
 
 - 部门与员工页面遵循 `system:departments:*`、`system:employees:*` 权限；部门成员配置同时需要部门写权限和员工读权限。
+- 客户页使用 `customers:read`、`customers:write`、`customers:import`；只读账号仍可使用导出预览与下载，无导入权限时不显示导入入口。
+- 任务单、仓库和模具的客户候选统一读取 `GET /api/v1/customers/options`，选中值是具体客户资料 ID，不再使用旧客户分页列表推断选项。
 - `warehouse_records` 是库存单据视图，`warehouses` 是库存主数据列表；两者的路径映射集中维护在工作台控制器中。
 - 前端权限判断只负责隐藏不可用导航和操作，后端仍是最终授权边界。
 - `cost:view` 缺失时不得主动展示平均成本、单价、金额和余额金额等成本字段。
@@ -144,8 +152,19 @@ client/
 - 版本读取、EXE 哈希、签名校验、更新计划、本机文件路径和安装替换属于 Rust/Tauri 层，Vue 只负责触发和展示状态。
 - 修改共用 Web 源码后必须同时执行 Web 和 Client 构建；修改 Rust、窗口、CSP 或更新器配置后还需要补充对应平台检查。
 - Client 专属能力、窗口配置和打包规则写入 `client/`，不要混入 Web 组件或共用 API 层。
+- 业务效果一致时不允许因“桌面端优先”而复制一套组件；出现原生候选能力时，按 `docs/WEB_CLIENT_ARCHITECTURE_REVIEW.md` 的决策门槛先说明并询问。
 
 ## 5. 验证记录
+
+2026-09-01 客户模块重建已执行并通过：
+
+```bash
+cd web && npm run build
+cd client && npm run build
+cd client/src-tauri && cargo check --locked
+```
+
+Web 与 Tauri 共用客户页面的 Vue 类型检查和生产构建通过，Rust 桌面壳静态检查通过。Vite 仍有单块大于 500 kB 的既有警告。尚未以真实登录账号完成权限矩阵、.xls/.xlsx 上传、默认切换、预览分页、文件下载和 320–1280px 视觉/焦点验收，不以静态构建代替这些运行态结论。
 
 已执行并通过：
 

@@ -15,7 +15,6 @@ import (
 	"bb_erp_echo/internal/audit"
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/config"
-	"bb_erp_echo/internal/contact"
 	"bb_erp_echo/internal/customer"
 	"bb_erp_echo/internal/database"
 	"bb_erp_echo/internal/department"
@@ -258,7 +257,6 @@ func (a *App) registerRoutes() error {
 
 	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	supplier.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	contact.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	warehouse.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	inventory.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	material.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)

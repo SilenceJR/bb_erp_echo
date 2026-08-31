@@ -7,6 +7,7 @@
           <DashboardPage v-if="activeKey === 'dashboard'" />
           <DepartmentPage v-else-if="activeKey === 'departments'" />
           <EmployeePage v-else-if="activeKey === 'employees'" />
+          <CustomerPage v-else-if="activeKey === 'customers'" />
           <ModulePage v-else />
         </template>
         <template #overlays>
@@ -25,6 +26,7 @@ import LoginScreen from './components/app/LoginScreen.vue'
 import DashboardPage from './components/pages/DashboardPage.vue'
 import DepartmentPage from './components/pages/DepartmentPage.vue'
 import EmployeePage from './components/pages/EmployeePage.vue'
+import CustomerPage from './components/pages/CustomerPage.vue'
 import DetailPanels from './components/pages/DetailPanels.vue'
 import ModulePage from './components/pages/ModulePage.vue'
 import {useWorkspaceController} from './composables/useWorkspaceController'

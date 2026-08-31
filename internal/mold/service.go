@@ -30,6 +30,7 @@ var (
 	ErrMoldStatusConflict           = errors.New("mold status conflict")
 	ErrMoldReturnLocationRequired   = errors.New("mold return location required")
 	ErrMoldMaintenanceCycleRequired = errors.New("mold maintenance cycle required")
+	ErrCustomerProfileNotFound      = errors.New("customer profile not found")
 )
 
 type Transition struct {
@@ -92,6 +93,9 @@ func (s *gormService) Get(id uint) (model.Mold, error) {
 func (s *gormService) Create(req moldRequest) (model.Mold, error) {
 	item := moldFromRequest(req)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := validateCustomerProfile(tx, item.CustomerID); err != nil {
+			return err
+		}
 		if err := tx.Create(&item).Error; err != nil {
 			return err
 		}
@@ -108,6 +112,9 @@ func (s *gormService) Update(id uint, req moldRequest) (model.Mold, error) {
 	beforeStatus := item.Status
 	applyMoldRequest(&item, req)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := validateCustomerProfile(tx, item.CustomerID); err != nil {
+			return err
+		}
 		if err := tx.Save(&item).Error; err != nil {
 			return err
 		}
@@ -117,6 +124,20 @@ func (s *gormService) Update(id uint, req moldRequest) (model.Mold, error) {
 		return nil
 	})
 	return item, err
+}
+
+func validateCustomerProfile(db *gorm.DB, id *uint) error {
+	if id == nil {
+		return nil
+	}
+	var profile model.CustomerProfile
+	if err := db.Select("id").First(&profile, *id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrCustomerProfileNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *gormService) Delete(id uint) error {

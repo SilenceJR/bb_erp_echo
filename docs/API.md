@@ -61,7 +61,7 @@ q=关键字
 }
 ```
 
-当前已支持分页和模糊查询的主要接口包括系统用户、部门、终端、角色、权限、审计、客户、联系人、供应商、仓库物品、模具台账和任务单。
+当前已支持分页和模糊查询的主要接口包括系统用户、部门、终端、角色、权限、审计、客户资料、供应商、仓库物品、模具台账和任务单。
 
 ## 登录认证
 
@@ -132,101 +132,39 @@ q=关键字
 
 ## 客户接口
 
-### GET /api/v1/customers
+客户模块采用 `CustomerCode 1:N CustomerProfile`：客户编码是稳定业务锚点，客户资料保存简称、名称、地址、电话、联系人、联系人电话和业务员。除编码关联外其余字段均可空，联系人不再有独立接口或子表。新库存单、任务单和模具的 `customer_id` 均表示具体客户资料 ID。
 
-返回客户分页列表，并预加载联系人和联系人电话明细。支持 `page`、`page_size`、`q`。
+编码规范为 `BB-` 加至少三位正整数；`1`、`BB-1`、`bb-001` 均规范化为 `BB-001`。自动编号使用现有最大数字加一，不回填缺号。
 
-### POST /api/v1/customers
+### 客户编码
 
-只创建客户本体，不创建联系人。
+- `GET /api/v1/customer-codes?page=1&page_size=20&q=&filter=all|multiple|empty`：按编码分组返回资料、资料数和默认资料。
+- `GET /api/v1/customer-codes/next`：返回下一个建议编码。
+- `POST /api/v1/customer-codes`：创建编码；`{"code":"1"}` 创建 `BB-001`，留空时自动编号。
+- `PATCH /api/v1/customer-codes/:id`：修改编码。
+- `DELETE /api/v1/customer-codes/:id`：仅无关联资料时允许物理删除，否则返回 `409`。
 
-请求：
+### 客户资料
 
-```json
-{
-  "name": "测试客户",
-  "code": "CUST-001",
-  "phone": "0755-88888888"
-}
-```
+- `GET /api/v1/customers?page=1&page_size=20&q=`：资料分页查询。
+- `GET /api/v1/customers/:id`：资料详情。
+- `GET /api/v1/customers/options?q=`：统一业务选择项，返回资料 ID、编码、简称、名称和默认标记。
+- `POST /api/v1/customers`：创建资料；`customer_code_id` 必填，其余业务字段可空。
+- `PATCH /api/v1/customers/:id`：更新资料，不能更换所属编码。
+- `PUT /api/v1/customers/:id/default`：把同编码资料切换为默认。
+- `DELETE /api/v1/customers/:id?replacement_id=2`：物理删除资料。删除仍有同码资料的默认资料时必须传同编码替代资料；被库存单、任务单或模具引用时返回 `409`。
 
-### PATCH /api/v1/customers/:id
+只要编码下存在资料，就恰好一条默认资料：首条自动默认，追加资料不改变原默认；删除默认资料必须在同一事务指定替代项，删除后只剩一条时该资料保持默认。
 
-通过客户 ID 更新客户档案。
+### Excel 导入、导出与预览
 
-请求：
+- `GET /api/v1/customers/import-template`：下载 `.xlsx` 模板。
+- `POST /api/v1/customers/import/preview`：multipart `file`，接受 `.xls/.xlsx`，限制 10 MiB、10,000 条、只读取首个工作表。
+- `POST /api/v1/customers/import/commit`：multipart 重新上传同一 `file` 并传 `token`；令牌绑定用户、模块和文件 SHA-256，30 分钟过期且只能成功提交一次。任一错误整批回滚。
+- `GET /api/v1/customers/export/preview?scope=current|all&q=&filter=&page=1&page_size=50`：返回最终工作表使用的九列元数据和分页标准化行；最大预览页大小 100。
+- `GET /api/v1/customers/export?scope=current|all&q=&filter=`：按下载时最新数据生成样式化 `.xlsx`；空结果返回 `422`。
 
-```json
-{
-  "name": "测试客户-更新",
-  "code": "CUST-001",
-  "phone": "0755-66666666",
-  "address": "深圳市宝安区"
-}
-```
-
-### DELETE /api/v1/customers/:id
-
-软删除客户本体。
-
-业务规则：
-
-- 删除 Customer 不代表删除联系人。
-- 联系人和联系人电话明细保留，后续可单独转移、删除或做历史追溯。
-
-## 联系人接口
-
-### GET /api/v1/contacts
-
-返回联系人分页列表，并预加载电话明细。支持 `page`、`page_size`、`q`。
-
-### GET /api/v1/contacts/:id
-
-通过联系人 ID 查询联系人详情。
-
-### POST /api/v1/contacts
-
-创建客户联系人，并通过 `customer_id` 建立客户关联。
-
-请求：
-
-```json
-{
-  "customer_id": 1,
-  "name": "张三",
-  "phones": [
-    {
-      "phone": "13800000000",
-      "label": "手机",
-      "primary": true
-    }
-  ]
-}
-```
-
-### PATCH /api/v1/contacts/:id
-
-更新联系人基础信息，并按请求内容整体替换电话明细。
-
-请求：
-
-```json
-{
-  "customer_id": 1,
-  "name": "张三-更新",
-  "phones": [
-    {
-      "phone": "13600000000",
-      "label": "新手机",
-      "primary": true
-    }
-  ]
-}
-```
-
-### DELETE /api/v1/contacts/:id
-
-软删除联系人，并同步软删除其电话明细。
+导出预览和下载共用同一列定义和数据转换，列序固定为：序号、客户编码、客户简称、客户名称、地址、电话、联系人、联系人电话、业务员。电话列按文本写入。权限为 `customers:read`（查看、预览、导出）、`customers:write`（编码与资料 CRUD）、`customers:import`（导入预览与确认）。本版本仅支持全新数据库，不提供旧客户、联系人表升级或迁移。
 
 ## 系统接口概览
 
@@ -572,11 +510,11 @@ GET  /api/v1/statistics
 
 `GET /api/v1/statistics` 返回 Web/Tauri 统计首页聚合数据，包含：
 
-- 顶部汇总：客户、供应商、联系人、仓库物品、库存总量、低库存、进行中任务、加急任务、待办公室确认任务、模具总数、需关注模具。
+- 顶部汇总：客户编码、供应商、仓库物品、库存总量、低库存、进行中任务、加急任务、待办公室确认任务、模具总数、需关注模具。
 - 库存统计：按物品类型汇总、按物料分类汇总、低库存明细、近 14 天库存流水趋势。
 - 任务统计：按主任务状态、任务类型、部门子任务处理情况、近 14 天任务创建趋势。
 - 模具统计：按状态汇总、借出/维修/保养到期等需关注模具。
-- 业务数据：客户、联系人、供应商、产品、物料、模具、任务单数量。
+- 业务数据：客户编码、供应商、产品、物料、模具、任务单数量。
 - 审计统计：按结果汇总和近 14 天趋势。
 
 无 `cost:view` 权限时，响应中不会返回可用金额，`inventory_amount`、库存分类 `amount`、低库存 `amount` 和趋势 `amount` 均裁剪为 `0`。
