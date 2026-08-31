@@ -702,11 +702,12 @@ jobs:
             (Join-Path $allInOneRoot "server/一键升级服务端.bat")
           )) {
             $updaterLoaderText = Get-Content -LiteralPath $updaterLoader -Raw
-            $updaterLoaderLines = @($updaterLoaderText -split '\r?\n' | ForEach-Object { $_.Trim() })
-            if ($updaterLoaderLines -notcontains 'if exist bb-erp-updater.pending.exe (' -or
-                $updaterLoaderLines -notcontains 'if exist bb-erp-upgrade-runner.pending.bat (' -or
-                $updaterLoaderLines -notcontains 'call bb-erp-upgrade-runner.bat' -or
-                $updaterLoaderLines -notcontains 'pause') {
+            # 校验批处理的关键行为，不要求归档后的空白、引号和换行格式完全一致。
+            $updaterLoaderNormalized = [regex]::Replace($updaterLoaderText, '\s+', ' ').Trim()
+            if ($updaterLoaderNormalized -notmatch 'if exist "?bb-erp-updater\.pending\.exe"?\s*\(' -or
+                $updaterLoaderNormalized -notmatch 'if exist "?bb-erp-upgrade-runner\.pending\.bat"?\s*\(' -or
+                $updaterLoaderNormalized -notmatch 'call\s+"?bb-erp-upgrade-runner\.bat"?' -or
+                $updaterLoaderNormalized -notmatch '(^|\s)pause(\s|$)') {
               throw "Server updater loader cannot activate staged updater files: $updaterLoader"
             }
           }
@@ -773,11 +774,11 @@ jobs:
               (Join-Path $allInOneVerifyRoot "server/一键升级服务端.bat")
             )) {
               $archivedUpdaterLoaderText = Get-Content -LiteralPath $archivedUpdaterLoader -Raw
-              $archivedUpdaterLoaderLines = @($archivedUpdaterLoaderText -split '\r?\n' | ForEach-Object { $_.Trim() })
-              if ($archivedUpdaterLoaderLines -notcontains 'if exist bb-erp-updater.pending.exe (' -or
-                  $archivedUpdaterLoaderLines -notcontains 'if exist bb-erp-upgrade-runner.pending.bat (' -or
-                  $archivedUpdaterLoaderLines -notcontains 'call bb-erp-upgrade-runner.bat' -or
-                  $archivedUpdaterLoaderLines -notcontains 'pause') {
+              $archivedUpdaterLoaderNormalized = [regex]::Replace($archivedUpdaterLoaderText, '\s+', ' ').Trim()
+              if ($archivedUpdaterLoaderNormalized -notmatch 'if exist "?bb-erp-updater\.pending\.exe"?\s*\(' -or
+                  $archivedUpdaterLoaderNormalized -notmatch 'if exist "?bb-erp-upgrade-runner\.pending\.bat"?\s*\(' -or
+                  $archivedUpdaterLoaderNormalized -notmatch 'call\s+"?bb-erp-upgrade-runner\.bat"?' -or
+                  $archivedUpdaterLoaderNormalized -notmatch '(^|\s)pause(\s|$)') {
                 throw "Archived server updater loader cannot activate staged updater files: $archivedUpdaterLoader"
               }
             }

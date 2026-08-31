@@ -243,3 +243,4 @@ GitHub Actions 的 Go 验证定义在 .github/workflows/ci.yml，正式发布顺
 - 本地更新模块和升级器测试覆盖权限、按需下载、并发缓存复用、可信签名拒绝、损坏 ZIP、版本元数据、互斥锁、日志持久化、文件大小以及替换/回滚；Windows 新正式包的下载、批处理升级、服务重启和数据保留尚待复验，不标记完成。
 - 首次推送修复后 GitHub Actions #77 在创建作业前拒绝工作流：大型 PowerShell `run` 块因包含表达式而超过 GitHub 单表达式 21,000 字符上限。动态值已全部移入步骤 `env`，脚本只读取环境变量；本地校验确认仍含表达式的最大 YAML 标量为 1,413 字节。修正后的 GitHub Actions #78 已成功完成 Go、Web、Tauri 前端与 Rust 核心四个验证作业。
 - `v0.0.9` 首次正式构建 GitHub Actions #81 在“组装发布包”阶段停止，Gitee Release 与 stable manifest 均未修改。失败来自加载器文本的跨 PowerShell/Windows 换行正则校验误判；校验已改为对标准化后的批处理行逐项检查 updater、runner 暂存激活、runner 调用和暂停诊断入口。后续使用既有 `release_tag=v0.0.9` 重跑，不移动源码标签。
+- 后续复核发现上述逐行完全匹配仍会受批处理归档后的空白、引号和换行差异影响，导致 `v0.0.9` 再次在“组装发布包”阶段误报加载器不可激活。现改为先压缩空白，再校验暂存 updater、暂存 runner、runner 调用和 `pause` 四项关键行为；不改变发布包内容或升级器运行逻辑。修复后须重新执行 Windows 正式打包验证。
