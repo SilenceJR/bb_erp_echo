@@ -65,6 +65,8 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 `v0.0.10` 按本次发布决定只用于确认 GitHub Actions 完整打包成功。该标签仍生成签名 Windows 包、更新清单和保留 14 天的 GitHub Actions Artifact，但工作流明确跳过 `publish-gitee`：不创建或更新 Gitee Release、不上传成品、不更新稳定版 `update-manifest.json`。这不是新的通用发布规则；后续正式标签仍按下述 Gitee 发布闭环执行，除非另行确认。
 
+GitHub Actions [CI #88](https://github.com/SilenceJR/bb_erp_echo/actions/runs/33419383000) 已在提交 `cbc42ab` 上成功完成，Windows 打包作业用时 8 分 54 秒并生成 6 个 Artifact；`Publish verified Gitee release` 为 0 秒跳过。公开 Gitee 稳定 manifest 仍为 `0.0.9`，发布仓库 API 对 `v0.0.10` 返回 `null`，确认本次没有创建 Release 或上传附件。
+
 正式发布由 `scripts/publish-gitee-release.sh` 执行：
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于本次构建所对应的 GitHub 标签提交；已有标签手动重试时不会把修复提交误当成标签提交。
