@@ -1,13 +1,14 @@
 <template>
   <header class="ui-page-header">
-    <nav class="ui-page-header__breadcrumb" aria-label="面包屑">
-      <el-button link @click="emit('back')">首页</el-button>
+    <nav v-if="showBack" class="ui-page-header__breadcrumb" aria-label="面包屑">
+      <el-button link @click="emit('back')">{{ parentLabel }}</el-button>
       <span aria-hidden="true">/</span>
       <span aria-current="page">{{ title }}</span>
     </nav>
 
     <div class="ui-page-header__main">
       <div class="ui-page-header__copy">
+        <span v-if="eyebrow" class="ui-page-header__eyebrow">{{ eyebrow }}</span>
         <h1>{{ title }}</h1>
         <p v-if="description">{{ description }}</p>
       </div>
@@ -26,9 +27,15 @@ withDefaults(defineProps<{
   title: string
   description?: string
   readonly?: boolean
+  eyebrow?: string
+  parentLabel?: string
+  showBack?: boolean
 }>(), {
   description: '',
   readonly: false,
+  eyebrow: '',
+  parentLabel: '首页',
+  showBack: true,
 })
 
 const emit = defineEmits<{
@@ -70,6 +77,16 @@ const emit = defineEmits<{
   line-height: var(--bb-line-height-tight);
 }
 
+.ui-page-header__eyebrow {
+  display: block;
+  margin-bottom: var(--bb-space-1);
+  color: var(--bb-brand-700);
+  font-size: var(--bb-font-size-12);
+  font-weight: var(--bb-font-weight-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .ui-page-header__copy p {
   margin: var(--bb-space-2) 0 0;
   color: var(--bb-text-secondary);
@@ -83,24 +100,7 @@ const emit = defineEmits<{
   gap: var(--bb-space-2);
 }
 
-@media (max-width: 560px) {
-  .ui-page-header__main {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .ui-page-header__copy h1 {
-    font-size: var(--bb-font-size-24);
-  }
-
-  .ui-page-header__actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .ui-page-header__actions :deep(.el-button) {
-    width: 100%;
-    min-height: 44px;
-  }
+.ui-page-header__actions :deep(.el-button) {
+  margin: 0;
 }
 </style>

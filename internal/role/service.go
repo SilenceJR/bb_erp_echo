@@ -2,14 +2,14 @@
 package role
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/config"
 	"bb_erp_echo/internal/model"
 
-	"github.com/casbin/casbin/v2"
-	casbinmodel "github.com/casbin/casbin/v2/model"
 	"gorm.io/gorm"
 )
 
@@ -26,12 +26,21 @@ const (
 	TemporaryProductWriteCode = "workorder:temporary-product:write"
 )
 
+var (
+	// ErrNoPermissions 表示调用方没有提供任何明确的权限 ID。
+	ErrNoPermissions = errors.New("permission IDs must not be empty")
+	// ErrPermissionCodeNotFound 表示至少一个权限编码不存在。
+	ErrPermissionCodeNotFound = errors.New("permission code not found")
+	// ErrRoleCodeNotFound 表示至少一个角色编码不存在。
+	ErrRoleCodeNotFound = errors.New("role code not found")
+)
+
 // Service 封装角色、权限和策略操作。
 type Service struct {
 	// DB 是角色、权限和关联关系持久化连接。
 	DB *gorm.DB
-	// Enforcer 是 Casbin 内存权限引擎。
-	Enforcer *casbin.Enforcer
+	// Authorizer 是统一的权限快照 provider。
+	Authorizer Authorizer
 }
 
 // AssignmentService 描述角色与权限、用户与角色的分配能力。
@@ -46,45 +55,17 @@ type UserRoleService interface {
 	UserRoleIDs(userIDs []uint) (map[uint][]uint, error)
 	ReplaceUserRoles(userID uint, roleIDs []uint, allowSuperAdmin bool) error
 	AssignRoleCodes(userID uint, codes []string) error
+	AssignRoleCodesTx(tx *gorm.DB, userID uint, codes []string) error
+	ReloadPolicies() error
 }
 
 // NewService 创建角色权限服务。
 //
 // 参数说明：
 // - db：GORM 数据库连接。
-// - enforcer：Casbin 权限引擎。
-func NewService(db *gorm.DB, enforcer *casbin.Enforcer) *Service {
-	return &Service{DB: db, Enforcer: enforcer}
-}
-
-// NewEnforcer 创建 Casbin 权限引擎。
-//
-// 权限模型说明：
-// - sub：用户或角色。
-// - obj：接口资源路径。
-// - act：动作，当前约定为 read/write。
-// - org/dept：组织和部门数据范围，* 表示不限制。
-func NewEnforcer() (*casbin.Enforcer, error) {
-	m, err := casbinmodel.NewModelFromString(`
-[request_definition]
-r = sub, obj, act, org, dept
-
-[policy_definition]
-p = sub, obj, act, org, dept
-
-[role_definition]
-g = _, _
-
-[policy_effect]
-e = some(where (p.eft == allow))
-
-[matchers]
-m = g(r.sub, p.sub) && keyMatch2(r.obj, p.obj) && regexMatch(r.act, p.act) && (p.org == "*" || p.org == r.org) && (p.dept == "*" || p.dept == r.dept)
-`)
-	if err != nil {
-		return nil, fmt.Errorf("create casbin model: %w", err)
-	}
-	return casbin.NewEnforcer(m)
+// - authorizer：统一权限快照 provider。
+func NewService(db *gorm.DB, authorizer Authorizer) *Service {
+	return &Service{DB: db, Authorizer: authorizer}
 }
 
 // SeedSystemData 初始化系统运行必需的基础数据。
@@ -140,7 +121,7 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 	if err := s.AttachPermissionCodes(boss.ID, []string{CostViewCode}); err != nil {
 		return err
 	}
-	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "tasks:read", "tasks:write", "warehouse:read", "inventory:read"}); err != nil {
+	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "warehouse:read"}); err != nil {
 		return err
 	}
 
@@ -149,13 +130,14 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 	admin := model.User{
-		Username:       cfg.Admin.Username,
-		AccountType:    model.AccountTypePersonal,
-		Name:           cfg.Admin.Name,
-		OrganizationID: org.ID,
-		DepartmentID:   &dept.ID,
-		Status:         model.StatusActive,
-		PasswordHash:   hash,
+		Username:        cfg.Admin.Username,
+		AccountType:     model.AccountTypePersonal,
+		Name:            cfg.Admin.Name,
+		OrganizationID:  org.ID,
+		DepartmentID:    &dept.ID,
+		Status:          model.StatusActive,
+		PasswordHash:    hash,
+		PasswordVersion: auth.InitialPasswordVersion,
 	}
 	if err := s.DB.FirstOrCreate(&admin, model.User{Username: admin.Username}).Error; err != nil {
 		return err
@@ -196,17 +178,41 @@ func (s *Service) backfillUpdateReadPermission() error {
 // - roleID：角色 ID。
 // - excludedCodes：需要排除的权限编码。
 func (s *Service) AttachAllExcept(roleID uint, excludedCodes []string) error {
+	if len(excludedCodes) == 0 {
+		return s.AttachAllPermissions(roleID)
+	}
+
 	var permissions []model.Permission
 	query := s.DB
-	if len(excludedCodes) > 0 {
-		query = query.Where("code NOT IN ?", excludedCodes)
-		if err := s.DB.Where("role_id = ? AND permission_id IN (SELECT id FROM permissions WHERE code IN ?)", roleID, excludedCodes).
-			Delete(&model.RolePermission{}).Error; err != nil {
-			return err
-		}
+	query = query.Where("code NOT IN ?", excludedCodes)
+	if err := s.DB.Where("role_id = ? AND permission_id IN (SELECT id FROM permissions WHERE code IN ?)", roleID, excludedCodes).
+		Delete(&model.RolePermission{}).Error; err != nil {
+		return err
 	}
 	if err := query.Find(&permissions).Error; err != nil {
 		return err
+	}
+	ids := make([]uint, 0, len(permissions))
+	for _, permission := range permissions {
+		ids = append(ids, permission.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.AttachPermissions(roleID, ids)
+}
+
+// AttachAllPermissions 为角色追加当前数据库中的全部权限。
+//
+// 需要显式绑定全部权限时调用本方法，避免把 AttachPermissions 的空切片
+// 解释成“全部”，从而让权限编码查询为空时错误地放大为全量授权。
+func (s *Service) AttachAllPermissions(roleID uint) error {
+	var permissions []model.Permission
+	if err := s.DB.Find(&permissions).Error; err != nil {
+		return err
+	}
+	if len(permissions) == 0 {
+		return ErrNoPermissions
 	}
 	ids := make([]uint, 0, len(permissions))
 	for _, permission := range permissions {
@@ -219,16 +225,10 @@ func (s *Service) AttachAllExcept(roleID uint, excludedCodes []string) error {
 //
 // 参数说明：
 // - roleID：角色 ID。
-// - permissionIDs：权限 ID 列表；为空时表示绑定全部权限。
+// - permissionIDs：明确指定的权限 ID 列表；为空时返回错误。
 func (s *Service) AttachPermissions(roleID uint, permissionIDs []uint) error {
 	if len(permissionIDs) == 0 {
-		var permissions []model.Permission
-		if err := s.DB.Find(&permissions).Error; err != nil {
-			return err
-		}
-		for _, permission := range permissions {
-			permissionIDs = append(permissionIDs, permission.ID)
-		}
+		return ErrNoPermissions
 	}
 	return s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, permissionID := range permissionIDs {
@@ -245,15 +245,44 @@ func (s *Service) AttachPermissions(roleID uint, permissionIDs []uint) error {
 //
 // 参数说明：
 // - roleID：角色 ID。
-// - codes：权限编码列表，例如 tasks:read。
+// - codes：权限编码列表，例如 workorder:read。
 func (s *Service) AttachPermissionCodes(roleID uint, codes []string) error {
+	if len(codes) == 0 {
+		return ErrPermissionCodeNotFound
+	}
+	for _, code := range codes {
+		if strings.TrimSpace(code) == "" {
+			return fmt.Errorf("%w: empty code", ErrPermissionCodeNotFound)
+		}
+	}
+
 	var permissions []model.Permission
 	if err := s.DB.Where("code IN ?", codes).Find(&permissions).Error; err != nil {
 		return err
 	}
+	found := make(map[string]struct{}, len(permissions))
 	var ids []uint
 	for _, permission := range permissions {
+		found[permission.Code] = struct{}{}
 		ids = append(ids, permission.ID)
+	}
+	missing := make([]string, 0)
+	missingSet := make(map[string]struct{})
+	for _, code := range codes {
+		if _, ok := found[code]; ok {
+			continue
+		}
+		if _, seen := missingSet[code]; seen {
+			continue
+		}
+		missing = append(missing, code)
+		missingSet[code] = struct{}{}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: %s", ErrPermissionCodeNotFound, strings.Join(missing, ", "))
+	}
+	if len(ids) == 0 {
+		return ErrPermissionCodeNotFound
 	}
 	return s.AttachPermissions(roleID, ids)
 }
@@ -264,19 +293,53 @@ func (s *Service) AttachPermissionCodes(roleID uint, codes []string) error {
 // - userID：用户 ID。
 // - codes：角色编码列表，例如 super_admin。
 func (s *Service) AssignRoleCodes(userID uint, codes []string) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		return s.AssignRoleCodesTx(tx, userID, codes)
+	})
+}
+
+// AssignRoleCodesTx 在调用方事务中为用户追加角色。
+//
+// 角色编码解析和关联写入都使用传入事务，供创建部门终端账号时与用户
+// 主记录保持原子性。任何编码缺失都会失败，不会静默创建无角色账号。
+func (s *Service) AssignRoleCodesTx(tx *gorm.DB, userID uint, codes []string) error {
+	if tx == nil {
+		return errors.New("role assignment transaction is nil")
+	}
+	if len(codes) == 0 {
+		return nil
+	}
+
 	var roles []model.Role
-	if err := s.DB.Where("code IN ?", codes).Find(&roles).Error; err != nil {
+	if err := tx.Where("code IN ?", codes).Find(&roles).Error; err != nil {
 		return err
 	}
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		for _, role := range roles {
-			row := model.UserRole{UserID: userID, RoleID: role.ID}
-			if err := tx.FirstOrCreate(&row, model.UserRole{UserID: userID, RoleID: role.ID}).Error; err != nil {
-				return err
-			}
+	found := make(map[string]struct{}, len(roles))
+	for _, item := range roles {
+		found[item.Code] = struct{}{}
+	}
+	missing := make([]string, 0)
+	missingSet := make(map[string]struct{})
+	for _, code := range codes {
+		if _, ok := found[code]; ok {
+			continue
 		}
-		return nil
-	})
+		if _, seen := missingSet[code]; seen {
+			continue
+		}
+		missing = append(missing, code)
+		missingSet[code] = struct{}{}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: %s", ErrRoleCodeNotFound, strings.Join(missing, ", "))
+	}
+	for _, item := range roles {
+		row := model.UserRole{UserID: userID, RoleID: item.ID}
+		if err := tx.FirstOrCreate(&row, model.UserRole{UserID: userID, RoleID: item.ID}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RolePermissionIDs 批量查询角色当前绑定的权限，避免列表接口逐角色查询。
@@ -370,44 +433,20 @@ func (s *Service) replaceAssociations(modelValue any, ownerColumn string, ownerI
 // ReloadPolicies 从数据库重新加载 Casbin 分组策略和权限策略。
 //
 // 调用时机：角色、权限或用户角色关系变更后必须调用，否则内存策略不会更新。
+// 刷新由统一 provider 完成，避免业务服务直接读写当前 Casbin 引擎。
 func (s *Service) ReloadPolicies() error {
-	s.Enforcer.ClearPolicy()
+	if s.Authorizer == nil {
+		return errors.New("role service authorizer is nil")
+	}
+	return s.Authorizer.ReloadPolicies()
+}
 
-	var policies []struct {
-		Username string
-		RoleCode string
+// Enforce 使用统一 provider 判断当前用户是否具有指定权限。
+func (s *Service) Enforce(subject, object, action, organization, department string) (bool, error) {
+	if s.Authorizer == nil {
+		return false, errors.New("role service authorizer is nil")
 	}
-	if err := s.DB.Table("user_roles").
-		Select("users.username, roles.code AS role_code").
-		Joins("JOIN users ON users.id = user_roles.user_id").
-		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Scan(&policies).Error; err != nil {
-		return err
-	}
-	for _, policy := range policies {
-		if _, err := s.Enforcer.AddGroupingPolicy(policy.Username, policy.RoleCode); err != nil {
-			return err
-		}
-	}
-
-	var permissions []struct {
-		RoleCode string
-		Object   string
-		Action   string
-	}
-	if err := s.DB.Table("role_permissions").
-		Select("roles.code AS role_code, permissions.object, permissions.action").
-		Joins("JOIN roles ON roles.id = role_permissions.role_id").
-		Joins("JOIN permissions ON permissions.id = role_permissions.permission_id").
-		Scan(&permissions).Error; err != nil {
-		return err
-	}
-	for _, permission := range permissions {
-		if _, err := s.Enforcer.AddPolicy(permission.RoleCode, permission.Object, permission.Action, "*", "*"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.Authorizer.Enforce(subject, object, action, organization, department)
 }
 
 // IncludesSystemRole 判断角色 ID 列表中是否包含超级管理员角色。
@@ -454,16 +493,12 @@ func DefaultPermissions() []model.Permission {
 		{"供应商维护", "suppliers:write", "/api/v1/suppliers", "write"},
 		{"仓库查看", "warehouse:read", "/api/v1/warehouse", "read"},
 		{"仓库维护", "warehouse:write", "/api/v1/warehouse", "write"},
-		{"库存查看", "inventory:read", "/api/v1/inventory", "read"},
-		{"库存维护", "inventory:write", "/api/v1/inventory", "write"},
-		{"物料查看", "material:read", "/api/v1/material", "read"},
-		{"物料维护", "material:write", "/api/v1/material", "write"},
-		{"产品查看", "product:read", "/api/v1/product", "read"},
-		{"产品维护", "product:write", "/api/v1/product", "write"},
-		{"模具查看", "mold:read", "/api/v1/mold", "read"},
-		{"模具维护", "mold:write", "/api/v1/mold", "write"},
-		{"模具台账查看", "molds:read", "/api/v1/molds", "read"},
-		{"模具台账维护", "molds:write", "/api/v1/molds", "write"},
+		{"物料查看", "material:read", "/api/v1/materials", "read"},
+		{"物料维护", "material:write", "/api/v1/materials", "write"},
+		{"产品查看", "product:read", "/api/v1/products", "read"},
+		{"产品维护", "product:write", "/api/v1/products", "write"},
+		{"模具查看", "mold:read", "/api/v1/molds", "read"},
+		{"模具维护", "mold:write", "/api/v1/molds", "write"},
 		{"任务查看", "workorder:read", "/api/v1/workorder", "read"},
 		{"任务维护", "workorder:write", "/api/v1/workorder", "write"},
 		{"生产单临时产品建档", TemporaryProductWriteCode, "/api/v1/workorder/products", "write"},
@@ -474,9 +509,6 @@ func DefaultPermissions() []model.Permission {
 		{"库存单据维护", "inventory:documents:write", "/api/v1/inventory-documents", "write"},
 		{"库存余额查看", "inventory:balances:read", "/api/v1/inventory-balances", "read"},
 		{"库存流水查看", "inventory:ledgers:read", "/api/v1/inventory-ledgers", "read"},
-		// 兼容第一版 API 命名，避免前端或测试仍使用旧路径时直接失效。
-		{"旧任务查看", "tasks:read", "/api/v1/tasks", "read"},
-		{"旧任务维护", "tasks:write", "/api/v1/tasks", "write"},
 	}
 	items := make([]model.Permission, 0, len(defs))
 	for _, def := range defs {

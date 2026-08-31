@@ -89,11 +89,10 @@ func signedPackageForTest(t *testing.T, payload []byte) (string, SignedManifestV
 	return base64.StdEncoding.EncodeToString(reader.Sign(private)), verifier
 }
 
-func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
+func TestServiceChecksRedirectAndPublishesServerStatus(t *testing.T) {
 	archive := zipBytes(t)
 	digest := sha256.Sum256(archive)
 	var manifestRequests atomic.Int32
-	var packageRequests atomic.Int32
 	var serverPackageRequests atomic.Int32
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,16 +107,9 @@ func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 					Version: "2.0.0", URL: server.URL + "/server.zip",
 					SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
 				},
-				Client: PackageManifest{
-					Version: "2.0.0", URL: server.URL + "/client.zip",
-					SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
-				},
 			})
 		case "/server.zip":
 			serverPackageRequests.Add(1)
-			_, _ = w.Write(archive)
-		case "/client.zip":
-			packageRequests.Add(1)
 			_, _ = w.Write(archive)
 		default:
 			http.NotFound(w, r)
@@ -135,24 +127,53 @@ func TestServiceChecksRedirectCachesAndReusesPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first check: %v", err)
 	}
-	if !status.Reachable || !status.Server.Available || !status.Client.Available || !status.Client.Cached {
+	if !status.Reachable || !status.Server.Available {
 		t.Fatalf("unexpected first status: %+v", status)
 	}
 	if status.Server.DownloadURL != serverDownloadPath || status.Server.DownloadPath != serverDownloadPath ||
-		status.Server.FileName != "server.zip" || status.Client.DownloadURL != "/api/v1/updates/client/download" || status.CheckInterval != "1h" {
+		status.Server.FileName != "server.zip" || status.CheckInterval != "1h" {
 		t.Fatalf("unexpected local download/interval fields: %+v", status)
 	}
 	if _, err := service.Check(context.Background()); err != nil {
 		t.Fatalf("second check: %v", err)
 	}
-	if manifestRequests.Load() != 2 || packageRequests.Load() != 1 || serverPackageRequests.Load() != 0 {
-		t.Fatalf("requests manifest=%d client=%d server=%d", manifestRequests.Load(), packageRequests.Load(), serverPackageRequests.Load())
+	if manifestRequests.Load() != 2 || serverPackageRequests.Load() != 0 {
+		t.Fatalf("requests manifest=%d server=%d", manifestRequests.Load(), serverPackageRequests.Load())
 	}
-	if service.ClientStatus("2.0.0").Available {
-		t.Fatal("same installed client version should not report update")
+}
+
+func TestHTTPManifestSourceRejectsLegacyAndTrailingJSON(t *testing.T) {
+	for name, body := range map[string]string{
+		"legacy client package":   `{"version":"1.0.0","server":{"version":"1.0.0","url":"http://192.168.1.2/server.zip"},"client":{}}`,
+		"trailing document":       `{"version":"1.0.0","server":{"version":"1.0.0","url":"http://192.168.1.2/server.zip"}} {}`,
+		"duplicate top-level key": `{"version":"1.0.0","version":"1.0.1","server":{"version":"1.0.0","url":"http://192.168.1.2/server.zip"}}`,
+		"duplicate nested key":    `{"version":"1.0.0","server":{"version":"1.0.0","version":"1.0.1","url":"http://192.168.1.2/server.zip"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, body)
+			}))
+			defer server.Close()
+			source := HTTPManifestSource{URL: server.URL, Client: server.Client()}
+			if _, err := source.Fetch(context.Background()); err == nil {
+				t.Fatal("non-current manifest must be rejected")
+			} else if strings.HasPrefix(name, "duplicate") && !strings.Contains(err.Error(), "duplicate JSON") {
+				t.Fatalf("duplicate manifest error = %v, want duplicate JSON detail", err)
+			}
+		})
 	}
-	if !service.ClientStatus("1.5.0").Available {
-		t.Fatal("older installed client should report update")
+}
+
+func TestHTTPManifestSourceRejectsOversizedResponse(t *testing.T) {
+	body := bytes.Repeat([]byte(" "), maxManifestSize+1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	source := HTTPManifestSource{URL: server.URL, Client: server.Client()}
+	if _, err := source.Fetch(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized manifest error = %v, want response size rejection", err)
 	}
 }
 
@@ -271,89 +292,6 @@ func TestDownloadServerPackageRejectsInvalidZipWithoutCaching(t *testing.T) {
 	}
 }
 
-func TestServicePreservesSuccessfulStateAfterPackageFailure(t *testing.T) {
-	archive := zipBytes(t)
-	digest := sha256.Sum256(archive)
-	var broken atomic.Bool
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/client.zip" {
-			_, _ = w.Write(archive)
-			return
-		}
-		version := "2.0.0"
-		hash := hex.EncodeToString(digest[:])
-		if broken.Load() {
-			version = "3.0.0"
-			hash = "bad-sha"
-		}
-		_ = json.NewEncoder(w).Encode(Manifest{
-			Server: PackageManifest{Version: version},
-			Client: PackageManifest{Version: version, URL: server.URL + "/client.zip", SHA256: hash, Size: int64(len(archive))},
-		})
-	}))
-	defer server.Close()
-
-	service := NewService(config.UpdateConfig{
-		Enabled: true, ManifestURL: server.URL, CacheDir: filepath.Join(t.TempDir(), "cache"),
-		ClientVersion: "1.0.0", CheckInterval: time.Hour,
-		ManifestTimeout: time.Second, DownloadTimeout: time.Second,
-	}, "1.0.0")
-	first, err := service.Check(context.Background())
-	if err != nil {
-		t.Fatalf("successful check: %v", err)
-	}
-	broken.Store(true)
-	failed, err := service.Check(context.Background())
-	if err == nil {
-		t.Fatal("bad hash should fail")
-	}
-	if failed.Server.LatestVersion != first.Server.LatestVersion || failed.LastSuccessAt == nil {
-		t.Fatalf("last successful state was not preserved: %+v", failed)
-	}
-	if failed.LastError == "" || !failed.Reachable {
-		t.Fatalf("failure details/connectivity missing: %+v", failed)
-	}
-}
-
-func TestServiceCachesSameVersionClientForOlderInstalledClients(t *testing.T) {
-	archive := zipBytes(t)
-	digest := sha256.Sum256(archive)
-	var packageRequests atomic.Int32
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/client.zip" {
-			packageRequests.Add(1)
-			_, _ = w.Write(archive)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(Manifest{
-			Server: PackageManifest{Version: "1.2.3"},
-			Client: PackageManifest{
-				Version: "1.2.3", URL: server.URL + "/client.zip",
-				SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive)),
-			},
-		})
-	}))
-	defer server.Close()
-	service := NewService(config.UpdateConfig{
-		Enabled: true, ManifestURL: server.URL, CacheDir: t.TempDir(),
-		ClientVersion: "1.2.3", CheckInterval: time.Hour,
-		ManifestTimeout: time.Second, DownloadTimeout: time.Second,
-	}, "1.2.3")
-	status, err := service.Check(context.Background())
-	if err != nil {
-		t.Fatalf("check: %v", err)
-	}
-	if status.Client.Available || !status.Client.Cached || packageRequests.Load() != 1 {
-		t.Fatalf("same release client must be cached without reporting local update: %+v requests=%d", status.Client, packageRequests.Load())
-	}
-	oldClient := service.ClientStatus("1.2.2")
-	if !oldClient.Available || !oldClient.Cached {
-		t.Fatalf("older installed client cannot use cached package: %+v", oldClient)
-	}
-}
-
 type countingSource struct {
 	count atomic.Int32
 	delay time.Duration
@@ -450,11 +388,24 @@ func TestLocalPackageStoreRejectsInvalidZip(t *testing.T) {
 	}))
 	defer server.Close()
 	store := &LocalPackageStore{Root: t.TempDir(), Client: &http.Client{Timeout: time.Second}}
-	if _, _, err := store.Ensure(context.Background(), clientPackageName, PackageManifest{URL: server.URL}); err == nil {
+	if _, _, err := store.Ensure(context.Background(), serverPackageName, PackageManifest{URL: server.URL}); err == nil {
 		t.Fatal("invalid ZIP should not be cached")
 	}
-	if store.Cached(clientPackageName, PackageManifest{}) {
+	if store.Cached(serverPackageName, PackageManifest{}) {
 		t.Fatal("invalid ZIP must not be reported as cached")
+	}
+}
+
+func TestNormalizeInstallModeAcceptsOnlyCurrentModes(t *testing.T) {
+	for _, value := range []string{"nsis", "portable", " NSIS "} {
+		if _, err := normalizeInstallMode(value); err != nil {
+			t.Fatalf("current install mode %q rejected: %v", value, err)
+		}
+	}
+	for _, value := range []string{"all-in-one", "all_in_one", "zip", ""} {
+		if _, err := normalizeInstallMode(value); err == nil {
+			t.Fatalf("removed install mode %q accepted", value)
+		}
 	}
 }
 
@@ -471,15 +422,12 @@ func TestLocalPackageStoreVerifiedSnapshotAvoidsRepeatedHashScans(t *testing.T) 
 		return verifySHA256(path, want)
 	}}
 	pkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(archive))}
-	service := NewServiceWithAllDependencies(config.UpdateConfig{Enabled: true, CacheDir: t.TempDir(), ClientVersion: "1.0.0", CheckInterval: time.Hour}, "1.0.0",
-		staticManifestSource{manifest: &Manifest{Version: "1.0.1", Client: pkg}}, store,
-		&LocalArtifactStore{Root: t.TempDir(), Client: server.Client()}, nil, nil)
-	if _, err := service.Check(context.Background()); err != nil {
-		t.Fatalf("check legacy package: %v", err)
+	if _, _, err := store.Ensure(context.Background(), serverPackageName, pkg); err != nil {
+		t.Fatalf("cache server package: %v", err)
 	}
 	for range 3 {
-		if status := service.Status(""); !status.Client.Cached {
-			t.Fatal("verified legacy package should remain cached during repeated status requests")
+		if !store.Cached(serverPackageName, pkg) {
+			t.Fatal("verified server package should remain cached")
 		}
 	}
 	if scans.Load() != 0 {
@@ -508,19 +456,19 @@ func TestLocalPackageStoreSnapshotIncludesDeclaredDigest(t *testing.T) {
 	defer server.Close()
 	store := &LocalPackageStore{Root: t.TempDir(), Client: server.Client()}
 	firstPkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(firstDigest[:]), Size: int64(len(first))}
-	if _, _, err := store.Ensure(context.Background(), clientPackageName, firstPkg); err != nil {
+	if _, _, err := store.Ensure(context.Background(), serverPackageName, firstPkg); err != nil {
 		t.Fatalf("cache first package: %v", err)
 	}
 	serveSecond.Store(true)
 	secondPkg := PackageManifest{URL: server.URL, SHA256: hex.EncodeToString(secondDigest[:]), Size: int64(len(second))}
-	if store.Cached(clientPackageName, secondPkg) {
+	if store.Cached(serverPackageName, secondPkg) {
 		t.Fatal("same-name, same-size package with a new digest must not hit old snapshot")
 	}
-	if _, reused, err := store.Ensure(context.Background(), clientPackageName, secondPkg); err != nil || reused {
+	if _, reused, err := store.Ensure(context.Background(), serverPackageName, secondPkg); err != nil || reused {
 		t.Fatalf("new digest must download replacement: reused=%v err=%v", reused, err)
 	}
-	if requests.Load() != 2 || !store.Cached(clientPackageName, secondPkg) {
-		t.Fatalf("new digest cache result requests=%d cached=%v", requests.Load(), store.Cached(clientPackageName, secondPkg))
+	if requests.Load() != 2 || !store.Cached(serverPackageName, secondPkg) {
+		t.Fatalf("new digest cache result requests=%d cached=%v", requests.Load(), store.Cached(serverPackageName, secondPkg))
 	}
 }
 

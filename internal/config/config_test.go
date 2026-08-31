@@ -40,6 +40,12 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Update.CheckInterval != 6*time.Hour || cfg.Update.ManifestTimeout != 20*time.Second || cfg.Update.DownloadTimeout != 10*time.Minute {
 		t.Fatalf("unexpected update durations: %+v", cfg.Update)
 	}
+	if !cfg.Discovery.Enabled || cfg.Discovery.ServerName == "" || cfg.Discovery.BindHost != "0.0.0.0" || cfg.Discovery.Port != 39080 {
+		t.Fatalf("unexpected discovery defaults: %+v", cfg.Discovery)
+	}
+	if cfg.Discovery.ScanTimeout != 2500*time.Millisecond || cfg.Discovery.PreflightTimeout != 3*time.Second || cfg.Discovery.HTTPTimeout != 2*time.Second {
+		t.Fatalf("unexpected discovery durations: %+v", cfg.Discovery)
+	}
 }
 
 // TestLoadLogConfigFromEnv 验证日志配置可通过环境变量覆盖。
@@ -57,6 +63,13 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_UPDATE_DOWNLOAD_TIMEOUT", "2m")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "direct-test-key")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE", "test-update-public.key")
+	t.Setenv("BB_ERP_DISCOVERY_ENABLED", "false")
+	t.Setenv("BB_ERP_DISCOVERY_SERVER_NAME", "测试发现服务")
+	t.Setenv("BB_ERP_DISCOVERY_BIND_HOST", "127.0.0.1")
+	t.Setenv("BB_ERP_DISCOVERY_PORT", "39081")
+	t.Setenv("BB_ERP_DISCOVERY_SCAN_TIMEOUT", "150ms")
+	t.Setenv("BB_ERP_DISCOVERY_PREFLIGHT_TIMEOUT", "250ms")
+	t.Setenv("BB_ERP_DISCOVERY_HTTP_TIMEOUT", "400ms")
 
 	cfg, err := Load()
 	if err != nil {
@@ -89,6 +102,12 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Update.SigningPublicKey != "direct-test-key" || cfg.Update.SigningPublicKeyFile != "test-update-public.key" {
 		t.Fatalf("update signing public key config: %+v", cfg.Update)
+	}
+	if cfg.Discovery.Enabled || cfg.Discovery.ServerName != "测试发现服务" || cfg.Discovery.BindHost != "127.0.0.1" || cfg.Discovery.Port != 39081 {
+		t.Fatalf("discovery env config: %+v", cfg.Discovery)
+	}
+	if cfg.Discovery.ScanTimeout != 150*time.Millisecond || cfg.Discovery.PreflightTimeout != 250*time.Millisecond || cfg.Discovery.HTTPTimeout != 400*time.Millisecond {
+		t.Fatalf("discovery env durations: %+v", cfg.Discovery)
 	}
 }
 

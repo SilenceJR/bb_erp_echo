@@ -323,7 +323,7 @@ func (h *Handler) ChangePassword(c *echo.Context) error {
 		}
 
 		currentVersion := user.PasswordVersion
-		nextVersion := NormalizePasswordVersion(currentVersion) + 1
+		nextVersion := currentVersion + 1
 		result := tx.Model(&model.User{}).
 			Where("id = ? AND password_version = ?", user.ID, currentVersion).
 			Updates(map[string]any{

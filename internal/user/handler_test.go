@@ -3,6 +3,7 @@ package user
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -29,6 +30,20 @@ func (testRoleService) UserRoleIDs(userIDs []uint) (map[uint][]uint, error) {
 func (testRoleService) ReplaceUserRoles(uint, []uint, bool) error { return nil }
 
 func (testRoleService) AssignRoleCodes(uint, []string) error { return nil }
+
+func (testRoleService) AssignRoleCodesTx(*gorm.DB, uint, []string) error { return nil }
+
+func (testRoleService) ReloadPolicies() error { return nil }
+
+type failingRoleService struct {
+	testRoleService
+	err       error
+	reloadErr error
+}
+
+func (s failingRoleService) AssignRoleCodesTx(*gorm.DB, uint, []string) error { return s.err }
+
+func (s failingRoleService) ReloadPolicies() error { return s.reloadErr }
 
 func userHandlerErrorStatus(err error) int {
 	if httpErr, ok := err.(*echo.HTTPError); ok {
@@ -132,6 +147,65 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 	}
 	if created.DepartmentID == nil || *created.DepartmentID != departmentA.ID || created.TerminalID == nil || *created.TerminalID != terminalA.ID {
 		t.Fatalf("valid user affiliations = department %v terminal %v", created.DepartmentID, created.TerminalID)
+	}
+	if created.PasswordVersion != auth.InitialPasswordVersion {
+		t.Fatalf("new user password_version = %d, want %d", created.PasswordVersion, auth.InitialPasswordVersion)
+	}
+}
+
+func TestCreateDepartmentTerminalRollsBackWhenDefaultRoleAssignmentFails(t *testing.T) {
+	db := openUserTestDB(t)
+	expected := errors.New("default terminal role assignment failed")
+	handler := NewHandler(db, failingRoleService{err: expected})
+	organization := createUserTestOrganization(t, db, "终端回滚组织", "TERMINAL-ROLLBACK-ORG")
+	department := createUserTestDepartment(t, db, organization.ID, "终端回滚部门", "TERMINAL-ROLLBACK-DEPT")
+	terminal := createUserTestTerminal(t, db, department.ID, "TERMINAL-ROLLBACK-TERM")
+	current := &auth.CurrentUser{OrganizationID: organization.ID}
+
+	rec := performUserJSON(t, handler.CreateUser, current, map[string]any{
+		"username":        "terminal-rollback",
+		"password":        "password123",
+		"account_type":    model.AccountTypeDepartmentTerminal,
+		"name":            "部门终端账号",
+		"organization_id": organization.ID,
+		"department_id":   department.ID,
+		"terminal_id":     terminal.ID,
+	})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	var userCount int64
+	if err := db.Model(&model.User{}).Where("username = ?", "terminal-rollback").Count(&userCount).Error; err != nil {
+		t.Fatalf("count rolled-back user: %v", err)
+	}
+	if userCount != 0 {
+		t.Fatalf("user row remained after default role failure: count=%d", userCount)
+	}
+}
+
+func TestCreateDepartmentTerminalDoesNotClaimUsableWhenPolicyReloadFails(t *testing.T) {
+	db := openUserTestDB(t)
+	handler := NewHandler(db, failingRoleService{reloadErr: errors.New("policy reload failed")})
+	organization := createUserTestOrganization(t, db, "策略刷新组织", "POLICY-RELOAD-ORG")
+	department := createUserTestDepartment(t, db, organization.ID, "策略刷新部门", "POLICY-RELOAD-DEPT")
+	terminal := createUserTestTerminal(t, db, department.ID, "POLICY-RELOAD-TERM")
+	current := &auth.CurrentUser{OrganizationID: organization.ID}
+
+	rec := performUserJSON(t, handler.CreateUser, current, map[string]any{
+		"username":        "policy-reload-failure",
+		"password":        "password123",
+		"account_type":    model.AccountTypeDepartmentTerminal,
+		"name":            "部门终端账号",
+		"organization_id": organization.ID,
+		"department_id":   department.ID,
+		"terminal_id":     terminal.ID,
+	})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	var created model.User
+	if err := db.Where("username = ?", "policy-reload-failure").First(&created).Error; err != nil {
+		t.Fatalf("committed user should remain for policy retry: %v", err)
 	}
 }
 
@@ -319,7 +393,7 @@ func openUserTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql database: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Organization{}, &model.Department{}, &model.Terminal{}, &model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.Organization{}, &model.Department{}, &model.Terminal{}, &model.User{}, &model.RefreshSession{}); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 	return db

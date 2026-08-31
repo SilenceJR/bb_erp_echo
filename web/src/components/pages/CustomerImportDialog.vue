@@ -4,7 +4,6 @@
     class="customer-excel-dialog"
     title="导入客户资料"
     width="min(760px, 94vw)"
-    :fullscreen="mobile"
     :close-on-click-modal="!busy"
     :close-on-press-escape="!busy"
     :before-close="beforeClose"
@@ -85,10 +84,11 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from 'vue'
+import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
 import {downloadApiFile, request} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
+import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import type {CustomerImportPreview} from '../../types'
 
 const props = defineProps<{modelValue: boolean; token: string}>()
@@ -103,13 +103,15 @@ const previewLoading = ref(false)
 const commitLoading = ref(false)
 const templateLoading = ref(false)
 const error = ref('')
-const mobile = ref(false)
 const busy = computed(() => previewLoading.value || commitLoading.value || templateLoading.value)
 const expiryText = computed(() => preview.value?.expires_at ? `预览令牌将于 ${new Date(preview.value.expires_at).toLocaleString('zh-CN', {hour12: false})} 过期，提交时会重新校验同一文件。` : '')
 
-function updateMobile() { mobile.value = window.innerWidth < 600 }
-onMounted(() => { updateMobile(); window.addEventListener('resize', updateMobile) })
-onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
+useDirtyGuard('customer-import', {
+  busy: () => props.modelValue && busy.value,
+  dirty: () => props.modelValue && (file.value !== null || step.value > 0),
+  busyMessage: '客户资料导入正在处理，请等待完成后再离开',
+  dirtyMessage: '当前客户导入文件或校验结果尚未完成，离开后不会保留。',
+})
 
 function openFilePicker() { fileInput.value?.click() }
 function selectFile(event: Event) {
@@ -125,7 +127,12 @@ function formatBytes(size: number) { return size < 1024 * 1024 ? `${(size / 1024
 
 async function downloadTemplate() {
   templateLoading.value = true
-  try { await downloadApiFile('/api/v1/customers/import-template', '客户资料导入模板.xlsx', props.token) }
+  try {
+    const result = await downloadApiFile('/api/v1/customers/import-template', '客户资料导入模板.xlsx', props.token)
+    if (result.status === 'error') throw new Error(result.message)
+    if (result.status === 'saved') ElMessage.success(result.path ? `模板已保存到：${result.path}` : '浏览器已开始下载模板')
+    if (result.status === 'cancelled') ElMessage.info('已取消保存导入模板')
+  }
   catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : '模板下载失败') }
   finally { templateLoading.value = false }
 }
@@ -190,16 +197,4 @@ async function beforeClose(done: () => void) {
 .import-result { display: grid; min-height: 320px; place-items: center; align-content: center; text-align: center; }
 .import-result > span { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 50%; background: var(--bb-success-bg); color: var(--bb-success); font-size: var(--bb-font-size-30); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
-@media (max-width: 700px) {
-  .import-guide { grid-template-columns: 36px minmax(0, 1fr); }
-  .import-guide .el-button { grid-column: 1 / -1; min-height: 44px; }
-  .import-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 599px) {
-  .excel-steps :deep(.el-step__title) { font-size: var(--bb-font-size-12); }
-  .dialog-actions { display: grid; grid-template-columns: 1fr; }
-  .dialog-actions .el-button { width: 100%; min-height: 44px; margin: 0; }
-  .import-error-table > div { grid-template-columns: 1fr; }
-  .import-error-table small { grid-column: auto; }
-}
 </style>

@@ -11,6 +11,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -21,6 +22,9 @@ type Handler struct {
 	// DB 是组织、部门和终端读写数据库连接。
 	DB *gorm.DB
 }
+
+// ErrorResponse 是统一错误响应的 Swagger 文档别名。
+type ErrorResponse = response.ErrorBody
 
 // NewHandler 创建部门模块处理器。
 func NewHandler(db *gorm.DB) *Handler {
@@ -132,9 +136,9 @@ func (h *Handler) CreateTerminal(c *echo.Context) error {
 // @Produce json
 // @Param id path int true "部门 ID"
 // @Success 200 {object} model.Department
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/departments/{id} [put]
 func (h *Handler) UpdateDepartment(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -173,9 +177,9 @@ func (h *Handler) UpdateDepartment(c *echo.Context) error {
 // @Accept json
 // @Param id path int true "部门 ID"
 // @Success 204
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/departments/{id}/status [patch]
 func (h *Handler) UpdateDepartmentStatus(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -208,8 +212,8 @@ func (h *Handler) UpdateDepartmentStatus(c *echo.Context) error {
 // @Produce json
 // @Param id path int true "部门 ID"
 // @Success 200 {object} map[string]interface{}
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/departments/{id}/employees [get]
 func (h *Handler) ListDepartmentEmployees(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -246,9 +250,9 @@ func (h *Handler) ListDepartmentEmployees(c *echo.Context) error {
 // @Param id path int true "部门 ID"
 // @Param body body map[string]interface{} true "员工 ID 列表"
 // @Success 200 {object} map[string]interface{}
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
-// @Failure 409 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Router /api/v1/system/departments/{id}/employees [put]
 func (h *Handler) ReplaceDepartmentEmployees(c *echo.Context) error {
 	id, err := request.ParamID(c)

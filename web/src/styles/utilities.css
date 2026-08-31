@@ -1,0 +1,75 @@
+/* Low-level shared patterns. Business composition belongs in components. */
+.bb-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bb-state-panel {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  align-content: center;
+  gap: var(--bb-space-2);
+  border: 1px dashed var(--bb-border-strong);
+  border-radius: var(--bb-radius-xl);
+  background: var(--bb-bg-surface);
+  padding: var(--bb-space-8);
+  color: var(--bb-text-secondary);
+  text-align: center;
+}
+
+.bb-filter-bar {
+  display: flex;
+  min-height: 56px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bb-space-3);
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-lg);
+  background: var(--bb-bg-surface);
+  padding: var(--bb-space-2) var(--bb-space-3);
+  box-shadow: var(--bb-shadow-xs);
+}
+
+.bb-status-tag {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--bb-info-border);
+  border-radius: var(--bb-radius-pill);
+  background: var(--bb-info-bg);
+  padding: 2px 9px;
+  color: var(--bb-info);
+  font-size: var(--bb-font-size-12);
+  font-weight: var(--bb-font-weight-semibold);
+  line-height: 1.4;
+}
+
+.bb-status-tag::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.bb-status-tag[data-tone='success'] { border-color: var(--bb-success-border); background: var(--bb-success-bg); color: var(--bb-success); }
+.bb-status-tag[data-tone='warning'] { border-color: var(--bb-warning-border); background: var(--bb-warning-bg); color: var(--bb-warning); }
+.bb-status-tag[data-tone='danger'] { border-color: var(--bb-danger-border); background: var(--bb-danger-bg); color: var(--bb-danger); }
+
+.bb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.bb-stack { display: grid; gap: var(--bb-space-4); }
+.bb-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bb-space-2); }
+.bb-surface { border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-lg); background: var(--bb-bg-surface); box-shadow: var(--bb-shadow-xs); }
+.bb-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

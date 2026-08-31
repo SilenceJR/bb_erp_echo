@@ -18,19 +18,7 @@ export interface ApiErrorBody {
   request_id: string
 }
 
-// 客户端升级状态，由服务端从 GitHub、Gitee 或内网更新源缓存后提供。
-export interface ClientUpdateStatus {
-  current_version: string
-  latest_version?: string
-  available: boolean
-  cached: boolean
-  file_name?: string
-  download_path?: string
-  message?: string
-}
-
-// 更新中心状态兼容服务端、桌面客户端两类包；字段保持可选以容忍禁用更新、
-// 首次检查失败以及旧服务端返回的精简状态。
+// 更新中心状态字段保持可选，以容忍服务端停用更新或尚未完成首次检查。
 export interface UpdatePackageStatus {
   current_version?: string
   latest_version?: string
@@ -57,19 +45,13 @@ export interface SystemUpdateStatus {
   last_error?: string
   error?: string
   server?: UpdatePackageStatus
-  client?: UpdatePackageStatus
   server_update?: UpdatePackageStatus
-  client_update?: UpdatePackageStatus
   client_protocol_version?: number
   client_full_cached?: boolean
-  client_delta_cached?: boolean
-  client_delta_from_version?: string
   client_cache_bytes?: number
-  client_delta_degraded?: string
   [key: string]: unknown
 }
 
-export type DesktopUpdateStrategy = 'delta' | 'full'
 export type DesktopUpdateState = 'Idle' | 'Checking' | 'Ready' | 'Downloading' | 'Verifying' | 'Applying' | 'Restarting' | 'Failed'
 
 // 桌面升级计划由 Rust 校验后返回。Vue 只展示计划摘要，不读取资源 URL、
@@ -78,14 +60,11 @@ export interface DesktopUpdatePlan {
   current_version?: string
   latest_version?: string
   version?: string
-  strategy: DesktopUpdateStrategy
+  strategy: 'full'
   download_size?: number
   full_size?: number
-  saved_bytes?: number
-  saved_percent?: number
   message?: string
   artifact?: Record<string, unknown>
-  full_fallback?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -94,17 +73,12 @@ export interface DesktopUpdateProgress {
   message?: string
   downloaded_bytes?: number
   total_bytes?: number
-  strategy?: DesktopUpdateStrategy
-  fallback_reason?: string
 }
 
 export interface DesktopUpdateApplyResult {
   success?: boolean
   state?: DesktopUpdateState
-  strategy?: DesktopUpdateStrategy
   message?: string
-  fallback_reason?: string
-  fallback_used?: boolean
   restart_required?: boolean
   [key: string]: unknown
 }

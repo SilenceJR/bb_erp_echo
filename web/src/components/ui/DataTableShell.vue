@@ -28,10 +28,9 @@
       <slot></slot>
     </div>
 
-    <footer v-if="rowsCount > 0" class="ui-data-table-shell__pagination">
+    <footer v-if="rowsCount > 0 && pagination" class="ui-data-table-shell__pagination">
       <span>共 {{ total }} 条记录</span>
       <el-pagination
-        class="ui-data-table-shell__pagination-desktop"
         :current-page="page"
         :page-size="pageSize"
         :page-sizes="[20, 50, 100]"
@@ -40,16 +39,6 @@
         layout="sizes, prev, pager, next, jumper"
         @current-change="emit('update:page', $event)"
         @size-change="emit('update:pageSize', $event)"
-      />
-      <el-pagination
-        class="ui-data-table-shell__pagination-mobile"
-        :current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        size="small"
-        background
-        layout="prev, pager, next"
-        @current-change="emit('update:page', $event)"
       />
     </footer>
   </section>
@@ -68,12 +57,14 @@ withDefaults(defineProps<{
   ariaLabel?: string
   emptyTitle?: string
   emptyDescription?: string
+  pagination?: boolean
 }>(), {
   loading: false,
   error: '',
   ariaLabel: '数据列表',
   emptyTitle: '暂无数据',
   emptyDescription: '当前还没有可显示的记录。',
+  pagination: true,
 })
 
 const emit = defineEmits<{
@@ -114,23 +105,9 @@ const emit = defineEmits<{
   font-size: var(--bb-font-size-13);
 }
 
-.ui-data-table-shell__pagination-mobile {
-  display: none;
-}
-
-@media (max-width: 720px) {
-  .ui-data-table-shell__pagination {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .ui-data-table-shell__pagination-desktop {
-    display: none;
-  }
-
-  .ui-data-table-shell__pagination-mobile {
-    display: flex;
-    max-width: 100%;
-  }
+.ui-data-table-shell__pagination :deep(.el-pagination) {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 </style>

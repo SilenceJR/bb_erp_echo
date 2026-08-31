@@ -1,7 +1,7 @@
-import {apiBaseUrl, isDesktopClient} from '../api/http'
+import {isDesktopClient} from '../api/http'
 import type {InputInstance} from 'element-plus'
 import {reactive, ref} from 'vue'
-import type {ClientUpdateStatus, CurrentUser} from '../types'
+import type {CurrentUser} from '../types'
 
 type HealthState = 'checking' | 'healthy' | 'error'
 
@@ -19,12 +19,6 @@ export function useAuth() {
   const currentUser = ref<CurrentUser | null>(null)
   const errorMessage = ref('')
   const healthStatus = ref<HealthState>('checking')
-  const serverDialogVisible = ref(false)
-  const serverTesting = ref(false)
-  const serverUrlInput = ref(apiBaseUrl())
-  const serverMessage = ref('')
-  const serverMessageType = ref<'success' | 'warning' | 'info' | 'error'>('info')
-  const clientUpdate = ref<ClientUpdateStatus>({current_version: '', available: false, cached: false})
   const loginForm = reactive({username: 'admin', password: ''})
   const loginUsernameInput = ref<InputInstance>()
   const formError = ref('')
@@ -40,12 +34,6 @@ export function useAuth() {
     currentUser,
     errorMessage,
     healthStatus,
-    serverDialogVisible,
-    serverTesting,
-    serverUrlInput,
-    serverMessage,
-    serverMessageType,
-    clientUpdate,
     loginForm,
     loginUsernameInput,
     formError,

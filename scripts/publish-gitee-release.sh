@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
 # shellcheck source=release-semver.sh
 source "$script_dir/release-semver.sh"
-# shellcheck source=release-stable-migration.sh
-source "$script_dir/release-stable-migration.sh"
 # shellcheck source=gitee-release-upload.sh
 source "$script_dir/gitee-release-upload.sh"
 
@@ -19,14 +18,18 @@ token="${GITEE_TOKEN:?GITEE_TOKEN is required}"
 source_token="${GITEE_SOURCE_TOKEN:-$token}"
 expected_sha="${RELEASE_EXPECTED_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
 asset_dir="${RELEASE_ASSET_DIR:-release-assets}"
+public_key="${TAURI_UPDATER_PUBLIC_KEY:?TAURI_UPDATER_PUBLIC_KEY is required}"
 stable_url="$web_base/$release_owner/$release_repo/raw/main/update-manifest.json"
 
-if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+verify_file() {
+  local file="$1"
+  local signature="$2"
+  (cd "$repo_root" && go run ./cmd/verify-update-signature \
+    -public-key "$public_key" -file "$file" -signature "$signature")
+}
+
+if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "Invalid release tag: $tag" >&2
-  exit 1
-fi
-if [[ "$tag" == *-* ]]; then
-  echo "Prerelease tag $tag is for standalone Windows client testing and must not update the stable manifest." >&2
   exit 1
 fi
 if [[ ! -s "$asset_dir/update-manifest.json" ]]; then
@@ -48,9 +51,9 @@ if jq -e '.client_update_v2? != null' "$manifest" >/dev/null; then
   }
 fi
 
-# Keep the legacy ZIP resources and the v2 portable/NSIS/delta resources in one
-# manifest-driven collection. This prevents an added update resource from being
-# released without the final anonymous checksum verification.
+# Keep the server packages and the two full Windows client resources in one
+# manifest-driven collection so every published update receives final anonymous
+# size and SHA-256 verification.
 declare -A resource_hashes resource_sizes
 while IFS=$'\t' read -r url sha size signature; do
   [[ -n "$url" && -n "$sha" && -n "$size" ]] || { echo "Malformed resource in $manifest" >&2; exit 1; }
@@ -62,6 +65,9 @@ while IFS=$'\t' read -r url sha size signature; do
   if [[ -n "$signature" ]]; then
     printf '%s' "$signature" | base64 --decode >/dev/null 2>&1 || {
       echo "Invalid update signature for $file" >&2; exit 1;
+    }
+    verify_file "$asset_dir/$file" "$signature" || {
+      echo "Update signature does not match TAURI_UPDATER_PUBLIC_KEY for $file" >&2; exit 1;
     }
   fi
   if [[ -n "${resource_hashes[$file]+present}" ]]; then
@@ -82,17 +88,25 @@ done < <(jq -er '
       then [.url, .sha256, .size, .signature] | @tsv
       else error("client_update_v2 resource metadata or signature is missing") end;
   (.server | signed_resource),
-  [.client?, .all_in_one?, .updater? | select(. != null) | resource][],
+  [.all_in_one?, .updater? | select(. != null) | resource][],
   (if .client_update_v2? == null then empty else
     (.client_update_v2.payload | @base64d | fromjson) as $payload
     | if $payload.protocol_version != 2 then error("unsupported client_update_v2 protocol") else . end
+    | if ($payload | has("deltas")) then error("delta updates are not supported") else . end
     | if (.client_update_v2.signature | type) != "string" or (.client_update_v2.signature | length) == 0
       then error("client_update_v2 payload signature is missing") else . end
     | if (.client_update_v2.signature | test("^[A-Za-z0-9+/=]+$"))
       then . else error("client_update_v2 payload signature is invalid") end
-    | [$payload.full.nsis, $payload.full.portable | signed_resource][],
-      ($payload.deltas | if type == "array" then . else error("client_update_v2 deltas must be an array") end | .[] | signed_resource)
+    | [$payload.full.nsis, $payload.full.portable | signed_resource][]
   end)' "$manifest")
+
+payload_file="$(mktemp)"
+trap 'rm -f "$payload_file"' EXIT
+jq -er '.client_update_v2.payload' "$manifest" | base64 --decode >"$payload_file"
+verify_file "$payload_file" "$(jq -er '.client_update_v2.signature' "$manifest")" || {
+  echo "client_update_v2 payload signature does not match TAURI_UPDATER_PUBLIC_KEY" >&2
+  exit 1
+}
 (( ${#resource_hashes[@]} > 0 )) || { echo "Manifest contains no publishable resources." >&2; exit 1; }
 
 auth=(-H "Authorization: Bearer $token")
@@ -149,15 +163,13 @@ else
 fi
 
 if [[ -z "${release_id:-}" ]]; then
-  prerelease=false
-  [[ "$tag" == *-* ]] && prerelease=true
   echo "Creating the Gitee distribution release..."
   release_json="$(curl --fail --silent --show-error --location -X POST "${auth[@]}" "${json[@]}" \
     --data-urlencode "tag_name=$tag" \
     --data-urlencode "name=BB ERP $tag" \
     --data-urlencode "body=Automated Windows release for $tag" \
     --data-urlencode "target_commitish=main" \
-    --data-urlencode "prerelease=$prerelease" \
+    --data-urlencode "prerelease=false" \
     "$api_base/repos/$release_owner/$release_repo/releases")"
   release_id="$(jq -er '.id' <<<"$release_json")"
 fi
@@ -175,7 +187,7 @@ done
 
 echo "Verifying anonymous downloads, sizes, and SHA-256 hashes..."
 verify_dir="$(mktemp -d)"
-trap 'rm -rf "$verify_dir"' EXIT
+trap 'rm -f "$payload_file"; rm -rf "$verify_dir"' EXIT
 for entry in "${upload_files[@]}"; do
   file="${entry#*$'\t'}"
   url="$web_base/$release_owner/$release_repo/releases/download/$tag/$file"
@@ -203,20 +215,14 @@ if [[ "$stable_code" == "200" ]]; then
     echo "Release or current stable version is not valid SemVer: release=$release_version stable=$current_stable_version" >&2
     exit 1
   }
-  if [[ "$stable_comparison" != "1" ]] \
-    && ! release_allows_historical_stable_migration "$current_stable_version" "$release_version"; then
+  if [[ "$stable_comparison" != "1" ]]; then
     echo "Release version must be greater than current stable version: release=$release_version stable=$current_stable_version" >&2
     exit 1
-  fi
-  if [[ "$stable_comparison" != "1" ]]; then
-    echo "Using the explicitly authorized historical stable migration: $current_stable_version -> $release_version."
   fi
 elif [[ "$stable_code" != "404" ]]; then
   echo "Unable to recheck stable manifest (HTTP ${stable_code:-000}); refusing to update it." >&2
   exit 1
 fi
-bash "$script_dir/check-release-delta-base.sh" "$manifest" "$current_stable"
-
 echo "Publishing the stable manifest only after all assets passed verification..."
 content_api="$api_base/repos/$release_owner/$release_repo/contents/update-manifest.json"
 existing_response="$verify_dir/existing.json"

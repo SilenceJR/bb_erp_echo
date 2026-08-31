@@ -11,23 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func newLegacyInventoryDocumentDB(t *testing.T, indexSQL string) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := db.Exec(`CREATE TABLE inventory_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, idempotency_key TEXT NOT NULL DEFAULT '')`).Error; err != nil {
-		t.Fatalf("create legacy inventory_documents table: %v", err)
-	}
-	if strings.TrimSpace(indexSQL) != "" {
-		if err := db.Exec(indexSQL).Error; err != nil {
-			t.Fatalf("create legacy index: %v", err)
-		}
-	}
-	return db
-}
-
 func TestEnsureEmployeeDepartmentConsistencyBlocksCrossOrganizationRelations(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -109,78 +92,43 @@ func modelDate(year int, month time.Month, day int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-func TestEnsureInventoryDocumentIdempotencyIndexUpgradesLegacyOrdinaryIndexAndIsIdempotent(t *testing.T) {
-	db := newLegacyInventoryDocumentDB(t, `CREATE INDEX idx_inventory_documents_idempotency_key ON inventory_documents (idempotency_key)`)
-	// 真实启动顺序先执行 GORM AutoMigrate；已有同名普通索引必须仍由显式
-	// 升级步骤接管，而不能依赖 AutoMigrate 猜测索引谓词。
-	if err := db.AutoMigrate(&model.InventoryDocument{}, &model.InventoryDocumentLine{}); err != nil {
-		t.Fatalf("auto migrate legacy inventory document table: %v", err)
-	}
-
-	if err := EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
-		t.Fatalf("upgrade legacy index: %v", err)
-	}
-	assertPartialUniqueInventoryDocumentIndex(t, db)
-	if err := EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
-		t.Fatalf("repeat index upgrade: %v", err)
-	}
-	assertPartialUniqueInventoryDocumentIndex(t, db)
-}
-
-func TestEnsureInventoryDocumentIdempotencyIndexBlocksDuplicateLegacyData(t *testing.T) {
-	db := newLegacyInventoryDocumentDB(t, `CREATE INDEX idx_inventory_documents_idempotency_key ON inventory_documents (idempotency_key)`)
-	if err := db.Exec(`INSERT INTO inventory_documents (idempotency_key) VALUES (?), (?)`, "legacy-key", "legacy-key").Error; err != nil {
-		t.Fatalf("seed duplicate legacy keys: %v", err)
-	}
-
-	err := EnsureInventoryDocumentIdempotencyIndex(db)
-	if err == nil {
-		t.Fatal("duplicate legacy keys should block migration")
-	}
-	message := err.Error()
-	if !strings.Contains(message, `"legacy-key"`) || !strings.Contains(message, "2 rows") || !strings.Contains(message, "resolve duplicates manually") {
-		t.Fatalf("migration error = %q, want key, count and remediation", message)
-	}
-	index, exists, indexErr := sqliteIndexDefinition(db, inventoryDocumentIdempotencyIndex)
-	if indexErr != nil {
-		t.Fatalf("inspect preserved legacy index: %v", indexErr)
-	}
-	if !exists || index.Unique != 0 || index.Partial != 0 {
-		t.Fatalf("duplicate-blocked migration changed legacy index: exists=%v index=%+v", exists, index)
-	}
-}
-
-func TestEnsureInventoryDocumentIdempotencyIndexBlocksDuplicatesBeforeAutoMigrate(t *testing.T) {
-	db := newLegacyInventoryDocumentDB(t, "")
-	if err := db.Exec(`INSERT INTO inventory_documents (idempotency_key) VALUES (?), (?)`, "preflight-key", "preflight-key").Error; err != nil {
-		t.Fatalf("seed duplicate preflight keys: %v", err)
-	}
-	if err := EnsureInventoryDocumentIdempotencyIndex(db); err == nil || !strings.Contains(err.Error(), `"preflight-key"`) || !strings.Contains(err.Error(), "2 rows") {
-		t.Fatalf("preflight duplicate error = %v, want key and count", err)
-	}
-}
-
-func TestEnsureInventoryDocumentIdempotencyIndexAcceptsExistingTargetIndex(t *testing.T) {
-	db := newLegacyInventoryDocumentDB(t, `CREATE UNIQUE INDEX idx_inventory_documents_idempotency_key ON inventory_documents (idempotency_key) WHERE idempotency_key <> ''`)
-	if err := EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
-		t.Fatalf("existing target index should be accepted: %v", err)
-	}
-	assertPartialUniqueInventoryDocumentIndex(t, db)
-}
-
-func assertPartialUniqueInventoryDocumentIndex(t *testing.T, db *gorm.DB) {
-	t.Helper()
-	index, exists, err := sqliteIndexDefinition(db, inventoryDocumentIdempotencyIndex)
+func TestInventoryDocumentSchemaCreatesPartialUniqueIdempotencyIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("inspect idempotency index: %v", err)
+		t.Fatalf("open sqlite: %v", err)
 	}
-	if !exists {
-		t.Fatalf("idempotency index does not exist")
+	if err := db.AutoMigrate(&model.InventoryDocument{}, &model.InventoryDocumentLine{}); err != nil {
+		t.Fatalf("auto migrate inventory document schema: %v", err)
 	}
-	if index.Unique != 1 || index.Partial != 1 {
-		t.Fatalf("idempotency index metadata = %+v, want unique partial", index)
+
+	var index struct {
+		Unique  int    `gorm:"column:is_unique"`
+		Partial int    `gorm:"column:is_partial"`
+		SQL     string `gorm:"column:create_sql"`
 	}
-	if !strings.Contains(strings.ToLower(index.SQL), "where") || !strings.Contains(strings.ToLower(index.SQL), "idempotency_key") {
-		t.Fatalf("idempotency index SQL = %q, want predicate", index.SQL)
+	result := db.Raw(`
+		SELECT il.[unique] AS is_unique, il.[partial] AS is_partial, COALESCE(sm.sql, '') AS create_sql
+		FROM pragma_index_list('inventory_documents') AS il
+		LEFT JOIN sqlite_master AS sm ON sm.type = 'index' AND sm.name = il.name
+		WHERE il.name = ?
+	`, "idx_inventory_documents_idempotency_key").Scan(&index)
+	if result.Error != nil || result.RowsAffected != 1 {
+		t.Fatalf("inspect idempotency index: error=%v rows=%d", result.Error, result.RowsAffected)
+	}
+	if index.Unique != 1 || index.Partial != 1 || !strings.Contains(strings.ToLower(index.SQL), "where") {
+		t.Fatalf("idempotency index = %+v, want partial unique index", index)
+	}
+
+	first := model.InventoryDocument{Code: "DOC-001", Type: "inbound", Status: "draft", WarehouseID: 1, IdempotencyKey: "same-request"}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("create first idempotent document: %v", err)
+	}
+	duplicate := model.InventoryDocument{Code: "DOC-002", Type: "inbound", Status: "draft", WarehouseID: 1, IdempotencyKey: "same-request"}
+	if err := db.Create(&duplicate).Error; err == nil {
+		t.Fatal("schema accepted duplicate non-empty idempotency key")
+	}
+	empty := model.InventoryDocument{Code: "DOC-003", Type: "inbound", Status: "draft", WarehouseID: 1}
+	if err := db.Create(&empty).Error; err != nil {
+		t.Fatalf("create empty idempotency key document: %v", err)
 	}
 }

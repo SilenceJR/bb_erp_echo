@@ -41,12 +41,8 @@ func NewHandler(db *gorm.DB) *Handler {
 // RegisterRoutes 注册产品模块路由。
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	group := v1.Group("/products", audit)
-	group.GET("", h.ListProducts, require("/api/v1/product", "read"))
-	group.POST("", h.CreateProduct, require("/api/v1/product", "write"))
-
-	legacy := v1.Group("/product", audit)
-	legacy.GET("", h.ListProducts, require("/api/v1/product", "read"))
-	legacy.POST("", h.CreateProduct, require("/api/v1/product", "write"))
+	group.GET("", h.ListProducts, require("/api/v1/products", "read"))
+	group.POST("", h.CreateProduct, require("/api/v1/products", "write"))
 }
 
 // ListProducts 查询产品列表。
@@ -61,7 +57,6 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/products [get]
-// @Router /api/v1/product [get]
 func (h *Handler) ListProducts(c *echo.Context) error {
 	var items []model.Product
 	if err := h.DB.Order("id desc").Find(&items).Error; err != nil {
@@ -85,7 +80,6 @@ func (h *Handler) ListProducts(c *echo.Context) error {
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/products [post]
-// @Router /api/v1/product [post]
 func (h *Handler) CreateProduct(c *echo.Context) error {
 	var req createProductRequest
 	if err := request.BindAndValidate(c, &req); err != nil {

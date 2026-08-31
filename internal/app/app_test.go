@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,7 +16,6 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
-	"bb_erp_echo/internal/role"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,12 +35,112 @@ func TestInitializationHealthReadyAndSQLiteWAL(t *testing.T) {
 		t.Fatalf("GET /ready status = %d", rec.Code)
 	}
 
+	rec = erp.request(http.MethodGet, "/api/v1/discovery/identity", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/discovery/identity status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var identity map[string]any
+	decodeJSON(t, rec, &identity)
+	for _, field := range []string{"product", "discovery_protocol", "instance_id", "server_name", "server_version"} {
+		if value, ok := identity[field]; !ok || value == "" || value == nil {
+			t.Fatalf("identity field %q missing: %v", field, identity)
+		}
+	}
+	if identity["product"] != "bb-erp" || identity["discovery_protocol"] != float64(1) {
+		t.Fatalf("unexpected discovery identity: %v", identity)
+	}
+
 	var mode string
 	if err := erp.DB.Raw("PRAGMA journal_mode").Scan(&mode).Error; err != nil {
 		t.Fatalf("read journal_mode: %v", err)
 	}
 	if mode != "wal" {
 		t.Fatalf("journal_mode = %q, want wal", mode)
+	}
+}
+
+func TestCanonicalWarehouseRoutesDoNotExposeRootAlias(t *testing.T) {
+	erp := newTestApp(t)
+	token := erp.login(t, "admin", "admin123456")
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/warehouse"},
+		{method: http.MethodPost, path: "/api/v1/warehouse"},
+	} {
+		rec := erp.request(test.method, test.path, token, nil)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("removed warehouse root alias %s %s status = %d, want %d", test.method, test.path, rec.Code, http.StatusNotFound)
+		}
+	}
+
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouses", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("canonical warehouse management route status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/tabs", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("warehouse tabs route status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateDepartmentTerminalRefreshesPoliciesBeforeUse(t *testing.T) {
+	erp := newTestApp(t)
+	adminToken := erp.login(t, "admin", "admin123456")
+	var terminal model.Terminal
+	if err := erp.DB.Where("code = ?", "injection-terminal-01").First(&terminal).Error; err != nil {
+		t.Fatalf("find seeded terminal: %v", err)
+	}
+	now := time.Now()
+	operator := model.Employee{
+		OrganizationID: 1,
+		Name:           "终端权限测试员工",
+		HireDate:       now,
+		BirthDate:      now,
+		Status:         model.StatusActive,
+	}
+	if err := erp.DB.Create(&operator).Error; err != nil {
+		t.Fatalf("create operator employee: %v", err)
+	}
+	if err := erp.DB.Create(&model.EmployeeDepartment{EmployeeID: operator.ID, DepartmentID: terminal.DepartmentID}).Error; err != nil {
+		t.Fatalf("link operator employee: %v", err)
+	}
+
+	const username = "created-terminal-policy"
+	const password = "terminalPolicy123"
+	rec := erp.request(http.MethodPost, "/api/v1/system/users", adminToken, map[string]any{
+		"username":        username,
+		"password":        password,
+		"account_type":    model.AccountTypeDepartmentTerminal,
+		"name":            "新建部门终端",
+		"organization_id": uint(1),
+		"department_id":   terminal.DepartmentID,
+		"terminal_id":     terminal.ID,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create department terminal status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The test intentionally does not call ReloadPolicies: login and every
+	// protected request must observe the policy refresh performed by CreateUser.
+	terminalSession := erp.loginSession(t, username, password)
+	if rec = erp.request(http.MethodGet, "/api/v1/workorder", terminalSession.AccessToken, nil); rec.Code != http.StatusOK {
+		t.Fatalf("new terminal workorder read status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodGet, "/api/v1/warehouse/items?tab=product", terminalSession.AccessToken, nil); rec.Code != http.StatusOK {
+		t.Fatalf("new terminal warehouse read status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if rec = erp.request(http.MethodPost, "/api/v1/workorder", terminalSession.AccessToken, map[string]any{
+		"type":                  "general",
+		"title":                 "终端写权限测试",
+		"description":           "验证默认终端角色允许创建任务单",
+		"target_department_ids": []uint{terminal.DepartmentID},
+		"operator_employee_id":  operator.ID,
+	}); rec.Code != http.StatusCreated {
+		t.Fatalf("new terminal workorder write status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/warehouse/items", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("new terminal warehouse write status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 }
 
@@ -257,7 +357,48 @@ func TestChangePasswordInvalidatesOldToken(t *testing.T) {
 	}
 }
 
-func TestUpdateStatusRoutesAndClientVersionParameter(t *testing.T) {
+func TestResetUserPasswordInvalidatesTargetSessions(t *testing.T) {
+	erp := newTestApp(t)
+	hash, err := auth.HashPassword("target123456")
+	if err != nil {
+		t.Fatalf("hash target password: %v", err)
+	}
+	target := model.User{
+		Username:        "reset-target",
+		AccountType:     model.AccountTypePersonal,
+		Name:            "重置目标",
+		OrganizationID:  1,
+		Status:          model.StatusActive,
+		PasswordHash:    hash,
+		PasswordVersion: auth.InitialPasswordVersion,
+	}
+	if err := erp.DB.Create(&target).Error; err != nil {
+		t.Fatalf("create reset target: %v", err)
+	}
+	targetSession := erp.loginSession(t, target.Username, "target123456")
+	adminToken := erp.login(t, "admin", "admin123456")
+
+	path := "/api/v1/system/users/" + strconv.FormatUint(uint64(target.ID), 10) + "/reset-password"
+	rec := erp.request(http.MethodPost, path, adminToken, map[string]any{"password": "target456789"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("reset password status = %d, want %d; body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+
+	if rec = erp.request(http.MethodGet, "/api/v1/auth/me", targetSession.AccessToken, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old target access status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{"refresh_token": targetSession.RefreshToken}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old target refresh status = %d, want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if rec = erp.request(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
+		"username": target.Username,
+		"password": "target456789",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("new target password login status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestCurrentUpdateRoutesAndRemovedClientStatus(t *testing.T) {
 	erp := newTestApp(t)
 	token := erp.login(t, "admin", "admin123456")
 
@@ -275,14 +416,11 @@ func TestUpdateStatusRoutesAndClientVersionParameter(t *testing.T) {
 		t.Fatal("disabled update check should return its state and error detail")
 	}
 
-	rec = erp.request(http.MethodGet, "/api/v1/updates/client/status?current_version=1.2.3-beta.1", "", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET client update status = %d", rec.Code)
-	}
-	var clientStatus map[string]any
-	decodeJSON(t, rec, &clientStatus)
-	if clientStatus["current_version"] != "1.2.3-beta.1" {
-		t.Fatalf("client current_version = %v", clientStatus["current_version"])
+	for _, removedPath := range []string{"/api/v1/updates/client/status", "/api/v1/updates/client/download"} {
+		rec = erp.request(http.MethodGet, removedPath, "", nil)
+		if rec.Code >= http.StatusOK && rec.Code < http.StatusMultipleChoices {
+			t.Fatalf("removed client update path %s remains public with status %d", removedPath, rec.Code)
+		}
 	}
 
 	limitedToken := erp.createLimitedUserAndLogin(t)
@@ -370,7 +508,7 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 	}
 
 	terminalToken := erp.createTerminalUserAndLogin(t)
-	rec = erp.request(http.MethodPost, "/api/v1/tasks", terminalToken, map[string]any{
+	rec = erp.request(http.MethodPost, "/api/v1/workorder", terminalToken, map[string]any{
 		"code":                  "AUDIT-TASK-001",
 		"type":                  "production",
 		"product_id":            product.ID,
@@ -465,6 +603,9 @@ func newTestApp(t *testing.T) *testApp {
 	t.Setenv("BB_ERP_WEB_DIST_DIR", webDir)
 	t.Setenv("BB_ERP_JWT_SECRET", "test-secret")
 	t.Setenv("BB_ERP_HTTP_ALLOWED_ORIGINS", "http://localhost")
+	// Each test uses an in-process Echo handler; keep the real UDP discovery
+	// listener disabled so parallel packages never contend for port 39080.
+	t.Setenv("BB_ERP_DISCOVERY_ENABLED", "false")
 
 	erp, err := New()
 	if err != nil {
@@ -577,28 +718,18 @@ func (a *testApp) createTerminalUserAndLogin(t *testing.T) string {
 	if err := a.DB.Where("code = ?", "injection-terminal-01").First(&terminal).Error; err != nil {
 		t.Fatalf("find seeded terminal: %v", err)
 	}
-	hash, err := auth.HashPassword("terminal123")
-	if err != nil {
-		t.Fatalf("hash terminal password: %v", err)
-	}
-	user := model.User{
-		Username:       "injection-terminal-01",
-		AccountType:    model.AccountTypeDepartmentTerminal,
-		Name:           "注塑车间电脑01",
-		OrganizationID: 1,
-		DepartmentID:   &terminal.DepartmentID,
-		TerminalID:     &terminal.ID,
-		Status:         model.StatusActive,
-		PasswordHash:   hash,
-	}
-	if err := a.DB.Create(&user).Error; err != nil {
-		t.Fatalf("create terminal user: %v", err)
-	}
-	if err := a.RoleService.AssignRoleCodes(user.ID, []string{role.TerminalOperatorCode}); err != nil {
-		t.Fatalf("assign terminal role: %v", err)
-	}
-	if err := a.RoleService.ReloadPolicies(); err != nil {
-		t.Fatalf("reload policies: %v", err)
+	adminToken := a.login(t, "admin", "admin123456")
+	rec := a.request(http.MethodPost, "/api/v1/system/users", adminToken, map[string]any{
+		"username":        "injection-terminal-01",
+		"password":        "terminal123",
+		"account_type":    model.AccountTypeDepartmentTerminal,
+		"name":            "注塑车间电脑01",
+		"organization_id": uint(1),
+		"department_id":   terminal.DepartmentID,
+		"terminal_id":     terminal.ID,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create terminal user status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	return a.login(t, "injection-terminal-01", "terminal123")
 }

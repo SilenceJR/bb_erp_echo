@@ -10,11 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
-	"bb_erp_echo/internal/role"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/driver/sqlite"
@@ -80,21 +80,21 @@ func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 	if err := h.Create(moldC); err == nil {
 		t.Fatal("warehouse permission uploaded mold")
 	}
-	old := &auth.CurrentUser{Username: "legacy", OrganizationID: 1}
-	h.enforcer.AddPolicy("legacy", "/api/v1/tasks", "read", "*", "*")
-	h.enforcer.AddPolicy("legacy", "/api/v1/tasks", "write", "*", "*")
+	workorderUser := &auth.CurrentUser{Username: "workorder", OrganizationID: 1}
+	h.authorizer.(*testAuthorizer).Grant("workorder", "/api/v1/workorder", "read")
+	h.authorizer.(*testAuthorizer).Grant("workorder", "/api/v1/workorder", "write")
 	work := model.WorkOrder{Code: "W-1", Title: "W"}
 	if err := db.Create(&work).Error; err != nil {
 		t.Fatal(err)
 	}
 	wc := multipartContext(t, http.MethodPost, "/api/v1/files/images", OwnerWorkOrder, work.ID, "", "one.png", []byte("\x89PNG\r\n\x1a\n"))
-	setUser(wc, old)
+	setUser(wc, workorderUser)
 	if err := h.Create(wc); err != nil {
-		t.Fatalf("legacy tasks permission: %v", err)
+		t.Fatalf("workorder permission: %v", err)
 	}
 	reader := &auth.CurrentUser{Username: "dept", OrganizationID: 1, DepartmentID: ptr(uint(1))}
-	h.enforcer.AddPolicy("dept", "/api/v1/workorder", "read", "*", "*")
-	h.enforcer.AddPolicy("dept", "/api/v1/workorder", "write", "*", "*")
+	h.authorizer.(*testAuthorizer).Grant("dept", "/api/v1/workorder", "read")
+	h.authorizer.(*testAuthorizer).Grant("dept", "/api/v1/workorder", "write")
 	lc := contextFor(t, http.MethodGet, "/api/v1/files?owner_type=department_task&owner_id=1", nil)
 	setUser(lc, reader)
 	lc.Request().URL.RawQuery = "owner_type=" + OwnerDepartmentTask + "&owner_id=" + uintString(task.ID)
@@ -251,14 +251,41 @@ func testHandler(t *testing.T) (*Handler, *gorm.DB) {
 	if err := db.AutoMigrate(&model.Product{}, &model.Mold{}, &model.WorkOrder{}, &model.DepartmentTask{}, &model.ImageFile{}); err != nil {
 		t.Fatal(err)
 	}
-	e, err := role.NewEnforcer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = e.AddPolicy("warehouse", "/api/v1/warehouse", "read", "*", "*")
-	_, _ = e.AddPolicy("warehouse", "/api/v1/warehouse", "write", "*", "*")
-	return NewHandler(NewService(t.TempDir(), db), db, e), db
+	authorizer := newTestAuthorizer()
+	authorizer.Grant("warehouse", "/api/v1/warehouse", "read")
+	authorizer.Grant("warehouse", "/api/v1/warehouse", "write")
+	return NewHandler(NewService(t.TempDir(), db), db, authorizer), db
 }
+
+type testPolicy struct {
+	subject string
+	object  string
+	action  string
+}
+
+type testAuthorizer struct {
+	mu       sync.RWMutex
+	policies map[testPolicy]struct{}
+}
+
+func newTestAuthorizer() *testAuthorizer {
+	return &testAuthorizer{policies: make(map[testPolicy]struct{})}
+}
+
+func (a *testAuthorizer) Grant(subject, object, action string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.policies[testPolicy{subject: subject, object: object, action: action}] = struct{}{}
+}
+
+func (a *testAuthorizer) Enforce(subject, object, action, _, _ string) (bool, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	_, ok := a.policies[testPolicy{subject: subject, object: object, action: action}]
+	return ok, nil
+}
+
+func (a *testAuthorizer) ReloadPolicies() error { return nil }
 func contextFor(t *testing.T, method, path string, body *bytes.Buffer) *echo.Context {
 	t.Helper()
 	if body == nil {

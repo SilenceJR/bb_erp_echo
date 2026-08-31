@@ -16,7 +16,6 @@ export function useModuleData() {
   const loading = ref(false)
   const panelMessage = ref('')
   const listError = ref('')
-  const mobileNavOpen = ref(false)
   const formState = reactive<Record<string, any>>({})
   const activeWarehouseTab = ref('product')
   const workorderStatusFilter = ref('')
@@ -40,7 +39,6 @@ export function useModuleData() {
     loading,
     panelMessage,
     listError,
-    mobileNavOpen,
     formState,
     activeWarehouseTab,
     workorderStatusFilter,

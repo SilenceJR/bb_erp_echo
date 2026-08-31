@@ -49,46 +49,22 @@
         :downloading="downloading"
         @download="openDownload"
       />
-      <DesktopUpdatePanel
-        v-if="desktopClient"
-        :legacy-status="clientStatus"
-        @download-recovery="openDownload"
-      />
-      <PackageCard
-        v-else
-        title="桌面客户端"
-        description="Web 端不执行桌面客户端安装；完整 ZIP 仅供管理员故障恢复使用。"
-        download-label="下载完整 ZIP（故障恢复）"
-        :allow-download="canCheck"
-        :item="clientStatus"
-        :known="statusKnown"
-        :downloading="downloading"
-        @download="openDownload"
-      />
+      <DesktopUpdatePanel v-if="desktopClient" />
     </div>
 
     <article v-if="clientProtocolVersion > 0" class="update-package-card" aria-labelledby="client-v2-cache-title">
       <div class="update-card-heading">
         <div>
           <span class="update-kicker">客户端更新缓存</span>
-          <h2 id="client-v2-cache-title">增量更新资源</h2>
+          <h2 id="client-v2-cache-title">完整更新资源</h2>
         </div>
         <el-tag type="info" effect="light">协议 v{{ clientProtocolVersion }}</el-tag>
       </div>
       <p class="update-package-description">服务端已验签并缓存的 Windows 客户端更新资源摘要。</p>
       <dl class="update-version-list">
         <div><dt>完整包</dt><dd>{{ cacheStateLabel(status?.client_full_cached) }}</dd></div>
-        <div><dt>差分来源版本</dt><dd>{{ status?.client_delta_from_version || '暂无可用差分' }}</dd></div>
-        <div><dt>差分包</dt><dd>{{ cacheStateLabel(status?.client_delta_cached) }}</dd></div>
         <div><dt>缓存总量</dt><dd>{{ formatBytes(status?.client_cache_bytes) }}</dd></div>
       </dl>
-      <el-alert
-        v-if="clientDeltaDegraded"
-        :title="`差分更新已降级：${clientDeltaDegraded}`"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
     </article>
   </section>
 </template>
@@ -98,6 +74,7 @@ import {computed, defineComponent, h, onMounted, ref} from 'vue'
 import {ElButton, ElMessage, ElTag} from 'element-plus'
 import DesktopUpdatePanel from './DesktopUpdatePanel.vue'
 import {downloadApiFile, isDesktopClient, request} from '../api/http'
+import {useDirtyGuard} from '../composables/useDirtyGuard'
 import type {SystemUpdateStatus, UpdatePackageStatus} from '../types'
 
 const props = defineProps<{
@@ -111,12 +88,12 @@ const loading = ref(false)
 const checking = ref(false)
 const downloading = ref(false)
 const loadError = ref('')
+useDirtyGuard('update-package-save', {busy: () => downloading.value, busyMessage: '安装包正在保存，请等待完成后再离开'})
 let statusRequestGeneration = 0
 const requestBusy = computed(() => loading.value || checking.value)
 const manifestUrl = computed(() => String(status.value?.manifest_url || status.value?.source || ''))
 const statusError = computed(() => String(status.value?.last_error || status.value?.error || ''))
 const clientProtocolVersion = computed(() => Math.max(0, Number(status.value?.client_protocol_version || 0)))
-const clientDeltaDegraded = computed(() => String(status.value?.client_delta_degraded || '').trim())
 const statusKnown = computed(() => Boolean(
   status.value
   && !loadError.value
@@ -127,7 +104,6 @@ const statusKnown = computed(() => Boolean(
   && !status.value.checking,
 ))
 const serverStatus = computed(() => status.value?.server || status.value?.server_update || {})
-const clientStatus = computed(() => status.value?.client || status.value?.client_update || {})
 const connectivityText = computed(() => {
   if (!status.value || loadError.value) return '更新状态未知'
   if (requestBusy.value) return '正在获取更新状态'
@@ -199,8 +175,10 @@ async function openDownload(item: UpdatePackageStatus) {
       return
     }
     const apiPath = target.startsWith('/') ? target : `/${target}`
-    await downloadApiFile(apiPath, fileName, props.token)
-    ElMessage.success(`下载已开始，保存文件名：${fileName}`)
+    const result = await downloadApiFile(apiPath, fileName, props.token)
+    if (result.status === 'error') throw new Error(result.message)
+    if (result.status === 'saved') ElMessage.success(result.path ? `安装包已保存到：${result.path}` : `浏览器已开始下载：${fileName}`)
+    if (result.status === 'cancelled') ElMessage.info(`已取消保存：${fileName}`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '升级包下载失败')
   } finally {
@@ -248,8 +226,6 @@ const PackageCard = defineComponent({
     item: {type: Object as () => UpdatePackageStatus, required: true},
     known: {type: Boolean, required: true},
     downloading: {type: Boolean, default: false},
-    downloadLabel: {type: String, default: ''},
-    allowDownload: {type: Boolean, default: true},
   },
   emits: ['download'],
   setup(cardProps, {emit}) {
@@ -262,8 +238,7 @@ const PackageCard = defineComponent({
       while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1 }
       return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`
     }
-    const canDownload = () => cardProps.allowDownload && Boolean(cardProps.item.download_url || cardProps.item.download_path)
-    const downloadUnavailableText = () => !cardProps.allowDownload ? '需要更新管理权限才能下载故障恢复包' : '当前没有可下载的安装包'
+    const canDownload = () => Boolean(cardProps.item.download_url || cardProps.item.download_path)
     const hasVersionData = () => Boolean(cardProps.item.current_version && cardProps.item.latest_version)
     const packageState = () => {
       if (!cardProps.known) return {type: 'info' as const, label: '状态未知'}
@@ -286,7 +261,7 @@ const PackageCard = defineComponent({
       ]),
       cardProps.item.message ? h('p', {class: 'update-package-message'}, cardProps.item.message) : null,
       h('div', {class: 'update-actions'}, [
-        canDownload() ? h(ElButton, {type: 'primary', plain: true, loading: cardProps.downloading, disabled: cardProps.downloading, onClick: () => emit('download', cardProps.item)}, () => cardProps.downloadLabel || (cardProps.title === 'Go 服务端' ? '下载升级包' : '下载客户端')) : h('small', downloadUnavailableText()),
+        canDownload() ? h(ElButton, {type: 'primary', plain: true, loading: cardProps.downloading, disabled: cardProps.downloading, onClick: () => emit('download', cardProps.item)}, () => '下载升级包') : h('small', '当前没有可下载的安装包'),
       ]),
     ])
   },

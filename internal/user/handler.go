@@ -4,12 +4,14 @@ package user
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -22,6 +24,9 @@ type Handler struct {
 	// RoleService 用于用户角色绑定和策略刷新。
 	RoleService role.UserRoleService
 }
+
+// ErrorResponse 是统一错误响应的 Swagger 文档别名。
+type ErrorResponse = response.ErrorBody
 
 // NewHandler 创建用户接口处理器。
 func NewHandler(db *gorm.DB, roleService role.UserRoleService) *Handler {
@@ -54,10 +59,10 @@ func (h *Handler) RegisterRoutes(system *echo.Group, require func(string, string
 // @Param id path int true "用户 ID"
 // @Param body body map[string]interface{} true "归属信息"
 // @Success 200 {object} model.User
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
-// @Failure 409 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Router /api/v1/system/users/{id}/affiliation [patch]
 func (h *Handler) UpdateUserAffiliation(c *echo.Context) error {
 	current := auth.GetCurrentUser(c)
@@ -193,11 +198,24 @@ func (h *Handler) CreateUser(c *echo.Context) error {
 		PasswordHash:    hash,
 		PasswordVersion: auth.InitialPasswordVersion,
 	}
-	if err := h.DB.Create(&item).Error; err != nil {
+	db := h.DB.WithContext(c.Request().Context())
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&item).Error; err != nil {
+			return err
+		}
+		if req.AccountType == model.AccountTypeDepartmentTerminal {
+			if err := h.RoleService.AssignRoleCodesTx(tx, item.ID, []string{role.TerminalOperatorCode}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	if req.AccountType == model.AccountTypeDepartmentTerminal {
-		h.RoleService.AssignRoleCodes(item.ID, []string{role.TerminalOperatorCode})
+		if err := h.RoleService.ReloadPolicies(); err != nil {
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "账号已创建，但权限策略刷新失败，请稍后重试").Wrap(err)
+		}
 	}
 	return c.JSON(http.StatusCreated, item)
 }
@@ -260,19 +278,24 @@ func (h *Handler) ResetUserPassword(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	currentVersion := target.PasswordVersion
-	nextVersion := auth.NormalizePasswordVersion(currentVersion) + 1
-	result := db.Model(&model.User{}).
-		Where("id = ? AND organization_id = ? AND password_version = ?", id, current.OrganizationID, currentVersion).
-		Updates(map[string]any{
-			"password_hash":    hash,
-			"password_version": nextVersion,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return echo.NewHTTPError(http.StatusConflict, "密码已发生变化，请重试")
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		currentVersion := target.PasswordVersion
+		nextVersion := currentVersion + 1
+		result := tx.Model(&model.User{}).
+			Where("id = ? AND organization_id = ? AND password_version = ?", id, current.OrganizationID, currentVersion).
+			Updates(map[string]any{
+				"password_hash":    hash,
+				"password_version": nextVersion,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "密码已发生变化，请重试")
+		}
+		return auth.RevokeRefreshTokensForUser(tx, target.ID, time.Now())
+	}); err != nil {
+		return err
 	}
 	return c.NoContent(http.StatusNoContent)
 }

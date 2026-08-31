@@ -24,16 +24,18 @@ import (
 // - Log：结构化日志级别。
 // - Web：Web 管理端静态文件配置。
 // - Admin：首次启动时自动创建的管理员账号。
+// - Discovery：局域网服务发现和单服务预检配置。
 type Config struct {
-	App      AppConfig      `koanf:"app"`
-	HTTP     HTTPConfig     `koanf:"http"`
-	Database DatabaseConfig `koanf:"database"`
-	JWT      JWTConfig      `koanf:"jwt"`
-	Log      LogConfig      `koanf:"log"`
-	Web      WebConfig      `koanf:"web"`
-	Admin    AdminConfig    `koanf:"admin"`
-	Update   UpdateConfig   `koanf:"update"`
-	Files    FilesConfig    `koanf:"files"`
+	App       AppConfig       `koanf:"app"`
+	HTTP      HTTPConfig      `koanf:"http"`
+	Database  DatabaseConfig  `koanf:"database"`
+	JWT       JWTConfig       `koanf:"jwt"`
+	Log       LogConfig       `koanf:"log"`
+	Web       WebConfig       `koanf:"web"`
+	Admin     AdminConfig     `koanf:"admin"`
+	Update    UpdateConfig    `koanf:"update"`
+	Files     FilesConfig     `koanf:"files"`
+	Discovery DiscoveryConfig `koanf:"discovery"`
 }
 
 // FilesConfig 描述受保护上传文件的存储位置。
@@ -59,6 +61,28 @@ type HTTPConfig struct {
 	Port int `koanf:"port"`
 	// AllowedOrigins 是允许访问 API 的 Web 管理端来源列表。
 	AllowedOrigins []string `koanf:"allowed_origins"`
+}
+
+// DiscoveryConfig 描述局域网发现协议和启动预检。
+//
+// 发现只面向 loopback 与 RFC1918 IPv4 内网。Port 是 UDP 发现端口，
+// BindHost 只用于服务端响应器监听；HTTPPort 由应用启动时从 HTTP.Port
+// 注入服务门面，避免客户端从 UDP 报文中获得任意 URL。
+type DiscoveryConfig struct {
+	// Enabled 表示是否启用 UDP 响应器和启动时单服务预检。
+	Enabled bool `koanf:"enabled"`
+	// ServerName 是发现列表展示的服务名称；留空时使用本机主机名。
+	ServerName string `koanf:"server_name"`
+	// BindHost 是 UDP 响应器监听地址，默认监听所有 IPv4 网卡。
+	BindHost string `koanf:"bind_host"`
+	// Port 是 UDP 发现端口，默认 39080。
+	Port int `koanf:"port"`
+	// ScanTimeout 是一次广播发现收集响应的最长时间。
+	ScanTimeout time.Duration `koanf:"scan_timeout"`
+	// PreflightTimeout 是服务启动预检的最长时间。
+	PreflightTimeout time.Duration `koanf:"preflight_timeout"`
+	// HTTPTimeout 是候选服务 /ready 和身份接口的单次请求超时。
+	HTTPTimeout time.Duration `koanf:"http_timeout"`
 }
 
 // DatabaseConfig 描述数据库连接配置。
@@ -173,6 +197,12 @@ func Load() (*Config, error) {
 		"update.signing_public_key":      "",
 		"update.signing_public_key_file": "",
 		"files.root_dir":                 "static/uploads",
+		"discovery.enabled":              true,
+		"discovery.bind_host":            "0.0.0.0",
+		"discovery.port":                 39080,
+		"discovery.scan_timeout":         "2500ms",
+		"discovery.preflight_timeout":    "3s",
+		"discovery.http_timeout":         "2s",
 	}
 
 	// 默认配置保证首次部署可启动；JWT 和管理员初始密码按系统内部默认策略运行，
@@ -284,6 +314,47 @@ func Load() (*Config, error) {
 	}
 	if err := validateProductionConfig(cfg); err != nil {
 		return nil, err
+	}
+	if serverName := k.String("discovery.server.name"); serverName != "" {
+		cfg.Discovery.ServerName = strings.TrimSpace(serverName)
+	}
+	if cfg.Discovery.ServerName == "" {
+		if hostname, err := os.Hostname(); err == nil {
+			cfg.Discovery.ServerName = strings.TrimSpace(hostname)
+		}
+	}
+	if cfg.Discovery.ServerName == "" {
+		cfg.Discovery.ServerName = strings.TrimSpace(cfg.App.Name)
+	}
+	if bindHost := k.String("discovery.bind.host"); bindHost != "" {
+		cfg.Discovery.BindHost = bindHost
+	}
+	if cfg.Discovery.BindHost == "" {
+		cfg.Discovery.BindHost = "0.0.0.0"
+	}
+	if port := k.Int("discovery.port"); port > 0 && port <= 65535 {
+		cfg.Discovery.Port = port
+	}
+	if cfg.Discovery.Port <= 0 || cfg.Discovery.Port > 65535 {
+		cfg.Discovery.Port = 39080
+	}
+	if scanTimeout := k.Duration("discovery.scan.timeout"); scanTimeout > 0 {
+		cfg.Discovery.ScanTimeout = scanTimeout
+	}
+	if cfg.Discovery.ScanTimeout <= 0 {
+		cfg.Discovery.ScanTimeout = 2500 * time.Millisecond
+	}
+	if preflightTimeout := k.Duration("discovery.preflight.timeout"); preflightTimeout > 0 {
+		cfg.Discovery.PreflightTimeout = preflightTimeout
+	}
+	if cfg.Discovery.PreflightTimeout <= 0 {
+		cfg.Discovery.PreflightTimeout = 3 * time.Second
+	}
+	if httpTimeout := k.Duration("discovery.http.timeout"); httpTimeout > 0 {
+		cfg.Discovery.HTTPTimeout = httpTimeout
+	}
+	if cfg.Discovery.HTTPTimeout <= 0 {
+		cfg.Discovery.HTTPTimeout = 2 * time.Second
 	}
 
 	return &cfg, nil

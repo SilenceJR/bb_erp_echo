@@ -3,16 +3,19 @@
 //! Desktop update boundary. The webview may ask to check/apply an update, but
 //! every URL, signature and executable path is revalidated in this module.
 
-use crate::delta::{apply_patch, sha256_file, ALGORITHM};
+use crate::discovery::private_or_loopback_ipv4;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use minisign_verify::{PublicKey, Signature};
 use reqwest::{redirect::Policy, Client, Url};
+#[cfg(windows)]
+use reqwest_updater::redirect::Policy as UpdaterRedirectPolicy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    net::IpAddr,
+    io::Read,
+    net::Ipv4Addr,
     path::{Path, PathBuf},
     sync::Mutex,
     time::Duration,
@@ -38,7 +41,6 @@ pub struct UpdateSnapshot {
     pub downloaded_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
     pub strategy: Option<String>,
-    pub fallback_reason: Option<String>,
 }
 
 impl Default for UpdateSnapshot {
@@ -49,30 +51,22 @@ impl Default for UpdateSnapshot {
             downloaded_bytes: None,
             total_bytes: None,
             strategy: None,
-            fallback_reason: None,
         }
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateArtifact {
     pub kind: String,
-    #[serde(default)]
-    pub algorithm: String,
     pub sha256: String,
     pub size: u64,
-    #[serde(default)]
     pub signature: String,
     pub download_path: String,
-    #[serde(default)]
-    pub from_version: String,
-    #[serde(default)]
-    pub from_sha256: String,
-    #[serde(default)]
-    pub target_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ClientUpdatePlan {
     pub protocol_version: u32,
     pub current_version: String,
@@ -82,51 +76,38 @@ pub struct ClientUpdatePlan {
     pub strategy: String,
     pub download_size: u64,
     pub full_size: u64,
-    pub saved_bytes: u64,
     pub signed_payload: String,
     pub signature: String,
     pub artifact: UpdateArtifact,
-    pub full_fallback: UpdateArtifact,
     #[serde(default)]
     pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SignedPayload {
     protocol_version: u32,
     version: String,
     target: String,
     layout_version: u32,
     full: SignedFull,
-    #[serde(default)]
-    deltas: Vec<SignedDelta>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SignedFull {
     nsis: SignedAsset,
     portable: SignedAsset,
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SignedAsset {
-    url: String,
+    kind: String,
+    #[serde(rename = "url")]
+    _url: String,
     size: u64,
     sha256: String,
-    #[serde(default)]
-    signature: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct SignedDelta {
-    from_version: String,
-    from_sha256: String,
-    target_sha256: String,
-    algorithm: String,
-    url: String,
-    size: u64,
-    sha256: String,
-    #[serde(default)]
     signature: String,
 }
 
@@ -135,7 +116,6 @@ struct SignedDelta {
 pub struct UpdateApplyResult {
     pub state: String,
     pub strategy: String,
-    pub fallback_used: bool,
     pub message: String,
 }
 
@@ -145,6 +125,20 @@ pub fn update_public_key() -> Option<&'static str> {
 
 fn error(message: impl Into<String>) -> String {
     message.into()
+}
+
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut input = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn emit(engine: &UpdateEngine, app: &AppHandle, snapshot: UpdateSnapshot) {
@@ -171,35 +165,23 @@ fn finish_task(engine: &UpdateEngine) {
 
 fn clean_origin(value: &str) -> Result<Url, String> {
     let parsed = Url::parse(value.trim()).map_err(|_| error("服务器地址格式不正确"))?;
-    if !matches!(parsed.scheme(), "http" | "https")
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| error("更新服务器地址缺少 IPv4 主机"))?;
+    let ip: Ipv4Addr = host
+        .parse()
+        .map_err(|_| error("更新服务器必须使用本机或局域网 IPv4"))?;
+    if parsed.scheme() != "http"
+        || !private_or_loopback_ipv4(ip)
         || parsed.username() != ""
         || parsed.password().is_some()
         || parsed.path() != "/"
         || parsed.query().is_some()
         || parsed.fragment().is_some()
     {
-        return Err(error("更新服务器地址必须是已验证的 HTTP(S) 主机和端口"));
-    }
-    if parsed.scheme() == "http" && !is_private_or_loopback_host(parsed.host_str()) {
-        return Err(error("公网更新服务器必须使用 HTTPS"));
+        return Err(error("更新服务器地址必须是已验证的内网 HTTP 主机和端口"));
     }
     Ok(parsed)
-}
-
-fn is_private_or_loopback_host(host: Option<&str>) -> bool {
-    let Some(host) = host else {
-        return false;
-    };
-    if host.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    let Ok(ip) = host.parse::<IpAddr>() else {
-        return false;
-    };
-    match ip {
-        IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
-        IpAddr::V6(ip) => ip.is_loopback(),
-    }
 }
 
 fn same_origin(origin: &Url, url: &Url) -> bool {
@@ -209,7 +191,11 @@ fn same_origin(origin: &Url, url: &Url) -> bool {
 }
 
 fn artifact_url(origin: &Url, path: &str) -> Result<Url, String> {
-    if !path.starts_with('/') || path.starts_with("//") {
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains('\\')
+        || path.chars().any(char::is_control)
+    {
         return Err(error("更新资源路径不合法"));
     }
     let url = Url::parse(&format!(
@@ -226,6 +212,7 @@ fn artifact_url(origin: &Url, path: &str) -> Result<Url, String> {
 
 fn http_client() -> Result<Client, String> {
     Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(20))
         .redirect(Policy::none())
         .build()
@@ -234,6 +221,7 @@ fn http_client() -> Result<Client, String> {
 
 fn artifact_client() -> Result<Client, String> {
     Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(10 * 60))
         .redirect(Policy::none())
         .build()
@@ -242,12 +230,6 @@ fn artifact_client() -> Result<Client, String> {
 
 fn current_version(app: &AppHandle) -> String {
     app.package_info().version.to_string()
-}
-
-fn current_exe_hash() -> Result<String, String> {
-    std::env::current_exe()
-        .map_err(|e| e.to_string())
-        .and_then(|path| sha256_file(&path).map_err(|e| e.to_string()))
 }
 
 async fn ensure_verified_server(origin: &Url) -> Result<(), String> {
@@ -264,11 +246,9 @@ async fn ensure_verified_server(origin: &Url) -> Result<(), String> {
 }
 
 async fn fetch_plan(origin: &Url, app: &AppHandle) -> Result<Option<ClientUpdatePlan>, String> {
-    let hash = current_exe_hash()?;
     let mut url = artifact_url(origin, PLAN_PATH)?;
     url.query_pairs_mut()
         .append_pair("current_version", &current_version(app))
-        .append_pair("current_sha256", &hash)
         .append_pair("target", "windows-x86_64")
         .append_pair(
             "install_mode",
@@ -308,17 +288,13 @@ pub fn verify_signature_with_public_key(
         .map_err(|_| error("更新签名校验失败"))
 }
 
-/// Tauri's signer exposes the complete `.pub` file as a Base64 envelope. Keep
-/// support for a raw Minisign key as a migration fallback for development.
+/// Tauri's signer exposes the complete `.pub` file as a Base64 envelope.
 pub fn parse_public_key(value: &str) -> Result<PublicKey, String> {
-    if let Ok(decoded) = BASE64.decode(value.trim().as_bytes()) {
-        if let Ok(text) = String::from_utf8(decoded) {
-            if let Ok(key) = PublicKey::decode(&text) {
-                return Ok(key);
-            }
-        }
-    }
-    PublicKey::from_base64(value.trim()).map_err(|_| error("更新公钥格式无效"))
+    let decoded = BASE64
+        .decode(value.trim().as_bytes())
+        .map_err(|_| error("更新公钥不是 Tauri Base64 封装"))?;
+    let text = String::from_utf8(decoded).map_err(|_| error("更新公钥文本无效"))?;
+    PublicKey::decode(&text).map_err(|_| error("更新公钥格式无效"))
 }
 
 fn decode_signature_envelope(value: &str) -> Result<String, String> {
@@ -336,9 +312,12 @@ fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result
     if plan.protocol_version != 2 || plan.target != "windows-x86_64" {
         return Err(error("不支持的更新协议或平台"));
     }
-    if plan.latest_version.trim().is_empty()
-        || Version::parse(plan.latest_version.trim_start_matches('v')).is_err()
-    {
+    let current = current_version(app);
+    let current_semver = Version::parse(current.trim_start_matches('v'))
+        .map_err(|_| error("当前客户端版本号无效"))?;
+    let latest_semver = Version::parse(plan.latest_version.trim_start_matches('v'))
+        .map_err(|_| error("更新版本号无效"))?;
+    if plan.current_version != current || latest_semver <= current_semver {
         return Err(error("更新版本号无效"));
     }
     let payload_bytes = BASE64
@@ -354,46 +333,18 @@ fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result
     {
         return Err(error("更新签名载荷与更新计划不一致"));
     }
-    let expected_full = if plan.install_mode == "portable" {
-        &payload.full.portable
-    } else {
-        &payload.full.nsis
+    let expected_full = match plan.install_mode.as_str() {
+        "portable" if plan.artifact.kind == "portable" => &payload.full.portable,
+        "nsis" if plan.artifact.kind == "nsis" => &payload.full.nsis,
+        _ => return Err(error("完整更新安装模式与资源类型不一致")),
     };
-    verify_artifact_matches(&plan.full_fallback, expected_full, origin)?;
-    if plan.strategy == "delta" {
-        let current_hash = current_exe_hash()?;
-        let found = payload
-            .deltas
-            .iter()
-            .find(|delta| {
-                delta.from_version == current_version(app)
-                    && delta.from_sha256.eq_ignore_ascii_case(&current_hash)
-                    && delta.algorithm == ALGORITHM
-                    && delta.sha256.eq_ignore_ascii_case(&plan.artifact.sha256)
-            })
-            .ok_or_else(|| error("差分包与当前客户端不匹配"))?;
-        if plan.artifact.algorithm != ALGORITHM
-            || !found
-                .target_sha256
-                .eq_ignore_ascii_case(&plan.artifact.target_sha256)
-        {
-            return Err(error("差分包校验信息不一致"));
-        }
-        verify_artifact_matches(
-            &plan.artifact,
-            &SignedAsset {
-                url: found.url.clone(),
-                size: found.size,
-                sha256: found.sha256.clone(),
-                signature: found.signature.clone(),
-            },
-            origin,
-        )?;
-    } else if plan.strategy == "full" {
-        verify_artifact_matches(&plan.artifact, expected_full, origin)?;
-    } else {
-        return Err(error("未知更新策略"));
+    if plan.strategy != "full"
+        || plan.download_size != plan.artifact.size
+        || plan.full_size != plan.artifact.size
+    {
+        return Err(error("更新计划不是当前 full-only 契约"));
     }
+    verify_artifact_matches(&plan.artifact, expected_full, origin)?;
     Ok(())
 }
 
@@ -402,21 +353,16 @@ fn verify_artifact_matches(
     signed: &SignedAsset,
     origin: &Url,
 ) -> Result<(), String> {
-    if actual.size != signed.size
+    if actual.kind != signed.kind
+        || actual.size != signed.size
         || !actual.sha256.eq_ignore_ascii_case(&signed.sha256)
         || actual.signature != signed.signature
     {
         return Err(error("更新资源与签名载荷不一致"));
     }
     let actual_url = artifact_url(origin, &actual.download_path)?;
-    let signed_url = Url::parse(&signed.url).map_err(|_| error("签名资源地址不合法"))?;
-    // The signed release URL may be Gitee while the ERP server proxies a
-    // cached artifact. Only the server-relative path is fetched by the app.
-    if signed_url.scheme() != "https"
-        || signed_url.host_str().is_none()
-        || !same_origin(origin, &actual_url)
-    {
-        return Err(error("签名资源地址或下载路径不合法"));
+    if !same_origin(origin, &actual_url) {
+        return Err(error("更新下载路径必须来自已验证的内网服务"));
     }
     Ok(())
 }
@@ -491,8 +437,7 @@ async fn download_verified(
                 message: Some("正在下载更新".into()),
                 downloaded_bytes: Some(downloaded),
                 total_bytes: Some(artifact.size),
-                strategy: None,
-                fallback_reason: None,
+                strategy: Some("full".into()),
             },
         );
     }
@@ -519,8 +464,7 @@ async fn download_verified(
             message: Some("更新资源已通过签名与哈希校验".into()),
             downloaded_bytes: Some(downloaded),
             total_bytes: Some(artifact.size),
-            strategy: None,
-            fallback_reason: None,
+            strategy: Some("full".into()),
         },
     );
     Ok(target)
@@ -654,50 +598,10 @@ pub async fn client_update_apply(
                     ..Default::default()
                 },
             );
-            if current.strategy == "delta" {
-                match apply_delta(&app, &engine, &origin, &current).await {
-                    Ok(message) => {
-                        return Ok(UpdateApplyResult {
-                            state: "Restarting".into(),
-                            strategy: "delta".into(),
-                            fallback_used: false,
-                            message,
-                        })
-                    }
-                    Err(reason) => {
-                        emit(
-                            &engine,
-                            &app,
-                            UpdateSnapshot {
-                                state: "Downloading".into(),
-                                message: Some("差分更新不可用，正在切换完整更新".into()),
-                                strategy: Some("full".into()),
-                                fallback_reason: Some(reason.clone()),
-                                ..Default::default()
-                            },
-                        );
-                        let message = apply_full(
-                            &app,
-                            &engine,
-                            &origin,
-                            &current.full_fallback,
-                            Some(reason),
-                        )
-                        .await?;
-                        return Ok(UpdateApplyResult {
-                            state: "Restarting".into(),
-                            strategy: "full".into(),
-                            fallback_used: true,
-                            message,
-                        });
-                    }
-                }
-            }
-            let message = apply_full(&app, &engine, &origin, &current.artifact, None).await?;
+            let message = apply_full(&app, &engine, &origin, &current).await?;
             Ok(UpdateApplyResult {
                 state: "Restarting".into(),
                 strategy: "full".into(),
-                fallback_used: false,
                 message,
             })
         }
@@ -719,48 +623,18 @@ pub async fn client_update_apply(
 }
 
 #[cfg(windows)]
-async fn apply_delta(
+async fn apply_full(
     app: &AppHandle,
     engine: &UpdateEngine,
     origin: &Url,
     plan: &ClientUpdatePlan,
 ) -> Result<String, String> {
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    ensure_target_parent_writable(&current)?;
-    let patch = download_verified(app, engine, origin, &plan.artifact).await?;
-    let rebuilt = cache_path(app, &plan.artifact.target_sha256)?.with_extension("exe.new");
-    emit(
-        engine,
-        app,
-        UpdateSnapshot {
-            state: "Applying".into(),
-            message: Some("正在重建增量更新".into()),
-            strategy: Some("delta".into()),
-            ..Default::default()
-        },
-    );
-    apply_patch(&current, &patch, &rebuilt).map_err(|e| format!("差分重建失败：{e}"))?;
-    let rebuilt_hash = sha256_file(&rebuilt).map_err(|e| e.to_string())?;
-    if !rebuilt_hash.eq_ignore_ascii_case(&plan.artifact.target_sha256) {
-        return Err(error("差分重建 SHA-256 校验失败"));
-    }
-    schedule_portable_replace(app, engine, &rebuilt)
-}
-
-#[cfg(windows)]
-async fn apply_full(
-    app: &AppHandle,
-    engine: &UpdateEngine,
-    origin: &Url,
-    artifact: &UpdateArtifact,
-    fallback_reason: Option<String>,
-) -> Result<String, String> {
-    let current = std::env::current_exe().map_err(|e| e.to_string())?;
     if should_use_portable_full(
         is_portable()?,
         ensure_target_parent_writable(&current).is_ok(),
     ) {
-        let replacement = download_verified(app, engine, origin, artifact).await?;
+        let replacement = download_verified(app, engine, origin, &plan.artifact).await?;
         emit(
             engine,
             app,
@@ -768,13 +642,12 @@ async fn apply_full(
                 state: "Applying".into(),
                 message: Some("正在准备完整客户端替换".into()),
                 strategy: Some("full".into()),
-                fallback_reason: fallback_reason.clone(),
                 ..Default::default()
             },
         );
         return schedule_portable_replace(app, engine, &replacement);
     }
-    apply_nsis_full(app, engine, origin, fallback_reason).await
+    apply_nsis_full(app, engine, origin, plan).await
 }
 
 fn should_use_portable_full(portable_marker: bool, target_writable: bool) -> bool {
@@ -786,7 +659,7 @@ async fn apply_nsis_full(
     app: &AppHandle,
     engine: &UpdateEngine,
     origin: &Url,
-    fallback_reason: Option<String>,
+    plan: &ClientUpdatePlan,
 ) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
     let endpoint = artifact_url(
@@ -798,6 +671,8 @@ async fn apply_nsis_full(
     )?;
     let updater = app
         .updater_builder()
+        .no_proxy()
+        .configure_client(|builder| builder.redirect(UpdaterRedirectPolicy::none()))
         .endpoints(vec![endpoint])
         .map_err(|e| e.to_string())?
         .build()
@@ -807,6 +682,14 @@ async fn apply_nsis_full(
         .await
         .map_err(|e| format!("完整更新检查失败：{e}"))?
         .ok_or_else(|| error("完整更新已不可用"))?;
+    validate_nsis_update_metadata(
+        &plan.latest_version,
+        &plan.artifact,
+        origin,
+        &update.version,
+        &update.download_url,
+        &update.signature,
+    )?;
     let mut total_downloaded = 0_u64;
     emit(
         engine,
@@ -815,7 +698,6 @@ async fn apply_nsis_full(
             state: "Downloading".into(),
             message: Some("正在下载完整更新".into()),
             strategy: Some("full".into()),
-            fallback_reason: fallback_reason.clone(),
             ..Default::default()
         },
     );
@@ -832,7 +714,6 @@ async fn apply_nsis_full(
                         downloaded_bytes: Some(total_downloaded),
                         total_bytes: total,
                         strategy: Some("full".into()),
-                        fallback_reason: fallback_reason.clone(),
                     },
                 )
             },
@@ -844,7 +725,6 @@ async fn apply_nsis_full(
                         state: "Applying".into(),
                         message: Some("正在验证并安装完整更新".into()),
                         strategy: Some("full".into()),
-                        fallback_reason: fallback_reason.clone(),
                         ..Default::default()
                     },
                 )
@@ -859,11 +739,29 @@ async fn apply_nsis_full(
             state: "Restarting".into(),
             message: Some("完整更新安装完成，正在重启客户端".into()),
             strategy: Some("full".into()),
-            fallback_reason,
             ..Default::default()
         },
     );
     Ok("完整安装程序已启动，客户端将重启".into())
+}
+
+fn validate_nsis_update_metadata(
+    planned_version: &str,
+    artifact: &UpdateArtifact,
+    origin: &Url,
+    update_version: &str,
+    download_url: &Url,
+    signature: &str,
+) -> Result<(), String> {
+    let expected_url = artifact_url(origin, &artifact.download_path)?;
+    if artifact.kind != "nsis"
+        || update_version != planned_version
+        || download_url != &expected_url
+        || signature != artifact.signature
+    {
+        return Err(error("安装器更新信息与已验签计划不一致"));
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -920,7 +818,7 @@ fn schedule_portable_replace(
         UpdateSnapshot {
             state: "Restarting".into(),
             message: Some("更新已就绪，正在重启客户端".into()),
-            strategy: None,
+            strategy: Some("full".into()),
             ..Default::default()
         },
     );
@@ -1150,8 +1048,8 @@ fn hex_name(bytes: &[u8]) -> String {
 }
 
 /// Probe the target directory before the old process exits. Windows directory
-/// ACLs are authoritative for rename/create operations, so an installed app in
-/// Program Files safely falls back to the signed NSIS updater instead.
+/// ACLs are authoritative for rename/create operations; Program Files installs
+/// use the signed NSIS installer instead of direct executable replacement.
 fn ensure_target_parent_writable(target: &Path) -> Result<(), String> {
     use std::{
         fs::OpenOptions,
@@ -1205,7 +1103,7 @@ mod tests {
         assert!(clean_origin("http://127.0.0.1:8080").is_ok());
         assert!(clean_origin("http://8.8.8.8:8080").is_err());
         assert!(clean_origin("http://updates.example.test").is_err());
-        assert!(clean_origin("https://updates.example.test").is_ok());
+        assert!(clean_origin("https://192.168.1.2:8080").is_err());
         assert!(clean_origin("http://user:pass@localhost:8080").is_err());
         assert!(clean_origin("http://localhost:8080/api").is_err());
         assert!(clean_origin("file:///tmp/a").is_err());
@@ -1213,10 +1111,104 @@ mod tests {
 
     #[test]
     fn artifact_paths_cannot_escape_the_verified_origin() {
-        let origin = clean_origin("https://erp.example.test").unwrap();
+        let origin = clean_origin("http://192.168.1.2:8080").unwrap();
         assert!(artifact_url(&origin, "/api/v1/updates/client/artifacts/abc").is_ok());
         assert!(artifact_url(&origin, "https://attacker.test/a").is_err());
         assert!(artifact_url(&origin, "//attacker.test/a").is_err());
+        assert!(artifact_url(&origin, "/\\attacker.test/a").is_err());
+    }
+
+    #[test]
+    fn nsis_download_must_match_the_verified_plan() {
+        let origin = clean_origin("http://192.168.1.2:8080").unwrap();
+        let artifact = UpdateArtifact {
+            kind: "nsis".into(),
+            sha256: "a".repeat(64),
+            size: 1,
+            signature: "signed-installer".into(),
+            download_path: "/api/v1/updates/client/artifacts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+        };
+        let expected_url = artifact_url(&origin, &artifact.download_path).unwrap();
+        assert!(validate_nsis_update_metadata(
+            "1.0.1",
+            &artifact,
+            &origin,
+            "1.0.1",
+            &expected_url,
+            "signed-installer",
+        )
+        .is_ok());
+        assert!(validate_nsis_update_metadata(
+            "1.0.1",
+            &artifact,
+            &origin,
+            "1.0.0",
+            &expected_url,
+            "signed-installer",
+        )
+        .is_err());
+        assert!(validate_nsis_update_metadata(
+            "1.0.1",
+            &artifact,
+            &origin,
+            "1.0.1",
+            &Url::parse("http://192.168.1.3:8080/installer.exe").unwrap(),
+            "signed-installer",
+        )
+        .is_err());
+        assert!(validate_nsis_update_metadata(
+            "1.0.1",
+            &artifact,
+            &origin,
+            "1.0.1",
+            &expected_url,
+            "different-signature",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn full_only_contract_rejects_delta_and_legacy_plan_fields() {
+        let current = br#"{
+          "protocol_version":2,
+          "version":"1.0.1",
+          "target":"windows-x86_64",
+          "layout_version":1,
+          "full":{
+            "nsis":{"kind":"nsis","url":"http://192.168.1.2/nsis.exe","size":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","signature":"sig"},
+            "portable":{"kind":"portable","url":"http://192.168.1.2/client.exe","size":1,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","signature":"sig"}
+          }
+        }"#;
+        assert!(serde_json::from_slice::<SignedPayload>(current).is_ok());
+
+        let with_delta = br#"{
+          "protocol_version":2,
+          "version":"1.0.1",
+          "target":"windows-x86_64",
+          "layout_version":1,
+          "full":{
+            "nsis":{"kind":"nsis","url":"http://192.168.1.2/nsis.exe","size":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","signature":"sig"},
+            "portable":{"kind":"portable","url":"http://192.168.1.2/client.exe","size":1,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","signature":"sig"}
+          },
+          "deltas":[]
+        }"#;
+        assert!(serde_json::from_slice::<SignedPayload>(with_delta).is_err());
+
+        let plan = br#"{
+          "protocol_version":2,
+          "current_version":"1.0.0",
+          "latest_version":"1.0.1",
+          "target":"windows-x86_64",
+          "install_mode":"portable",
+          "strategy":"full",
+          "download_size":1,
+          "full_size":1,
+          "saved_bytes":0,
+          "signed_payload":"payload",
+          "signature":"signature",
+          "artifact":{"kind":"portable","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":1,"signature":"sig","download_path":"/api/v1/updates/client/artifacts/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+        }"#;
+        assert!(serde_json::from_slice::<ClientUpdatePlan>(plan).is_err());
     }
 
     #[test]
@@ -1234,20 +1226,23 @@ mod tests {
     fn rejects_a_tampered_tauri_signature_or_payload() {
         let signature = "untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==";
         let envelope = BASE64.encode(signature.as_bytes());
-        let key = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
-        verify_signature_with_public_key(b"test", key, &envelope).unwrap();
-        assert!(verify_signature_with_public_key(b"Test", key, &envelope).is_err());
+        let raw_key = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+        let public_file =
+            format!("untrusted comment: minisign public key E7620F1842B4E81F\n{raw_key}");
+        let key = BASE64.encode(public_file.as_bytes());
+        verify_signature_with_public_key(b"test", &key, &envelope).unwrap();
+        assert!(verify_signature_with_public_key(b"Test", &key, &envelope).is_err());
         let tampered = BASE64.encode(signature.replacen("RUQf", "RUQe", 1).as_bytes());
-        assert!(verify_signature_with_public_key(b"test", key, &tampered).is_err());
+        assert!(verify_signature_with_public_key(b"test", &key, &tampered).is_err());
     }
 
     #[test]
-    fn parses_tauri_public_key_envelope_and_raw_fallback() {
+    fn accepts_only_the_current_tauri_public_key_envelope() {
         let raw = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
         let public_file = format!("untrusted comment: minisign public key E7620F1842B4E81F\n{raw}");
         let envelope = BASE64.encode(public_file.as_bytes());
         assert!(parse_public_key(&envelope).is_ok());
-        assert!(parse_public_key(raw).is_ok());
+        assert!(parse_public_key(raw).is_err());
         assert!(parse_public_key("this is not a public key").is_err());
     }
 
@@ -1261,7 +1256,7 @@ mod tests {
     }
 
     #[test]
-    fn unwritable_portable_target_uses_the_nsis_fallback() {
+    fn portable_full_requires_a_writable_target() {
         assert!(should_use_portable_full(true, true));
         assert!(!should_use_portable_full(true, false));
         assert!(!should_use_portable_full(false, true));

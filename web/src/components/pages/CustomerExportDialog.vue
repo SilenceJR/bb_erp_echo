@@ -4,7 +4,6 @@
     class="customer-export-dialog"
     title="导出客户资料"
     width="min(1120px, 96vw)"
-    :fullscreen="mobile"
     :close-on-click-modal="!downloading"
     :close-on-press-escape="!downloading"
     destroy-on-close
@@ -79,9 +78,10 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from 'vue'
+import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
 import {downloadApiFile, request} from '../../api/http'
+import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import PageState from '../ui/PageState.vue'
 import type {SpreadsheetDocument} from '../../types'
 
@@ -97,7 +97,6 @@ const error = ref('')
 const pageSize = ref(50)
 const frozen = ref({scope: 'current' as 'current' | 'all', q: '', filter: 'all' as 'all' | 'multiple' | 'empty'})
 const generation = ref(0)
-const mobile = ref(false)
 const currentScopeText = computed(() => {
   const parts = []
   if (props.keyword) parts.push(`关键词“${props.keyword}”`)
@@ -106,9 +105,12 @@ const currentScopeText = computed(() => {
   return parts.length ? parts.join(' · ') : '当前为全部编码，无其他筛选。'
 })
 
-function updateMobile() { mobile.value = window.innerWidth < 600 }
-onMounted(() => { updateMobile(); window.addEventListener('resize', updateMobile) })
-onBeforeUnmount(() => window.removeEventListener('resize', updateMobile))
+useDirtyGuard('customer-export', {
+  busy: () => props.modelValue && (loading.value || downloading.value),
+  dirty: () => props.modelValue && (previewReady.value || scope.value !== 'current'),
+  busyMessage: '客户资料导出正在处理，请等待完成后再离开',
+  dirtyMessage: '当前导出范围或预览尚未完成，离开后不会保留。',
+})
 
 function query(page = 1) {
   const params = new URLSearchParams({scope: frozen.value.scope, page: String(page), page_size: String(pageSize.value)})
@@ -145,8 +147,10 @@ async function download() {
   error.value = ''
   try {
     const params = query(1); params.delete('page'); params.delete('page_size')
-    await downloadApiFile(`/api/v1/customers/export?${params}`, '客户资料.xlsx', props.token)
-    ElMessage.success('客户资料 XLSX 已开始下载')
+    const result = await downloadApiFile(`/api/v1/customers/export?${params}`, '客户资料.xlsx', props.token)
+    if (result.status === 'error') throw new Error(result.message)
+    if (result.status === 'saved') ElMessage.success(result.path ? `客户资料 XLSX 已保存到：${result.path}` : '浏览器已开始下载客户资料 XLSX')
+    if (result.status === 'cancelled') ElMessage.info('已取消保存客户资料 XLSX')
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '导出失败'; ElMessage.error(error.value) }
   finally { downloading.value = false }
 }
@@ -186,17 +190,4 @@ function reset() { generation.value++; scope.value = 'current'; previewReady.val
 .export-freshness-note { margin: 0; color: var(--bb-text-secondary); font-size: var(--bb-font-size-12); text-align: right; }
 .dialog-actions,
 .export-preview-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
-@media (max-width: 720px) {
-  .export-scope-options { grid-template-columns: 1fr; }
-  .export-preview-toolbar { align-items: stretch; flex-direction: column; }
-  .export-preview-toolbar > div { flex-wrap: wrap; }
-  .export-preview-actions { width: 100%; }
-  .export-preview-actions .el-button { flex: 1; min-height: 44px; }
-}
-@media (max-width: 599px) {
-  .export-preview-step { min-height: calc(100vh - 190px); }
-  .worksheet-shell { max-height: calc(100vh - 390px); }
-  .dialog-actions { display: grid; grid-template-columns: 1fr; }
-  .dialog-actions .el-button { width: 100%; min-height: 44px; margin: 0; }
-}
 </style>

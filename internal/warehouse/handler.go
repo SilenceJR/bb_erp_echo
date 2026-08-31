@@ -73,12 +73,10 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	warehouses.GET("", h.ListWarehouses, require("/api/v1/warehouse", "read"))
 	warehouses.POST("", h.CreateWarehouse, require("/api/v1/warehouse", "write"))
 
-	legacy := v1.Group("/warehouse", audit)
-	legacy.GET("", h.ListWarehouses, require("/api/v1/warehouse", "read"))
-	legacy.POST("", h.CreateWarehouse, require("/api/v1/warehouse", "write"))
-	legacy.GET("/tabs", h.ListTabs, require("/api/v1/warehouse", "read"))
-	legacy.GET("/items", h.ListItems, require("/api/v1/warehouse", "read"))
-	legacy.POST("/items", h.CreateItem, require("/api/v1/warehouse", "write"))
+	warehouse := v1.Group("/warehouse", audit)
+	warehouse.GET("/tabs", h.ListTabs, require("/api/v1/warehouse", "read"))
+	warehouse.GET("/items", h.ListItems, require("/api/v1/warehouse", "read"))
+	warehouse.POST("/items", h.CreateItem, require("/api/v1/warehouse", "write"))
 
 	locations := v1.Group("/locations", audit)
 	locations.GET("", h.ListLocations, require("/api/v1/warehouse", "read"))
@@ -97,7 +95,6 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouses [get]
-// @Router /api/v1/warehouse [get]
 func (h *Handler) ListWarehouses(c *echo.Context) error {
 	item, err := h.defaultWarehouse(h.DB)
 	if err != nil {
@@ -121,7 +118,6 @@ func (h *Handler) ListWarehouses(c *echo.Context) error {
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouses [post]
-// @Router /api/v1/warehouse [post]
 func (h *Handler) CreateWarehouse(c *echo.Context) error {
 	var req createWarehouseRequest
 	if err := request.BindAndValidate(c, &req); err != nil {

@@ -47,7 +47,7 @@
 <script setup lang="ts">
 import {computed} from 'vue'
 import type {BasicItem} from '../../types'
-import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {useWorkorderContext} from '../../composables/workorderContext'
 import StatusTag from '../ui/StatusTag.vue'
 
 const props = defineProps<{
@@ -59,7 +59,7 @@ const props = defineProps<{
 
 defineEmits<{refresh: []}>()
 
-const {formatQuantity, stockState} = useWorkspaceContext()
+const {formatQuantity, stockState} = useWorkorderContext().product
 
 const productSubtitle = computed(() => {
   if (!props.product) return '库存只用于计划参考，不阻止创建生产单。'

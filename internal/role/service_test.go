@@ -32,11 +32,11 @@ func newAssignmentTestService(t *testing.T) *Service {
 	); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
-	enforcer, err := NewEnforcer()
+	authorizer, err := NewPolicyProvider(db)
 	if err != nil {
-		t.Fatalf("create enforcer: %v", err)
+		t.Fatalf("create policy provider: %v", err)
 	}
-	return NewService(db, enforcer)
+	return NewService(db, authorizer)
 }
 
 func TestAssignmentServiceReplacesAndBatchLoadsAssociations(t *testing.T) {
@@ -161,6 +161,92 @@ func TestDefaultPermissionsUseNewCustomerMatrix(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing customer permissions: %+v", want)
+	}
+}
+
+func TestDefaultPermissionsUseCanonicalMoldPermissions(t *testing.T) {
+	want := map[string]struct {
+		object string
+		action string
+	}{
+		"mold:read":  {object: "/api/v1/molds", action: "read"},
+		"mold:write": {object: "/api/v1/molds", action: "write"},
+	}
+	seen := make(map[string]int)
+	for _, permission := range DefaultPermissions() {
+		if strings.HasPrefix(permission.Code, "molds:") {
+			t.Fatalf("duplicate plural mold permission remains: %+v", permission)
+		}
+		expected, ok := want[permission.Code]
+		if !ok {
+			continue
+		}
+		seen[permission.Code]++
+		if permission.Object != expected.object || permission.Action != expected.action {
+			t.Fatalf("permission %s = %+v, want object=%s action=%s", permission.Code, permission, expected.object, expected.action)
+		}
+	}
+	for code := range want {
+		if seen[code] != 1 {
+			t.Fatalf("permission %s count = %d, want exactly one", code, seen[code])
+		}
+	}
+}
+
+func TestAttachPermissionCodesFailsClosedForUnknownCode(t *testing.T) {
+	service := newAssignmentTestService(t)
+	role := model.Role{Name: "权限绑定测试角色", Code: "permission_assignment_test"}
+	if err := service.DB.Create(&role).Error; err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	permission := model.Permission{Name: "任务查看", Code: "workorder:read", Object: "/api/v1/workorder", Action: "read"}
+	if err := service.DB.Create(&permission).Error; err != nil {
+		t.Fatalf("create permission: %v", err)
+	}
+
+	err := service.AttachPermissionCodes(role.ID, []string{"workorder:read", "workorder:reed"})
+	if !errors.Is(err, ErrPermissionCodeNotFound) {
+		t.Fatalf("unknown permission code error = %v, want ErrPermissionCodeNotFound", err)
+	}
+	var count int64
+	if err := service.DB.Model(&model.RolePermission{}).Where("role_id = ?", role.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count role permissions: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("unknown permission code must not grant any permission, count=%d", count)
+	}
+
+	if err := service.AttachPermissionCodes(role.ID, nil); !errors.Is(err, ErrPermissionCodeNotFound) {
+		t.Fatalf("empty permission code error = %v, want ErrPermissionCodeNotFound", err)
+	}
+}
+
+func TestAttachPermissionsRequiresExplicitIDsAndAttachAllIsExplicit(t *testing.T) {
+	service := newAssignmentTestService(t)
+	role := model.Role{Name: "全量权限测试角色", Code: "attach_all_test"}
+	if err := service.DB.Create(&role).Error; err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+	permissions := []model.Permission{
+		{Name: "全量查看一", Code: "attach-all:read", Object: "/attach-all/one", Action: "read"},
+		{Name: "全量查看二", Code: "attach-all:write", Object: "/attach-all/two", Action: "write"},
+	}
+	if err := service.DB.Create(&permissions).Error; err != nil {
+		t.Fatalf("create permissions: %v", err)
+	}
+
+	if err := service.AttachPermissions(role.ID, nil); !errors.Is(err, ErrNoPermissions) {
+		t.Fatalf("empty permission IDs error = %v, want ErrNoPermissions", err)
+	}
+	if err := service.AttachAllPermissions(role.ID); err != nil {
+		t.Fatalf("attach all permissions: %v", err)
+	}
+	var count int64
+	if err := service.DB.Model(&model.RolePermission{}).Where("role_id = ?", role.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count attached permissions: %v", err)
+	}
+	if count != int64(len(permissions)) {
+		t.Fatalf("attached permission count = %d, want %d", count, len(permissions))
 	}
 }
 

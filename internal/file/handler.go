@@ -11,9 +11,9 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 
-	"github.com/casbin/casbin/v2"
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
@@ -21,13 +21,13 @@ import (
 type ErrorResponse = response.ErrorBody
 
 type Handler struct {
-	service  *Service
-	db       *gorm.DB
-	enforcer *casbin.Enforcer
+	service    *Service
+	db         *gorm.DB
+	authorizer role.Authorizer
 }
 
-func NewHandler(service *Service, db *gorm.DB, enforcer *casbin.Enforcer) *Handler {
-	return &Handler{service: service, db: db, enforcer: enforcer}
+func NewHandler(service *Service, db *gorm.DB, authorizer role.Authorizer) *Handler {
+	return &Handler{service: service, db: db, authorizer: authorizer}
 }
 
 // RegisterRoutes 注册图片列表、上传、内容、替换和删除接口。
@@ -48,7 +48,7 @@ func (h *Handler) permission(action string) echo.MiddlewareFunc {
 			if current == nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
 			}
-			if h.enforce(current, "/api/v1/warehouse", action) || h.enforce(current, "/api/v1/mold", action) || h.enforce(current, "/api/v1/workorder", action) || h.enforce(current, "/api/v1/tasks", action) {
+			if h.enforce(current, "/api/v1/warehouse", action) || h.enforce(current, "/api/v1/molds", action) || h.enforce(current, "/api/v1/workorder", action) {
 				return next(c)
 			}
 			return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
@@ -60,7 +60,7 @@ func (h *Handler) enforce(u *auth.CurrentUser, object, action string) bool {
 	if u.DepartmentID != nil {
 		dept = strconv.FormatUint(uint64(*u.DepartmentID), 10)
 	}
-	ok, _ := h.enforcer.Enforce(u.Username, object, action, strconv.FormatUint(uint64(u.OrganizationID), 10), dept)
+	ok, _ := h.authorizer.Enforce(u.Username, object, action, strconv.FormatUint(uint64(u.OrganizationID), 10), dept)
 	return ok
 }
 func (h *Handler) canAccess(u *auth.CurrentUser, ownerType, action string) bool {
@@ -68,9 +68,9 @@ func (h *Handler) canAccess(u *auth.CurrentUser, ownerType, action string) bool 
 	case OwnerProduct:
 		return h.enforce(u, "/api/v1/warehouse", action)
 	case OwnerMold:
-		return h.enforce(u, "/api/v1/mold", action)
+		return h.enforce(u, "/api/v1/molds", action)
 	case OwnerWorkOrder, OwnerDepartmentTask:
-		return h.enforce(u, "/api/v1/workorder", action) || h.enforce(u, "/api/v1/tasks", action)
+		return h.enforce(u, "/api/v1/workorder", action)
 	}
 	return false
 }

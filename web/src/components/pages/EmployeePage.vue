@@ -22,18 +22,18 @@
         <el-table-column label="状态" width="95"><template #default="{row}"><StatusTag :label="row.status === 'active' ? '在职' : '已停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></template></el-table-column>
         <el-table-column label="操作" width="210" fixed="right"><template #default="{row}"><el-button link type="primary" :disabled="statusUpdatingID === row.id" @click="directory.openView(row)">详情</el-button><el-button v-if="canWrite" link type="primary" :disabled="statusUpdatingID === row.id" @click="directory.openEdit(row)">编辑</el-button><el-button v-if="canWrite" link :type="row.status === 'active' ? 'danger' : 'success'" :loading="statusUpdatingID === row.id" :disabled="statusUpdatingID !== null && statusUpdatingID !== row.id" @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button></template></el-table-column>
       </el-table></div>
-      <div class="responsive-card-list"><article v-for="row in directory.employees.value" :key="row.id" class="employee-card"><div class="responsive-card-heading"><div><strong>{{ row.name }}</strong><small>#{{ row.id }} · {{ row.phone || '未填写电话' }}</small></div><StatusTag :label="row.status === 'active' ? '在职' : '已停用'" :tone="row.status === 'active' ? 'success' : 'info'" /></div><dl><div><dt>入职</dt><dd>{{ row.hire_date }}</dd></div><div><dt>年龄</dt><dd>{{ row.age }} 岁</dd></div><div><dt>部门</dt><dd>{{ row.departments?.map((item: any) => item.name).join('、') || '未分配' }}</dd></div></dl><div class="card-actions"><el-button :disabled="statusUpdatingID === row.id" @click="directory.openView(row)">查看详情</el-button><el-button v-if="canWrite" :disabled="statusUpdatingID === row.id" @click="directory.openEdit(row)">编辑</el-button><el-button v-if="canWrite" :type="row.status === 'active' ? 'danger' : 'success'" plain :loading="statusUpdatingID === row.id" :disabled="statusUpdatingID !== null && statusUpdatingID !== row.id" @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-button></div></article></div>
     </DataTableShell>
     <EmployeeFormDrawer v-model="directory.drawerVisible.value" :title="directory.title.value" :form="directory.form" :editing="directory.editing.value" :readonly="directory.drawerReadonly.value" :saving="directory.saving.value" :save-error="directory.saveError.value" @save="directory.save" />
   </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, ref} from 'vue'
+import {computed, onBeforeUnmount, onMounted, ref} from 'vue'
 import {ElMessage} from 'element-plus'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useEmployeeDirectory} from '../../composables/useEmployeeDirectory'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {dirtyGuardRegistry} from '../../platform/dirtyGuard'
 import type {EmployeeItem} from '../../types'
 import DataTableShell from '../ui/DataTableShell.vue'
 import FilterBar from '../ui/FilterBar.vue'
@@ -51,10 +51,36 @@ const hasFilters = computed(() => Boolean(directory.keyword.value || directory.d
 const emptyDescription = computed(() => hasFilters.value ? '可调整关键词、部门或员工状态后重试。' : canWrite ? '新增员工后，可在部门模块中配置成员关系。' : '当前账号仅可查看员工档案；如需建档，请联系管理员授权或代为新增。')
 const emptyActionLabel = computed(() => hasFilters.value ? '清除筛选' : canWrite ? '新增员工' : '')
 const departmentFilterPlaceholder = computed(() => !canReadDepartments ? '无部门查看权限' : directory.departmentsError.value ? '部门加载失败' : '所属部门')
-onMounted(() => { void Promise.all([directory.load(), canReadDepartments ? directory.loadDepartments() : Promise.resolve()]) })
+const employeeInitial = computed(() => directory.editing.value ? JSON.stringify({name: directory.editing.value.name, phone: directory.editing.value.phone || '', hire_date: directory.editing.value.hire_date, birthplace: directory.editing.value.birthplace || '', residential_address: directory.editing.value.residential_address || '', birth_date: directory.editing.value.birth_date}) : JSON.stringify({name: '', phone: '', hire_date: '', birthplace: '', residential_address: '', birth_date: ''}))
+const employeeDirty = computed(() => directory.drawerVisible.value && !directory.drawerReadonly.value && JSON.stringify(directory.form) !== employeeInitial.value)
+let removeDirtyGuard = () => {}
+onMounted(() => {
+  removeDirtyGuard = dirtyGuardRegistry.register({
+    id: 'employee-form',
+    blocksUnload: () => directory.saving.value || statusUpdatingID.value !== null || employeeDirty.value,
+    async confirmLeave() {
+      if (directory.saving.value || statusUpdatingID.value !== null) { ElMessage.warning(statusUpdatingID.value !== null ? '员工状态正在更新，请等待完成后再离开' : '员工档案正在保存，请等待完成后再离开'); return false }
+      if (!employeeDirty.value) return true
+      try { await appMessageBox.confirm('尚有未保存的员工信息，离开后填写内容将丢失。', '放弃修改？', {type: 'warning'}); return true } catch { return false }
+    },
+  })
+  void Promise.all([directory.load(), canReadDepartments ? directory.loadDepartments() : Promise.resolve()])
+})
+onBeforeUnmount(removeDirtyGuard)
 function resetFilters() { directory.keyword.value = ''; directory.departmentID.value = undefined; directory.status.value = 'active'; directory.applySearch() }
 function handleEmptyAction() { if (hasFilters.value) resetFilters(); else if (canWrite) directory.openCreate() }
 function changePage(value: number) { directory.page.value = value; void directory.load() }
 function changePageSize(value: number) { directory.pageSize.value = value; directory.page.value = 1; void directory.load() }
-async function toggleStatus(row: unknown) { const item = row as EmployeeItem; if (statusUpdatingID.value !== null) return; try { await appMessageBox.confirm(item.status === 'active' ? `停用员工“${item.name}”？历史记录和部门关系会保留。` : `重新启用员工“${item.name}”？`, item.status === 'active' ? '确认停用' : '确认启用', {type: item.status === 'active' ? 'warning' : 'success', confirmButtonText: item.status === 'active' ? '确认停用' : '确认启用', confirmButtonClass: item.status === 'active' ? 'el-button--danger' : ''}); statusUpdatingID.value = item.id; await directory.setStatus(item, item.status === 'active' ? 'disabled' : 'active'); ElMessage.success('员工状态已更新') } catch (cause) { if (cause instanceof Error) ElMessage.error(cause.message) } finally { statusUpdatingID.value = null } }
+async function toggleStatus(row: unknown) {
+  const item = row as EmployeeItem
+  if (statusUpdatingID.value !== null) return
+  try { await appMessageBox.confirm(item.status === 'active' ? `停用员工“${item.name}”？历史记录和部门关系会保留。` : `重新启用员工“${item.name}”？`, item.status === 'active' ? '确认停用' : '确认启用', {type: item.status === 'active' ? 'warning' : 'success', confirmButtonText: item.status === 'active' ? '确认停用' : '确认启用', confirmButtonClass: item.status === 'active' ? 'el-button--danger' : ''}) } catch { return }
+  statusUpdatingID.value = item.id
+  try {
+    await directory.setStatus(item, item.status === 'active' ? 'disabled' : 'active')
+    ElMessage.success('员工状态已更新')
+  } catch (cause) {
+    ElMessage.error(cause instanceof Error ? cause.message : '员工状态更新失败')
+  } finally { statusUpdatingID.value = null }
+}
 </script>

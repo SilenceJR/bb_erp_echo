@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"strings"
 
+	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -17,6 +19,12 @@ import (
 type Handler struct {
 	Service Service
 }
+
+// ErrorResponse 是统一错误响应的 Swagger 文档别名。
+type ErrorResponse = response.ErrorBody
+
+// moldModel 保留模具模型的包引用，供 Swagger 注释解析模型类型。
+type moldModel = model.Mold
 
 // NewHandler 创建模具模块接口处理器。
 func NewHandler(db *gorm.DB) *Handler {
@@ -30,19 +38,15 @@ func NewHandlerWithService(service Service) *Handler {
 // RegisterRoutes 注册模具模块路由。
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	group := v1.Group("/molds", audit)
-	group.GET("", h.ListMolds, require("/api/v1/mold", "read"))
-	group.GET("/:id", h.GetMold, require("/api/v1/mold", "read"))
-	group.POST("", h.CreateMold, require("/api/v1/mold", "write"))
-	group.PATCH("/:id", h.UpdateMold, require("/api/v1/mold", "write"))
-	group.DELETE("/:id", h.DeleteMold, require("/api/v1/mold", "write"))
-	group.POST("/:id/loan", h.LoanMold, require("/api/v1/mold", "write"))
-	group.POST("/:id/return", h.ReturnMold, require("/api/v1/mold", "write"))
-	group.POST("/:id/repair", h.RepairMold, require("/api/v1/mold", "write"))
-	group.POST("/:id/maintenance", h.MaintainMold, require("/api/v1/mold", "write"))
-
-	legacy := v1.Group("/mold", audit)
-	legacy.GET("", h.ListMolds, require("/api/v1/mold", "read"))
-	legacy.POST("", h.CreateMold, require("/api/v1/mold", "write"))
+	group.GET("", h.ListMolds, require("/api/v1/molds", "read"))
+	group.GET("/:id", h.GetMold, require("/api/v1/molds", "read"))
+	group.POST("", h.CreateMold, require("/api/v1/molds", "write"))
+	group.PATCH("/:id", h.UpdateMold, require("/api/v1/molds", "write"))
+	group.DELETE("/:id", h.DeleteMold, require("/api/v1/molds", "write"))
+	group.POST("/:id/loan", h.LoanMold, require("/api/v1/molds", "write"))
+	group.POST("/:id/return", h.ReturnMold, require("/api/v1/molds", "write"))
+	group.POST("/:id/repair", h.RepairMold, require("/api/v1/molds", "write"))
+	group.POST("/:id/maintenance", h.MaintainMold, require("/api/v1/molds", "write"))
 }
 
 type moldRequest struct {
@@ -65,6 +69,20 @@ type moldRequest struct {
 }
 
 // ListMolds 查询模具台账列表。
+// @Summary 查询模具台账
+// @Tags mold
+// @Security BearerAuth
+// @Produce json
+// @Param page query int false "页码"
+// @Param page_size query int false "每页条数"
+// @Param q query string false "模糊关键字"
+// @Param status query string false "模具状态"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds [get]
 func (h *Handler) ListMolds(c *echo.Context) error {
 	result, err := h.Service.List(pagination.FromEcho(c), c.QueryParam("status"))
 	if err != nil {
@@ -74,6 +92,18 @@ func (h *Handler) ListMolds(c *echo.Context) error {
 }
 
 // GetMold 查询模具属性和履历。
+// @Summary 查询模具详情
+// @Tags mold
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id} [get]
 func (h *Handler) GetMold(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -90,6 +120,19 @@ func (h *Handler) GetMold(c *echo.Context) error {
 }
 
 // CreateMold 创建模具档案。
+// @Summary 创建模具档案
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body moldRequest true "模具档案参数"
+// @Success 201 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds [post]
 func (h *Handler) CreateMold(c *echo.Context) error {
 	var req moldRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -106,6 +149,21 @@ func (h *Handler) CreateMold(c *echo.Context) error {
 }
 
 // UpdateMold 更新模具基础属性。
+// @Summary 更新模具档案
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Param body body moldRequest true "模具档案参数"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id} [patch]
 func (h *Handler) UpdateMold(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -129,6 +187,17 @@ func (h *Handler) UpdateMold(c *echo.Context) error {
 }
 
 // DeleteMold 软删除模具档案。
+// @Summary 删除模具档案
+// @Tags mold
+// @Security BearerAuth
+// @Param id path int true "模具 ID"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id} [delete]
 func (h *Handler) DeleteMold(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -144,6 +213,21 @@ func (h *Handler) DeleteMold(c *echo.Context) error {
 }
 
 // LoanMold 登记模具借出。
+// @Summary 登记模具借出
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Param body body map[string]interface{} true "借出参数"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id}/loan [post]
 func (h *Handler) LoanMold(c *echo.Context) error {
 	var req struct {
 		Location     string `json:"location" validate:"required"`
@@ -158,6 +242,21 @@ func (h *Handler) LoanMold(c *echo.Context) error {
 }
 
 // ReturnMold 登记模具归还入库。
+// @Summary 登记模具归还
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Param body body map[string]interface{} true "归还参数"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id}/return [post]
 func (h *Handler) ReturnMold(c *echo.Context) error {
 	var req struct {
 		Location    string `json:"location"`
@@ -175,6 +274,21 @@ func (h *Handler) ReturnMold(c *echo.Context) error {
 }
 
 // RepairMold 登记模具维修。
+// @Summary 登记模具维修
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Param body body map[string]interface{} true "维修参数"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id}/repair [post]
 func (h *Handler) RepairMold(c *echo.Context) error {
 	var req struct {
 		Location    string `json:"location"`
@@ -194,6 +308,21 @@ func (h *Handler) RepairMold(c *echo.Context) error {
 }
 
 // MaintainMold 登记模具保养。
+// @Summary 登记模具保养
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "模具 ID"
+// @Param body body map[string]interface{} true "保养参数"
+// @Success 200 {object} model.Mold
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/molds/{id}/maintenance [post]
 func (h *Handler) MaintainMold(c *echo.Context) error {
 	var req struct {
 		Location             string `json:"location"`

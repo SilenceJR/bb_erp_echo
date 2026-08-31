@@ -1,10 +1,11 @@
 import {computed, readonly, ref} from 'vue'
+import {ElMessage} from 'element-plus'
 import {desktopBridge} from '../api/transport'
+import {dirtyGuardRegistry} from '../platform/dirtyGuard'
 import type {
   DesktopUpdatePlan,
   DesktopUpdateProgress,
   DesktopUpdateState,
-  DesktopUpdateStrategy,
 } from '../types'
 
 const state = ref<DesktopUpdateState>('Idle')
@@ -14,9 +15,6 @@ const message = ref('')
 const error = ref('')
 const downloadedBytes = ref(0)
 const totalBytes = ref(0)
-const activeStrategy = ref<DesktopUpdateStrategy | null>(null)
-const fallbackReason = ref('')
-const compatibilityMode = ref(false)
 const operationPending = ref(false)
 
 let initialized = false
@@ -29,15 +27,9 @@ function errorMessage(value: unknown, fallback: string): string {
   return fallback
 }
 
-function isUnsupportedPlanError(value: unknown): boolean {
-  const detail = errorMessage(value, '').toLowerCase()
-  return /(^|\D)404(\D|$)|not found|unsupported|unknown command/.test(detail)
-}
-
 function resetProgress() {
   downloadedBytes.value = 0
   totalBytes.value = 0
-  fallbackReason.value = ''
 }
 
 function normalizeState(value: unknown): DesktopUpdateState {
@@ -53,12 +45,6 @@ function acceptProgress(progress: DesktopUpdateProgress) {
   message.value = progress.message || message.value
   downloadedBytes.value = Math.max(0, Number(progress.downloaded_bytes || 0))
   totalBytes.value = Math.max(0, Number(progress.total_bytes || 0))
-  if (progress.strategy) activeStrategy.value = progress.strategy
-  if (progress.fallback_reason) {
-    fallbackReason.value = progress.fallback_reason
-    activeStrategy.value = 'full'
-    if (plan.value) plan.value = {...plan.value, strategy: 'full'}
-  }
   if (progress.state !== 'Failed') error.value = ''
   else error.value = progress.message || '客户端更新失败，请重试'
 }
@@ -76,7 +62,6 @@ async function initialize() {
     operationPending.value = false
     plan.value = null
     state.value = 'Idle'
-    compatibilityMode.value = false
     error.value = ''
     message.value = ''
     resetProgress()
@@ -99,7 +84,6 @@ async function check(): Promise<void> {
 
   const requestGeneration = ++generation
   operationPending.value = true
-  compatibilityMode.value = false
   error.value = ''
   message.value = '正在检查客户端更新'
   state.value = 'Checking'
@@ -112,28 +96,18 @@ async function check(): Promise<void> {
       if (requestGeneration !== generation) return
       plan.value = nextPlan
       if (nextPlan) {
-        activeStrategy.value = nextPlan.strategy
         state.value = 'Ready'
         message.value = nextPlan.message || '客户端更新已准备就绪'
       } else {
-        activeStrategy.value = null
         state.value = 'Idle'
         message.value = '当前客户端已是最新版本'
       }
     } catch (reason) {
       if (requestGeneration !== generation) return
       plan.value = null
-      if (isUnsupportedPlanError(reason)) {
-        compatibilityMode.value = true
-        state.value = 'Idle'
-        error.value = ''
-        fallbackReason.value = ''
-        message.value = '当前服务端暂不支持自动升级，可使用完整安装包更新'
-      } else {
-        state.value = 'Failed'
-        error.value = errorMessage(reason, '客户端更新检查失败')
-        message.value = error.value
-      }
+      state.value = 'Failed'
+      error.value = errorMessage(reason, '客户端更新检查失败')
+      message.value = error.value
     } finally {
       if (requestGeneration === generation) operationPending.value = false
       operation = null
@@ -145,6 +119,7 @@ async function check(): Promise<void> {
 async function apply(): Promise<void> {
   const bridge = desktopBridge()
   if (!bridge || !plan.value) return
+  if (!(await dirtyGuardRegistry.confirmLeave('client-update'))) return
   await initialize()
   if (operation) return operation
 
@@ -159,12 +134,6 @@ async function apply(): Promise<void> {
     try {
       const result = await bridge.applyClientUpdate(selectedPlan)
       if (requestGeneration !== generation) return
-      if (result.fallback_reason) {
-        fallbackReason.value = result.fallback_reason
-        activeStrategy.value = 'full'
-        plan.value = {...selectedPlan, strategy: 'full'}
-      }
-      if (result.strategy) activeStrategy.value = result.strategy
       message.value = result.message || message.value
       if (result.success === false) throw new Error(result.message || '客户端更新失败')
       if (result.state) state.value = normalizeState(result.state)
@@ -183,7 +152,7 @@ async function apply(): Promise<void> {
 }
 
 async function retry(): Promise<void> {
-  if (plan.value && !compatibilityMode.value) await apply()
+  if (plan.value) await apply()
   else await check()
 }
 
@@ -192,6 +161,25 @@ const closeLocked = computed(() => state.value === 'Applying' || state.value ===
 const downloadPercent = computed(() => {
   if (state.value !== 'Downloading' || totalBytes.value <= 0) return null
   return Math.min(100, Math.max(0, Math.round(downloadedBytes.value / totalBytes.value * 100)))
+})
+
+// Updating the executable is a hard lock: it cannot be bypassed by confirming a
+// normal dirty-form prompt, and it protects module switching, logout, server
+// changes, browser refresh and the Tauri title-bar close through one registry.
+dirtyGuardRegistry.register({
+  id: 'desktop-update-hard-lock',
+  blocksUnload: () => ['Downloading', 'Verifying', 'Applying', 'Restarting'].includes(state.value),
+  async confirmLeave() {
+    if (!['Downloading', 'Verifying', 'Applying', 'Restarting'].includes(state.value)) return true
+    const lockMessages: Partial<Record<DesktopUpdateState, string>> = {
+      Downloading: '客户端更新正在下载，完成前不能离开或关闭窗口',
+      Verifying: '客户端更新正在校验，完成前不能离开或关闭窗口',
+      Applying: '客户端正在安装更新，完成前不能离开或关闭窗口',
+      Restarting: '客户端正在重启，完成前不能离开或关闭窗口',
+    }
+    ElMessage.warning(lockMessages[state.value] || '客户端更新正在进行，完成前不能离开或关闭窗口')
+    return false
+  },
 })
 
 export function useDesktopUpdate() {
@@ -203,9 +191,6 @@ export function useDesktopUpdate() {
     error: readonly(error),
     downloadedBytes: readonly(downloadedBytes),
     totalBytes: readonly(totalBytes),
-    activeStrategy: readonly(activeStrategy),
-    fallbackReason: readonly(fallbackReason),
-    compatibilityMode: readonly(compatibilityMode),
     taskInProgress,
     closeLocked,
     downloadPercent,

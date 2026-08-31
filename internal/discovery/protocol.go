@@ -1,0 +1,244 @@
+package discovery
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"unicode/utf8"
+
+	"bb_erp_echo/internal/shared/jsonstrict"
+)
+
+const (
+	// Product 是局域网发现协议的产品标识。
+	Product = "bb-erp"
+
+	// ProtocolVersion 是当前局域网发现协议版本。
+	ProtocolVersion = 1
+
+	// DefaultPort 是服务端 UDP 发现端口。
+	DefaultPort = 39080
+
+	// MaxPacketBytes 是发现请求和响应允许的最大 UDP 包大小。
+	MaxPacketBytes = 512
+
+	// NonceBytes 是一次发现请求使用的随机数长度。
+	NonceBytes = 16
+)
+
+var (
+	// ErrInvalidPacket 表示发现报文不符合当前协议。
+	ErrInvalidPacket = errors.New("invalid discovery packet")
+	// ErrPeerConflict 表示预检发现了已经通过 HTTP 验证的 ERP 服务。
+	ErrPeerConflict = errors.New("another ERP service is already running")
+)
+
+// DiscoverRequest 是客户端广播的发现请求。
+type DiscoverRequest struct {
+	Kind     string `json:"kind"`
+	Protocol int    `json:"protocol"`
+	Nonce    string `json:"nonce"`
+}
+
+// Announcement 是服务端单播返回的发现响应。
+type Announcement struct {
+	Kind       string `json:"kind"`
+	Protocol   int    `json:"protocol"`
+	Nonce      string `json:"nonce"`
+	Product    string `json:"product"`
+	InstanceID string `json:"instance_id"`
+	ServerName string `json:"server_name"`
+	HTTPPort   int    `json:"http_port"`
+}
+
+// IdentityResponse 是匿名身份接口返回的最小服务身份。
+type IdentityResponse struct {
+	Product           string `json:"product"`
+	DiscoveryProtocol int    `json:"discovery_protocol"`
+	InstanceID        string `json:"instance_id"`
+	ServerName        string `json:"server_name"`
+	ServerVersion     string `json:"server_version"`
+}
+
+// NewNonce 生成 128 位随机发现 nonce，并以十六进制字符串返回。
+func NewNonce() (string, error) {
+	var value [NonceBytes]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate discovery nonce: %w", err)
+	}
+	return hex.EncodeToString(value[:]), nil
+}
+
+// EncodeRequest 编码发现请求。编码结果始终不超过 MaxPacketBytes。
+func EncodeRequest(nonce string) ([]byte, error) {
+	request := DiscoverRequest{Kind: "discover", Protocol: ProtocolVersion, Nonce: nonce}
+	if err := validateNonce(request.Nonce); err != nil {
+		return nil, err
+	}
+	return encodePacket(request)
+}
+
+// DecodeRequest 严格解码发现请求，拒绝未知字段、重复 JSON 字段和尾随 JSON 值。
+func DecodeRequest(payload []byte) (DiscoverRequest, error) {
+	var request DiscoverRequest
+	if err := decodePacket(payload, &request); err != nil {
+		return DiscoverRequest{}, err
+	}
+	if request.Kind != "discover" || request.Protocol != ProtocolVersion {
+		return DiscoverRequest{}, invalidPacket("unexpected discovery request kind or protocol")
+	}
+	if err := validateNonce(request.Nonce); err != nil {
+		return DiscoverRequest{}, err
+	}
+	return request, nil
+}
+
+// EncodeAnnouncement 编码服务端发现响应。
+func EncodeAnnouncement(announcement Announcement) ([]byte, error) {
+	if err := validateAnnouncement(announcement); err != nil {
+		return nil, err
+	}
+	return encodePacket(announcement)
+}
+
+// DecodeAnnouncement 严格解码服务端发现响应。
+func DecodeAnnouncement(payload []byte) (Announcement, error) {
+	var announcement Announcement
+	if err := decodePacket(payload, &announcement); err != nil {
+		return Announcement{}, err
+	}
+	if err := validateAnnouncement(announcement); err != nil {
+		return Announcement{}, err
+	}
+	return announcement, nil
+}
+
+// ValidateIdentityResponse 校验匿名身份接口的最小响应。
+func ValidateIdentityResponse(identity IdentityResponse) error {
+	if identity.Product != Product {
+		return invalidPacket("unexpected identity product")
+	}
+	if identity.DiscoveryProtocol != ProtocolVersion {
+		return invalidPacket("unexpected identity protocol")
+	}
+	if err := validateInstanceID(identity.InstanceID); err != nil {
+		return err
+	}
+	if err := validateText("server_name", identity.ServerName, 120); err != nil {
+		return err
+	}
+	if err := validateText("server_version", identity.ServerVersion, 64); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateAnnouncement(announcement Announcement) error {
+	if announcement.Kind != "announce" || announcement.Protocol != ProtocolVersion {
+		return invalidPacket("unexpected discovery announcement kind or protocol")
+	}
+	if err := validateNonce(announcement.Nonce); err != nil {
+		return err
+	}
+	if announcement.Product != Product {
+		return invalidPacket("unexpected discovery product")
+	}
+	if err := validateInstanceID(announcement.InstanceID); err != nil {
+		return err
+	}
+	if err := validateText("server_name", announcement.ServerName, 120); err != nil {
+		return err
+	}
+	if announcement.HTTPPort < 1 || announcement.HTTPPort > 65535 {
+		return invalidPacket("http_port must be between 1 and 65535")
+	}
+	return nil
+}
+
+func validateInstanceID(value string) error {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return invalidPacket("instance_id must be a UUID")
+	}
+	compact := strings.ReplaceAll(value, "-", "")
+	bytes, err := hex.DecodeString(compact)
+	if err != nil || len(bytes) != 16 {
+		return invalidPacket("instance_id must be a UUID")
+	}
+	// Require the RFC 4122 variant. The version is intentionally not fixed so
+	// an operator can restore a valid stable UUID generated by another system.
+	if bytes[8]&0xc0 != 0x80 {
+		return invalidPacket("instance_id must use the RFC 4122 variant")
+	}
+	return nil
+}
+
+func validateNonce(nonce string) error {
+	if len(nonce) != NonceBytes*2 {
+		return invalidPacket("nonce must contain 128 random bits")
+	}
+	if _, err := hex.DecodeString(nonce); err != nil {
+		return invalidPacket("nonce must be hexadecimal")
+	}
+	return nil
+}
+
+func validateText(field, value string, maxBytes int) error {
+	if value == "" || len(value) > maxBytes || !utf8.ValidString(value) {
+		return invalidPacket(fmt.Sprintf("%s is empty, too long, or invalid UTF-8", field))
+	}
+	if strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return invalidPacket(fmt.Sprintf("%s contains control characters", field))
+	}
+	return nil
+}
+
+func encodePacket(value any) ([]byte, error) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode discovery packet: %w", err)
+	}
+	if len(payload) > MaxPacketBytes {
+		return nil, invalidPacket("discovery packet exceeds 512 bytes")
+	}
+	return payload, nil
+}
+
+func decodePacket(payload []byte, destination any) error {
+	if len(payload) == 0 || len(payload) > MaxPacketBytes {
+		return invalidPacket("discovery packet must contain 1 to 512 bytes")
+	}
+	if err := rejectDuplicateJSONKeys(payload); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return invalidPacket(fmt.Sprintf("decode discovery packet: %v", err))
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return invalidPacket("discovery packet contains trailing JSON")
+		}
+		return invalidPacket(fmt.Sprintf("decode trailing discovery packet data: %v", err))
+	}
+	return nil
+}
+
+// rejectDuplicateJSONKeys keeps protocol decoding deterministic. encoding/json
+// otherwise silently accepts a duplicate key and lets the last value win.
+func rejectDuplicateJSONKeys(payload []byte) error {
+	if err := jsonstrict.RejectDuplicateKeys(payload); err != nil {
+		return invalidPacket(err.Error())
+	}
+	return nil
+}
+
+func invalidPacket(message string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidPacket, message)
+}

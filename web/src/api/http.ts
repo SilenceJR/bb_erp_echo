@@ -1,5 +1,6 @@
 import type { ApiErrorBody } from '../types'
 import {activeTransport, desktopBridge} from './transport'
+import type {FileSaveResult} from '../platform/types'
 
 export interface AuthSessionHooks {
   getToken: () => string
@@ -131,9 +132,15 @@ function shouldRefreshAfterUnauthorized(path: string, token: string, response: R
     && !path.startsWith('/api/v1/auth/logout')
 }
 
-// downloadApiFile 通过当前 HttpTransport 获取受保护文件。Tauri 会走 Rust HTTP
-// 插件，因此动态内网服务地址、Bearer 认证和跨域行为与普通 API 请求保持一致。
-export async function downloadApiFile(path: string, fileName: string, token = ''): Promise<void> {
+// downloadApiFile 将桌面端文件写入交给原生保存能力。Web 则保留 Blob 下载，
+// 其结果只代表浏览器已接管下载，不能证明磁盘写入已完成。
+export async function downloadApiFile(path: string, fileName: string, token = ''): Promise<FileSaveResult> {
+  const desktop = desktopBridge()
+  if (desktop) {
+    const result = await desktop.saveApiFile(path, fileName, token)
+    if (result.status === 'error') throw new Error(result.message)
+    return result
+  }
   const blob = await requestBlob(path, {}, token)
   const objectUrl = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -143,6 +150,7 @@ export async function downloadApiFile(path: string, fileName: string, token = ''
   document.body.appendChild(anchor)
   try {
     anchor.click()
+    return {status: 'saved', path: ''}
   } finally {
     anchor.remove()
     // 给浏览器和 Tauri WebView 留出接管下载的时间，再释放临时 URL。

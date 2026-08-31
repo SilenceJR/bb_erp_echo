@@ -14,9 +14,9 @@
 </template>
 <script setup lang="ts">
 import {computed, watch} from 'vue'
-import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {useWorkorderContext} from '../../composables/workorderContext'
 import OperatorSelect from '../ui/OperatorSelect.vue'
-const {operatorDirectory, selectedWorkOrder, actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError, actionFieldErrors, actionForm, closeWorkOrderAction, submitWorkOrderAction, departmentName, formatQuantity} = useWorkspaceContext()
+const {operatorDirectory, selectedWorkOrder, actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError, actionFieldErrors, actionForm, closeWorkOrderAction, submitWorkOrderAction, departmentName, formatQuantity} = useWorkorderContext().action
 const titles: Record<string, string> = {dispatch: '派发任务', pause: '暂停任务', resume: '恢复任务', urgent: '调整加急状态', complete_normal: '确认正常完成', complete_forced: '强制完成任务', department_start: '开始处理部门任务', department_partial_complete: '提交部分完成', department_complete: '完成部门任务'}
 const title = computed(() => titles[actionKind.value] || '任务操作确认')
 const dangerous = computed(() => actionKind.value === 'complete_forced')

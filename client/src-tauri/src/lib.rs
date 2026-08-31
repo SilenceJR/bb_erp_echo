@@ -1,4 +1,5 @@
-pub mod delta;
+pub mod discovery;
+pub mod save;
 pub mod update;
 
 // run 启动 Tauri 桌面壳。
@@ -8,8 +9,13 @@ pub mod update;
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(update::UpdateEngine::default())
         .invoke_handler(tauri::generate_handler![
+            discovery::discover_servers,
+            discovery::test_server_connection,
+            save::save_api_file,
             update::client_update_check,
             update::client_update_apply,
             update::client_update_status,

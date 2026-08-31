@@ -1,44 +1,44 @@
 <template>
   <el-config-provider :locale="zhCn">
-    <main class="app-shell" :class="{ 'is-login': !token }">
-      <LoginScreen v-if="!token" />
-      <AppWorkspace v-else>
-        <template #page>
-          <DashboardPage v-if="activeKey === 'dashboard'" />
-          <DepartmentPage v-else-if="activeKey === 'departments'" />
-          <EmployeePage v-else-if="activeKey === 'employees'" />
-          <CustomerPage v-else-if="activeKey === 'customers'" />
-          <ModulePage v-else />
-        </template>
-        <template #overlays>
-          <DetailPanels />
-        </template>
-      </AppWorkspace>
+    <main class="app-shell" :class="{ 'is-startup': !startup.isReady.value }">
+      <StartupScreen v-if="!startup.isReady.value" />
+      <WorkspaceSession v-else />
     </main>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
-import {provide} from 'vue'
+import {defineAsyncComponent, onBeforeUnmount, onMounted, provide} from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import AppWorkspace from './components/app/AppWorkspace.vue'
-import LoginScreen from './components/app/LoginScreen.vue'
-import DashboardPage from './components/pages/DashboardPage.vue'
-import DepartmentPage from './components/pages/DepartmentPage.vue'
-import EmployeePage from './components/pages/EmployeePage.vue'
-import CustomerPage from './components/pages/CustomerPage.vue'
-import DetailPanels from './components/pages/DetailPanels.vue'
-import ModulePage from './components/pages/ModulePage.vue'
-import {useWorkspaceController} from './composables/useWorkspaceController'
-import {workspaceContextKey} from './composables/workspaceContext'
+import StartupScreen from './components/app/StartupScreen.vue'
+import {useStartupConnection} from './composables/useStartupConnection'
+import {startupConnectionKey} from './composables/workspaceContext'
+import {dirtyGuardRegistry} from './platform/dirtyGuard'
+import {desktopBridge} from './api/transport'
 
-/**
- * Keeps the root component responsible only for application composition.
- *
- * The controller is provided to Web and Tauri views so both shells share one
- * authenticated session and one set of business API workflows.
- */
-const workspace = useWorkspaceController()
-const {activeKey, token} = workspace
-provide(workspaceContextKey, workspace)
+const WorkspaceSession = defineAsyncComponent(() => import('./components/app/WorkspaceSession.vue'))
+
+// 平台连接验证完成后才挂载业务会话，避免旧实例令牌和领域请求抢先发往新服务。
+const startup = useStartupConnection()
+provide(startupConnectionKey, startup)
+let stopDesktopCloseListener = () => {}
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!dirtyGuardRegistry.blocksUnload()) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload)
+  void desktopBridge()?.onWindowCloseRequested(() => dirtyGuardRegistry.confirmLeave('window-close')).then((stop) => {
+    stopDesktopCloseListener = stop
+  })
+  void startup.start()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', beforeUnload)
+  stopDesktopCloseListener()
+})
 </script>

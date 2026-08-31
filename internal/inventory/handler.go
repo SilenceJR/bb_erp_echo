@@ -61,10 +61,6 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	items.GET("/:itemType/:itemID", h.GetItemDetail, require("/api/v1/warehouse", "read"))
 	items.GET("/:itemType/:itemID/movements", h.ListItemMovements, require("/api/v1/inventory-documents", "read"))
 	items.POST("/:itemType/:itemID/movements", h.CreateItemMovement, audit, require("/api/v1/inventory-documents", "write"))
-
-	legacy := v1.Group("/inventory", audit)
-	legacy.GET("", h.ListBalances, require("/api/v1/inventory", "read"))
-	legacy.POST("", h.CreateDocument, require("/api/v1/inventory", "write"))
 }
 
 type lineRequest struct {
@@ -133,7 +129,6 @@ func (h *Handler) ListDocuments(c *echo.Context) error {
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-documents [post]
-// @Router /api/v1/inventory [post]
 func (h *Handler) CreateDocument(c *echo.Context) error {
 	var req documentRequest
 	if err := c.Bind(&req); err != nil {
@@ -452,7 +447,6 @@ func (h *Handler) ReverseDocument(c *echo.Context) error {
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-balances [get]
-// @Router /api/v1/inventory [get]
 func (h *Handler) ListBalances(c *echo.Context) error {
 	var items []model.InventoryBalance
 	query := h.DB.Order("id desc")

@@ -116,7 +116,6 @@ type operatorActionRequest struct {
 func RegisterRoutes(v1 *echo.Group, db *gorm.DB, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	handler := &Handler{DB: db}
 	handler.register(v1, "workorder", require, audit)
-	handler.register(v1, "tasks", require, audit)
 }
 
 func (h *Handler) register(v1 *echo.Group, path string, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
@@ -155,7 +154,6 @@ const temporaryProductObject = "/api/v1/workorder/products"
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [get]
-// @Router /api/v1/tasks [get]
 func (h *Handler) List(c *echo.Context) error {
 	query := pagination.FromEcho(c)
 	db := h.DB.Model(&model.WorkOrder{})
@@ -196,7 +194,6 @@ func (h *Handler) List(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder [post]
-// @Router /api/v1/tasks [post]
 func (h *Handler) Create(c *echo.Context) error {
 	var req createRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -386,7 +383,6 @@ func isUniqueConstraintError(err error) bool {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/dispatch [post]
-// @Router /api/v1/tasks/{id}/dispatch [post]
 func (h *Handler) Dispatch(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -460,7 +456,6 @@ func (h *Handler) Dispatch(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/pause [post]
-// @Router /api/v1/tasks/{id}/pause [post]
 func (h *Handler) Pause(c *echo.Context) error {
 	var req reasonRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -489,7 +484,6 @@ func (h *Handler) Pause(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/resume [post]
-// @Router /api/v1/tasks/{id}/resume [post]
 func (h *Handler) Resume(c *echo.Context) error {
 	var req operatorActionRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -515,7 +509,6 @@ func (h *Handler) Resume(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/urgent [post]
-// @Router /api/v1/tasks/{id}/urgent [post]
 func (h *Handler) SetUrgent(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -570,7 +563,6 @@ func (h *Handler) SetUrgent(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/complete [post]
-// @Router /api/v1/tasks/{id}/complete [post]
 func (h *Handler) Complete(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {
@@ -643,7 +635,6 @@ func (h *Handler) Complete(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/start [post]
-// @Router /api/v1/tasks/department-tasks/{id}/start [post]
 func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -676,7 +667,6 @@ func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/partial-complete [post]
-// @Router /api/v1/tasks/department-tasks/{id}/partial-complete [post]
 func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 	var req partialCompleteRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -717,7 +707,6 @@ func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/complete [post]
-// @Router /api/v1/tasks/department-tasks/{id}/complete [post]
 func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
@@ -746,7 +735,6 @@ func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/logs [get]
-// @Router /api/v1/tasks/{id}/logs [get]
 func (h *Handler) ListLogs(c *echo.Context) error {
 	id, err := request.ParamID(c)
 	if err != nil {

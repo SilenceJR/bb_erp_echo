@@ -66,19 +66,6 @@
         </el-table>
       </section>
 
-      <section class="customer-card-grid profile-card-grid" role="list" aria-label="客户资料卡片">
-        <article v-for="code in codes" :key="code.id" class="customer-card" role="listitem">
-          <div class="customer-card-heading"><div><span class="customer-code">{{ code.code }}</span><h2>{{ profileTitle(code.default_profile) }}</h2><p>{{ code.default_profile?.name || (code.profile_count ? '未填写客户名称' : '尚未建立客户资料') }}</p></div></div>
-          <dl>
-            <div><dt>联系人</dt><dd>{{ code.default_profile?.contact_name || '未填写' }}</dd></div>
-            <div><dt>联系电话</dt><dd class="text-cell">{{ code.default_profile?.contact_phone || '未填写' }}</dd></div>
-            <div><dt>业务员</dt><dd>{{ code.default_profile?.salesperson || '未填写' }}</dd></div>
-          </dl>
-          <div v-if="code.default_profile" class="customer-card-actions">
-            <el-button v-if="code.default_profile" type="primary" plain @click="openProfile(code.default_profile, code, $event)">查看详情</el-button>
-          </div>
-        </article>
-      </section>
     </template>
 
     <template v-else>
@@ -88,15 +75,8 @@
           <el-table-column label="客户编码" min-width="180"><template #default="{row}"><span class="customer-code">{{ row.code }}</span></template></el-table-column>
           <el-table-column label="关联资料摘要" min-width="320"><template #default="{row}">{{ codeProfileSummary(asCustomerCode(row)) }}</template></el-table-column>
           <el-table-column prop="updated_at" label="更新时间" min-width="180"><template #default="{row}">{{ formatDate(row.updated_at) }}</template></el-table-column>
-          <el-table-column v-if="canWrite" label="操作" width="160" align="center" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openCodeDialog('edit', asCustomerCode(row))">修改编码</el-button><el-button v-if="row.profile_count === 0" link type="danger" @click="deleteCode(asCustomerCode(row))">删除</el-button></template></el-table-column>
+          <el-table-column v-if="canWrite" label="操作" width="160" align="center" fixed="right"><template #default="{row}"><el-button link type="primary" :disabled="deletingCodeID !== null" @click="openCodeDialog('edit', asCustomerCode(row))">修改编码</el-button><el-button v-if="row.profile_count === 0" link type="danger" :loading="deletingCodeID === row.id" :disabled="deletingCodeID !== null && deletingCodeID !== row.id" @click="deleteCode(asCustomerCode(row))">删除</el-button></template></el-table-column>
         </el-table>
-      </section>
-      <section class="customer-card-grid code-card-grid" role="list" aria-label="客户编码卡片">
-        <article v-for="code in codes" :key="code.id" class="customer-card code-card" role="listitem">
-          <div class="customer-card-heading"><div><span class="customer-code">{{ code.code }}</span><h2>关联资料</h2><p>{{ codeProfileSummary(code) }}</p></div></div>
-          <dl><div><dt>更新时间</dt><dd>{{ formatDate(code.updated_at) }}</dd></div></dl>
-          <div v-if="canWrite" class="customer-card-actions"><el-button @click="openCodeDialog('edit', code)">修改编码</el-button><el-button v-if="code.profile_count === 0" type="danger" plain @click="deleteCode(code)">删除编码</el-button></div>
-        </article>
       </section>
     </template>
 
@@ -231,6 +211,7 @@ const pendingDeleteProfile = ref<CustomerProfile | null>(null)
 const pendingDeleteCode = ref<CustomerCodeItem | null>(null)
 const replacementID = ref<number | undefined>()
 const deleting = ref(false)
+const deletingCodeID = ref<number | null>(null)
 const deleteError = ref('')
 const replacementOptions = computed(() => (pendingDeleteCode.value?.profiles || []).filter((item) => item.id !== pendingDeleteProfile.value?.id))
 
@@ -394,9 +375,11 @@ async function saveCode() {
   finally { codeSaving.value = false }
 }
 async function deleteCode(code: CustomerCodeItem) {
-  if (code.profile_count > 0) return
+  if (code.profile_count > 0 || deletingCodeID.value !== null) return
   try { await appMessageBox.confirm(`确认物理删除未使用的客户编码 ${code.code}？`, '删除客户编码', {type: 'warning', confirmButtonText: '确认删除'}) } catch { return }
+  deletingCodeID.value = code.id
   try { await request(`/api/v1/customer-codes/${code.id}`, {method: 'DELETE'}, token.value); await loadCodes(); ElMessage.success('客户编码已删除') } catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : '客户编码删除失败') }
+  finally { deletingCodeID.value = null }
 }
 async function closeCodeDialog() { if (!(await confirmCodeClose())) return; codeDialogVisible.value = false }
 async function confirmCodeClose() { if (!codeDirty.value) return true; try { await appMessageBox.confirm('客户编码尚未保存，确认放弃？', '放弃修改', {type: 'warning'}); return true } catch { return false } }
@@ -404,13 +387,17 @@ async function beforeCloseCodeDialog(done: () => void) { if (!codeSaving.value &
 async function handleImportCompleted() { page.value = 1; await loadCodes() }
 
 async function leaveGuard() {
+  if (drawerSaving.value || codeSaving.value || deleting.value || deletingCodeID.value !== null) {
+    ElMessage.warning('客户资料正在提交，请等待完成后再离开')
+    return false
+  }
   if (drawerVisible.value && !(await profileDrawer.value?.requestClose())) return false
   if (codeDialogVisible.value && !(await confirmCodeClose())) return false
   if (importVisible.value) { try { await appMessageBox.confirm('当前 Excel 导入流程将被关闭，确认离开客户模块？', '放弃导入', {type: 'warning'}) } catch { return false } }
   codeDialogVisible.value = false; importVisible.value = false; exportVisible.value = false
   return true
 }
-function beforeUnload(event: BeforeUnloadEvent) { if (profileDrawer.value?.dirty || codeDirty.value || importVisible.value) { event.preventDefault(); event.returnValue = '' } }
+function beforeUnload(event: BeforeUnloadEvent) { if (drawerSaving.value || codeSaving.value || deleting.value || deletingCodeID.value !== null || profileDrawer.value?.dirty || codeDirty.value || importVisible.value) { event.preventDefault(); event.returnValue = '' } }
 watch([keyword, filter], () => { page.value = 1 })
 watch(drawerVisible, (visible) => { if (!visible) profileDetailGeneration.value += 1 }, {flush: 'sync'})
 watch([() => filteredCodes.value.length, pageSize], () => {
@@ -440,7 +427,6 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .primary-profile { display: grid; gap: var(--bb-space-1); }
 .primary-profile small { overflow: hidden; color: var(--bb-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .text-cell { font-family: var(--bb-font-mono); }
-.customer-card-grid { display: none; }
 .code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--bb-space-4); margin-bottom: var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-lg); background: var(--bb-bg-surface); padding: var(--bb-space-3) var(--bb-space-4); }
 .code-toolbar > div { display: grid; gap: var(--bb-space-1); }
 .code-toolbar span { color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
@@ -453,38 +439,4 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .replacement-list :deep(.el-radio__label) { min-width: 0; white-space: normal; }
 .replacement-list span { display: grid; gap: var(--bb-space-1); }
 .replacement-list small { color: var(--bb-text-secondary); }
-@media (max-width: 919px) {
-  .customer-desktop-table { display: none; }
-  .customer-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--bb-space-3); }
-  .customer-card { display: grid; min-width: 0; gap: var(--bb-space-4); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-xl); background: var(--bb-bg-surface); padding: var(--bb-space-4); box-shadow: var(--bb-shadow-xs); }
-  .customer-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-3); }
-  .customer-card-heading h2 { margin: var(--bb-space-2) 0 0; font-size: var(--bb-font-size-20); }
-  .customer-card-heading p { margin: var(--bb-space-1) 0 0; overflow: hidden; color: var(--bb-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
-  .customer-card dl { display: grid; gap: var(--bb-space-2); margin: 0; }
-  .customer-card dl > div { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--bb-space-2); }
-  .customer-card dt { color: var(--bb-text-secondary); }
-  .customer-card dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .customer-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--bb-space-2); }
-  .customer-card-actions .el-button { width: 100%; min-height: 44px; margin: 0; }
-  .profile-card-grid .customer-card-actions { grid-template-columns: 1fr; }
-  .customer-filter-bar,
-  .customer-filter-controls,
-  .customer-filter-actions { align-items: stretch; flex-direction: column; }
-  .customer-filter-controls .el-input,
-  .customer-filter-controls .el-select { width: 100%; }
-  .customer-filter-actions { padding-top: var(--bb-space-2); border-top: 1px solid var(--bb-border-subtle); }
-  .customer-filter-bar .el-button,
-  .customer-filter-bar :deep(.el-input__wrapper),
-  .customer-filter-bar :deep(.el-select__wrapper) { min-height: 44px; }
-}
-@media (max-width: 720px) {
-  .code-toolbar { align-items: stretch; flex-direction: column; }
-  .code-toolbar .el-button { min-height: 44px; }
-}
-@media (max-width: 599px) {
-  .customer-card-grid { grid-template-columns: 1fr; }
-  .customer-card-actions { grid-template-columns: 1fr; }
-  .dialog-actions { display: grid; grid-template-columns: 1fr; }
-  .dialog-actions .el-button { width: 100%; min-height: 44px; margin: 0; }
-}
 </style>

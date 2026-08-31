@@ -9,8 +9,8 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/role"
 
-	"github.com/casbin/casbin/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -52,7 +52,7 @@ func JWT(service *auth.Service, db *gorm.DB) echo.MiddlewareFunc {
 			if user.Status != model.StatusActive {
 				return echo.NewHTTPError(http.StatusForbidden, "账号已停用")
 			}
-			if auth.NormalizePasswordVersion(claims.PasswordVersion) != auth.NormalizePasswordVersion(user.PasswordVersion) {
+			if claims.PasswordVersion != user.PasswordVersion {
 				return echo.NewHTTPError(http.StatusUnauthorized, "登录令牌已失效")
 			}
 
@@ -66,13 +66,13 @@ func JWT(service *auth.Service, db *gorm.DB) echo.MiddlewareFunc {
 	}
 }
 
-// RequirePermission 使用 Casbin 校验接口权限和组织/部门数据范围。
+// RequirePermission 使用统一权限 provider 校验接口权限和组织/部门数据范围。
 //
 // 参数说明：
-// - enforcer：Casbin 权限引擎。
+// - authorizer：统一权限快照 provider。
 // - object：资源对象，当前使用 API 路径，例如 /api/v1/system/users。
 // - action：动作，当前约定为 read 或 write。
-func RequirePermission(enforcer *casbin.Enforcer, object string, action string) echo.MiddlewareFunc {
+func RequirePermission(authorizer role.Authorizer, object string, action string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			current := auth.GetCurrentUser(c)
@@ -84,7 +84,7 @@ func RequirePermission(enforcer *casbin.Enforcer, object string, action string) 
 			if current.DepartmentID != nil {
 				dept = strconv.FormatUint(uint64(*current.DepartmentID), 10)
 			}
-			allowed, err := enforcer.Enforce(current.Username, object, action, org, dept)
+			allowed, err := authorizer.Enforce(current.Username, object, action, org, dept)
 			if err != nil {
 				return err
 			}

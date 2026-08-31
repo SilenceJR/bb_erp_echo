@@ -117,6 +117,7 @@
 <script setup lang="ts">
 import {computed, nextTick, reactive, ref, watch} from 'vue'
 import {appMessageBox} from '../../composables/useAppMessageBox'
+import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import type {CustomerCodeItem, CustomerProfile} from '../../types'
 
 export interface CustomerProfileFormValue {
@@ -161,6 +162,13 @@ const baseline = ref('')
 const fieldErrors = reactive({customer_code_id: '', new_code: ''})
 const drawerTitle = computed(() => props.mode === 'create' ? '新增客户资料' : props.mode === 'edit' ? '编辑客户资料' : '客户资料详情')
 const dirty = computed(() => props.mode !== 'view' && JSON.stringify(form) !== baseline.value)
+
+useDirtyGuard('customer-profile', {
+  busy: () => props.modelValue && props.saving,
+  dirty: () => props.modelValue && dirty.value,
+  busyMessage: '客户资料正在保存，请等待完成后再离开',
+  dirtyMessage: '当前客户资料尚未保存，离开后修改将丢失。',
+})
 
 watch(() => [props.modelValue, props.mode, props.profile?.id, props.code?.id, props.suggestedCode] as const, () => {
   if (!props.modelValue) return
@@ -276,12 +284,4 @@ defineExpose({dirty, requestClose})
 .form-code-summary small { grid-column: 1 / -1; }
 .field-help { display: block; margin-top: var(--bb-space-1); color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
 .customer-drawer-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
-@media (max-width: 599px) {
-  .customer-form-grid { grid-template-columns: 1fr; }
-  .customer-form-grid .span-two { grid-column: auto; }
-  .customer-drawer-heading,
-  .section-heading { align-items: stretch; flex-direction: column; }
-  .customer-drawer-actions { display: grid; grid-template-columns: 1fr; }
-  .customer-drawer-actions :deep(.el-button) { width: 100%; min-height: 44px; margin: 0; }
-}
 </style>

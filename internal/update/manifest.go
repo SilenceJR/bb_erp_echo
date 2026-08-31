@@ -3,6 +3,7 @@ package update
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -21,27 +22,27 @@ import (
 	"time"
 
 	"bb_erp_echo/internal/config"
+	"bb_erp_echo/internal/shared/jsonstrict"
 
 	"golang.org/x/mod/semver"
 )
 
 const (
-	clientPackageName    = "bb-erp-client-windows.zip"
 	serverPackageName    = "bb-erp-server-windows.zip"
 	serverDownloadPath   = "/api/v1/system/updates/server/download"
+	maxManifestSize      = 2 << 20
 	maxServerPackageSize = int64(512 << 20)
 )
 
 // ErrServerPackageUnavailable 表示尚无成功检查确认的服务端升级包。
 var ErrServerPackageUnavailable = errors.New("暂无可下载的服务端升级包，请先执行更新检查")
 
-// Manifest 是 Gitee、GitHub、对象存储或内网静态服务提供的更新清单。
+// Manifest 是发布端或内网静态服务提供的当前更新清单。
 type Manifest struct {
 	Version        string                      `json:"version"`
 	PublishedAt    time.Time                   `json:"published_at,omitempty"`
 	Notes          string                      `json:"notes,omitempty"`
 	Server         PackageManifest             `json:"server"`
-	Client         PackageManifest             `json:"client"`
 	AllInOne       PackageManifest             `json:"all_in_one,omitempty"`
 	Updater        PackageManifest             `json:"updater,omitempty"`
 	ClientUpdateV2 *SignedClientUpdateManifest `json:"client_update_v2,omitempty"`
@@ -54,19 +55,6 @@ type PackageManifest struct {
 	SHA256    string `json:"sha256,omitempty"`
 	Size      int64  `json:"size,omitempty"`
 	Signature string `json:"signature,omitempty"`
-}
-
-// ClientUpdateStatus 是服务端暴露给 Tauri 客户端的兼容升级状态。
-type ClientUpdateStatus struct {
-	CurrentVersion string           `json:"current_version"`
-	LatestVersion  string           `json:"latest_version,omitempty"`
-	Available      bool             `json:"available"`
-	Cached         bool             `json:"cached"`
-	FileName       string           `json:"file_name,omitempty"`
-	DownloadPath   string           `json:"download_path,omitempty"`
-	CheckedAt      *time.Time       `json:"checked_at,omitempty"`
-	Manifest       *PackageManifest `json:"manifest,omitempty"`
-	Message        string           `json:"message,omitempty"`
 }
 
 // ComponentStatus 描述服务端或桌面客户端的版本状态。
@@ -105,10 +93,7 @@ type SystemUpdateStatus struct {
 	Client                ClientComponentStatus `json:"client"`
 	ClientProtocolVersion int                   `json:"client_protocol_version,omitempty"`
 	ClientFullCached      bool                  `json:"client_full_cached"`
-	ClientDeltaCached     bool                  `json:"client_delta_cached"`
-	ClientDeltaFrom       string                `json:"client_delta_from_version,omitempty"`
 	ClientCacheBytes      int64                 `json:"client_cache_bytes"`
-	ClientDeltaDegraded   string                `json:"client_delta_degraded,omitempty"`
 }
 
 // ManifestSource 抽象更新清单来源，后续可替换为 OSS、COS、MinIO 或内网服务。
@@ -128,8 +113,6 @@ type PackageStore interface {
 type UpdateService interface {
 	Check(context.Context) (SystemUpdateStatus, error)
 	Status(string) SystemUpdateStatus
-	ClientStatus(string) ClientUpdateStatus
-	CachedClientPackagePath() string
 	ServerPackage(context.Context) (path string, fileName string, err error)
 	ClientUpdatePlan(ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error)
 	TauriClientUpdate(target, currentVersion string) (TauriUpdateResponse, bool, error)
@@ -161,11 +144,27 @@ func (s *HTTPManifestSource) Fetch(ctx context.Context) (*Manifest, error) {
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("fetch manifest status %d", res.StatusCode)
 	}
-	var manifest Manifest
-	if err := json.NewDecoder(io.LimitReader(res.Body, 2<<20)).Decode(&manifest); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(res.Body, maxManifestSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read manifest: %w", err)
+	}
+	if len(raw) > maxManifestSize {
+		return nil, fmt.Errorf("read manifest: response exceeds %d bytes", maxManifestSize)
+	}
+	if err := jsonstrict.RejectDuplicateKeys(raw); err != nil {
 		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
-	if manifest.Server.Version == "" && manifest.Client.Version == "" {
+
+	var manifest Manifest
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("decode manifest: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("decode manifest: trailing JSON content is not allowed")
+	}
+	if manifest.Server.Version == "" && manifest.ClientUpdateV2 == nil {
 		return nil, errors.New("manifest contains no package version")
 	}
 	return &manifest, nil
@@ -174,7 +173,7 @@ func (s *HTTPManifestSource) Fetch(ctx context.Context) (*Manifest, error) {
 // Location 返回当前清单地址。
 func (s *HTTPManifestSource) Location() string { return s.URL }
 
-// LocalPackageStore 使用临时文件、校验和重命名缓存升级包。
+// LocalPackageStore 使用临时文件、校验和重命名缓存服务端升级包。
 type LocalPackageStore struct {
 	Root   string
 	Client *http.Client
@@ -184,7 +183,7 @@ type LocalPackageStore struct {
 	verifyFile func(path, digest string) error
 }
 
-// Path 返回缓存包路径。普通名称进入 client 目录，server/ 前缀进入 server 目录。
+// Path 返回服务端升级包缓存路径。
 func (s *LocalPackageStore) Path(name string) string {
 	cacheDir, fileName := packageCacheLocation(name)
 	return filepath.Join(s.Root, cacheDir, fileName)
@@ -297,7 +296,6 @@ type Service struct {
 	store         PackageStore
 	artifactStore ArtifactStore
 	verifier      SignedManifestVerifier
-	planner       UpdatePlanner
 	verifierErr   error
 
 	mu              sync.RWMutex
@@ -305,7 +303,6 @@ type Service struct {
 	manifest        *Manifest
 	clientPayload   *ClientUpdatePayload
 	artifacts       map[string]ClientArtifact
-	deltaDegraded   string
 	lastAttemptAt   *time.Time
 	lastSuccessAt   *time.Time
 	nextCheckAt     *time.Time
@@ -358,7 +355,7 @@ func NewServiceWithAllDependencies(cfg config.UpdateConfig, serverVersion string
 	}
 	return &Service{
 		cfg: cfg, serverVersion: serverVersion, source: source, store: store,
-		artifactStore: artifactStore, verifier: verifier, planner: PreviousVersionUpdatePlanner{}, verifierErr: verifierErr,
+		artifactStore: artifactStore, verifier: verifier, verifierErr: verifierErr,
 	}
 }
 
@@ -422,62 +419,42 @@ func (s *Service) performCheck(ctx context.Context) error {
 	s.mu.Lock()
 	s.reachable = true
 	s.mu.Unlock()
-	// v2 的验签和必需完整资源缓存必须先完成。若失败，不能覆盖旧客户端仍在使用的兼容 ZIP。
-	payload, artifacts, deltaDegraded, err := s.cacheV2ClientArtifacts(ctx, manifest)
+	// 签名与两个完整资源必须全部验证并缓存成功，才提交新的内存状态。
+	payload, artifacts, err := s.cacheFullClientArtifacts(ctx, manifest)
 	if err != nil {
 		return err
-	}
-	// 保持 v1 ZIP 缓存和下载接口，兼容已发布的 rc.3 及更旧客户端。
-	// 只有 v2 已成功准备后才能替换该恢复资产；内存状态则在两者都成功后才提交。
-	if manifest.Client.URL != "" {
-		if _, _, err := s.store.Ensure(ctx, clientPackageName, manifest.Client); err != nil {
-			return fmt.Errorf("cache client package: %w", err)
-		}
 	}
 	s.mu.Lock()
 	s.manifest = cloneManifest(manifest)
 	s.clientPayload = cloneClientUpdatePayload(payload)
 	s.artifacts = artifacts
-	s.deltaDegraded = deltaDegraded
 	s.mu.Unlock()
 	return nil
 }
 
-// cacheV2ClientArtifacts 验证受签名 payload，并缓存完整包。差分缓存失败只降级为完整包。
-func (s *Service) cacheV2ClientArtifacts(ctx context.Context, manifest *Manifest) (*ClientUpdatePayload, map[string]ClientArtifact, string, error) {
+// cacheFullClientArtifacts 验证受签名 payload，并缓存 NSIS 与便携完整包。
+func (s *Service) cacheFullClientArtifacts(ctx context.Context, manifest *Manifest) (*ClientUpdatePayload, map[string]ClientArtifact, error) {
 	if manifest == nil || manifest.ClientUpdateV2 == nil {
-		return nil, nil, "", nil
+		return nil, nil, nil
 	}
 	if s.verifierErr != nil {
-		return nil, nil, "", fmt.Errorf("load client update signing public key: %w", s.verifierErr)
+		return nil, nil, fmt.Errorf("load client update signing public key: %w", s.verifierErr)
 	}
 	payload, err := DecodeSignedClientPayload(manifest.ClientUpdateV2, s.verifier)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, err
 	}
 	if manifest.Version != "" && CompareVersions(manifest.Version, payload.Version) != 0 {
-		return nil, nil, "", errors.New("signed client update version does not match manifest version")
+		return nil, nil, errors.New("signed client update version does not match manifest version")
 	}
-	if manifest.Client.Version != "" && CompareVersions(manifest.Client.Version, payload.Version) != 0 {
-		return nil, nil, "", errors.New("signed client update version does not match legacy client version")
-	}
-	artifacts := make(map[string]ClientArtifact, 2+len(payload.Deltas))
+	artifacts := make(map[string]ClientArtifact, 2)
 	for _, artifact := range []ClientArtifact{payload.Full.NSIS, payload.Full.Portable} {
 		if _, _, err := s.artifactStore.Ensure(ctx, artifact); err != nil {
-			return nil, nil, "", fmt.Errorf("cache required %s artifact: %w", artifact.Kind, err)
+			return nil, nil, fmt.Errorf("cache required %s artifact: %w", artifact.Kind, err)
 		}
 		artifacts[strings.ToLower(artifact.SHA256)] = artifact
 	}
-
-	var degraded []string
-	for _, delta := range payload.Deltas {
-		if _, _, err := s.artifactStore.Ensure(ctx, delta.ClientArtifact); err != nil {
-			degraded = append(degraded, fmt.Sprintf("%s: %v", delta.FromVersion, err))
-			continue
-		}
-		artifacts[strings.ToLower(delta.SHA256)] = delta.ClientArtifact
-	}
-	return payload, artifacts, strings.Join(degraded, "; "), nil
+	return payload, artifacts, nil
 }
 
 // Status 返回上一次成功结果；currentClientVersion 为空时使用服务端随包版本。
@@ -507,7 +484,6 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 		Client: ClientComponentStatus{ComponentStatus: ComponentStatus{
 			CurrentVersion: currentClientVersion,
 		}},
-		ClientDeltaDegraded: s.deltaDegraded,
 	}
 	if s.manifest == nil {
 		return status
@@ -516,14 +492,6 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 		status.ClientProtocolVersion = s.clientPayload.ProtocolVersion
 		status.ClientFullCached = s.artifactStore.Cached(s.clientPayload.Full.NSIS) &&
 			s.artifactStore.Cached(s.clientPayload.Full.Portable)
-		for _, delta := range s.clientPayload.Deltas {
-			if status.ClientDeltaFrom == "" {
-				status.ClientDeltaFrom = delta.FromVersion
-			}
-			if s.artifactStore.Cached(delta.ClientArtifact) {
-				status.ClientDeltaCached = true
-			}
-		}
 		for _, artifact := range s.artifacts {
 			if s.artifactStore.Cached(artifact) {
 				status.ClientCacheBytes += artifact.Size
@@ -531,7 +499,6 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 		}
 	}
 	serverPkg := s.manifest.Server
-	clientPkg := s.manifest.Client
 	status.Server.LatestVersion = serverPkg.Version
 	status.Server.Available = CompareVersions(serverPkg.Version, s.serverVersion) > 0
 	status.Server.Size = serverPkg.Size
@@ -542,40 +509,15 @@ func (s *Service) statusLocked(currentClientVersion string) SystemUpdateStatus {
 		status.Server.DownloadPath = serverDownloadPath
 		status.Server.DownloadURL = serverDownloadPath
 	}
-	status.Client.LatestVersion = clientPkg.Version
-	status.Client.Available = CompareVersions(clientPkg.Version, currentClientVersion) > 0
-	status.Client.Size = clientPkg.Size
-	status.Client.SHA256 = clientPkg.SHA256
-	status.Client.Manifest = clonePackage(&clientPkg)
-	if s.store.Cached(clientPackageName, clientPkg) {
-		status.Client.Cached = true
-		status.Client.FileName = clientPackageName
-		status.Client.DownloadPath = "/api/v1/updates/client/download"
-		status.Client.DownloadURL = status.Client.DownloadPath
-		status.ClientCacheBytes += clientPkg.Size
+	if s.clientPayload != nil {
+		status.Client.LatestVersion = s.clientPayload.Version
+		status.Client.Available = CompareVersions(s.clientPayload.Version, currentClientVersion) > 0
+		status.Client.Cached = status.ClientFullCached
+		status.Client.Size = s.clientPayload.Full.NSIS.Size
+		status.Client.SHA256 = s.clientPayload.Full.NSIS.SHA256
 	}
 	return status
 }
-
-// ClientStatus 返回兼容客户端接口，并按 Tauri 传入的真实安装版本比较。
-func (s *Service) ClientStatus(currentVersion string) ClientUpdateStatus {
-	status := s.Status(currentVersion)
-	client := status.Client
-	return ClientUpdateStatus{
-		CurrentVersion: client.CurrentVersion,
-		LatestVersion:  client.LatestVersion,
-		Available:      client.Available,
-		Cached:         client.Cached,
-		FileName:       client.FileName,
-		DownloadPath:   client.DownloadPath,
-		CheckedAt:      status.LastSuccessAt,
-		Manifest:       client.Manifest,
-		Message:        status.LastError,
-	}
-}
-
-// CachedClientPackagePath 返回客户端缓存包路径。
-func (s *Service) CachedClientPackagePath() string { return s.store.Path(clientPackageName) }
 
 // ServerPackage 按当前成功清单下载或复用服务端包，返回前验证大小、SHA-256 和 ZIP 结构。
 func (s *Service) ServerPackage(ctx context.Context) (path string, fileName string, err error) {
@@ -616,12 +558,12 @@ func (s *Service) ServerPackage(ctx context.Context) (path string, fileName stri
 	return path, fileName, nil
 }
 
-// ClientUpdatePlan 为 Windows x86_64 桌面端选择已缓存的差分或完整更新。
+// ClientUpdatePlan 返回 Windows x86_64 桌面端已缓存的完整更新。
 func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdatePlan, bool, error) {
-	request.Target = strings.TrimSpace(strings.ToLower(request.Target))
-	if request.Target == "" {
-		request.Target = clientTargetWindowsX64
+	if normalizeVersion(request.CurrentVersion) == "" {
+		return ClientUpdatePlan{}, false, errors.New("current_version must be a valid SemVer")
 	}
+	request.Target = strings.TrimSpace(strings.ToLower(request.Target))
 	if request.Target != clientTargetWindowsX64 {
 		return ClientUpdatePlan{}, false, fmt.Errorf("unsupported update target %q", request.Target)
 	}
@@ -633,21 +575,20 @@ func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdat
 	s.mu.RLock()
 	payload := cloneClientUpdatePayload(s.clientPayload)
 	manifest := cloneManifest(s.manifest)
-	deltaDegraded := s.deltaDegraded
 	artifacts := cloneArtifacts(s.artifacts)
 	s.mu.RUnlock()
 	if payload == nil || manifest == nil || CompareVersions(payload.Version, request.CurrentVersion) <= 0 {
 		return ClientUpdatePlan{}, false, nil
 	}
 	request.InstallMode = installMode
-	full, selectedDelta := s.planner.Select(payload, request, func(artifact ClientArtifact) bool {
-		_, declared := artifacts[strings.ToLower(artifact.SHA256)]
-		return declared && s.artifactStore.Cached(artifact)
-	})
+	full := payload.Full.NSIS
+	if installMode == installModePortable {
+		full = payload.Full.Portable
+	}
 	if _, ok := artifacts[strings.ToLower(full.SHA256)]; !ok || !s.artifactStore.Cached(full) {
 		return ClientUpdatePlan{}, false, errors.New("required full client update artifact is not cached")
 	}
-	fullPlan := clientPlanArtifact(full, nil)
+	fullPlan := clientPlanArtifact(full)
 	plan := ClientUpdatePlan{
 		ProtocolVersion: payload.ProtocolVersion,
 		CurrentVersion:  request.CurrentVersion,
@@ -660,19 +601,11 @@ func (s *Service) ClientUpdatePlan(request ClientUpdatePlanRequest) (ClientUpdat
 		SignedPayload:   manifest.ClientUpdateV2.Payload,
 		Signature:       manifest.ClientUpdateV2.Signature,
 		Artifact:        fullPlan,
-		FullFallback:    fullPlan,
-		Message:         deltaDegraded,
-	}
-	if selectedDelta != nil {
-		plan.Strategy = "delta"
-		plan.DownloadSize = selectedDelta.Size
-		plan.SavedBytes = max(full.Size-selectedDelta.Size, 0)
-		plan.Artifact = clientPlanArtifact(selectedDelta.ClientArtifact, selectedDelta)
 	}
 	return plan, true, nil
 }
 
-// TauriClientUpdate 返回官方 updater 使用的完整 NSIS 更新，不参与差分选择。
+// TauriClientUpdate 返回 Tauri updater 使用的完整 NSIS 更新。
 func (s *Service) TauriClientUpdate(target, currentVersion string) (TauriUpdateResponse, bool, error) {
 	target = strings.TrimSpace(strings.ToLower(target))
 	if target != clientTargetWindowsX64 {
@@ -720,13 +653,9 @@ func serverPackageCacheName(fileName string) string {
 
 func packageCacheLocation(name string) (cacheDir, fileName string) {
 	normalized := filepath.ToSlash(strings.TrimSpace(name))
-	cacheDir = "client"
-	fallback := clientPackageName
-	if normalized == "server" || strings.HasPrefix(normalized, "server/") {
-		cacheDir = "server"
-		fallback = serverPackageName
-		normalized = strings.TrimPrefix(normalized, "server/")
-	}
+	cacheDir = "server"
+	fallback := serverPackageName
+	normalized = strings.TrimPrefix(normalized, "server/")
 	fileName = path.Base(normalized)
 	if fileName == "." || fileName == ".." || fileName == "" {
 		fileName = fallback
@@ -753,9 +682,9 @@ func packageFileName(rawURL string) string {
 func normalizeInstallMode(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	switch value {
-	case "", installModeNSIS:
+	case installModeNSIS:
 		return installModeNSIS, nil
-	case installModePortable, "all-in-one", "all_in_one":
+	case installModePortable:
 		return installModePortable, nil
 	default:
 		return "", fmt.Errorf("unsupported install mode %q", value)
@@ -796,7 +725,7 @@ type Manager struct {
 	Source ManifestSource
 }
 
-// NewManager 创建兼容更新管理器。
+// NewManager 创建更新管理器。
 func NewManager(cfg config.UpdateConfig) *Manager {
 	if cfg.ManifestTimeout <= 0 {
 		cfg.ManifestTimeout = 20 * time.Second
@@ -1038,7 +967,6 @@ func cloneClientUpdatePayload(payload *ClientUpdatePayload) *ClientUpdatePayload
 		return nil
 	}
 	copy := *payload
-	copy.Deltas = append([]ClientDeltaArtifact(nil), payload.Deltas...)
 	return &copy
 }
 

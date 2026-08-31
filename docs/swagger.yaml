@@ -1,598 +1,6 @@
 basePath: /
 definitions:
-  app.HealthResponse:
-    properties:
-      status:
-        description: Status 是服务存活状态。
-        example: ok
-        type: string
-      time:
-        description: Time 是服务端当前时间。
-        type: string
-    type: object
-  app.ReadyResponse:
-    properties:
-      message:
-        description: Message 是不可用时的说明。
-        example: database ping failed
-        type: string
-      status:
-        description: Status 是服务就绪状态。
-        example: ready
-        type: string
-    type: object
-  auth.ChangePasswordRequest:
-    properties:
-      current_password:
-        description: CurrentPassword 是当前密码。
-        example: admin123456
-        type: string
-      new_password:
-        description: NewPassword 是待设置的新密码，至少 8 个字符且不超过 bcrypt 支持的长度。
-        example: newAdmin123456
-        type: string
-    required:
-    - current_password
-    - new_password
-    type: object
-  auth.CurrentUserDTO:
-    properties:
-      account_type:
-        description: AccountType 是账号类型。
-        example: personal
-        type: string
-      department_id:
-        description: DepartmentID 是所属部门 ID。
-        type: integer
-      id:
-        description: ID 是用户 ID。
-        example: 1
-        type: integer
-      name:
-        description: Name 是账号显示名称。
-        example: 系统管理员
-        type: string
-      organization_id:
-        description: OrganizationID 是所属组织 ID。
-        example: 1
-        type: integer
-      permissions:
-        description: Permissions 是当前账号拥有的权限编码列表。
-        items:
-          type: string
-        type: array
-      roles:
-        description: Roles 是当前账号拥有的角色编码列表。
-        items:
-          type: string
-        type: array
-      terminal_id:
-        description: TerminalID 是所属终端 ID。
-        type: integer
-      username:
-        description: Username 是登录账号。
-        example: admin
-        type: string
-    type: object
-  auth.ErrorResponse:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  auth.LoginRequest:
-    properties:
-      password:
-        description: Password 是登录密码。
-        example: admin123456
-        type: string
-      username:
-        description: Username 是登录账号。
-        example: admin
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  auth.LoginResponse:
-    properties:
-      access_token:
-        description: AccessToken 是 JWT 访问令牌。
-        type: string
-      expires_at:
-        description: ExpiresAt 是令牌过期时间。
-        type: string
-      refresh_expires_at:
-        description: RefreshExpiresAt 是本次 refresh token 的滚动失效时间。
-        type: string
-      refresh_token:
-        description: RefreshToken 是用于静默续期的轮换令牌。
-        type: string
-      user:
-        allOf:
-        - $ref: '#/definitions/auth.CurrentUserDTO'
-        description: User 是当前登录身份快照。
-    type: object
-  auth.RefreshRequest:
-    properties:
-      refresh_token:
-        description: RefreshToken 是登录或上次续期返回的 refresh token。
-        type: string
-    required:
-    - refresh_token
-    type: object
-  customer.CodePage:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/customer.CodeResponse'
-        type: array
-      keyword:
-        type: string
-      page:
-        type: integer
-      page_size:
-        type: integer
-      total:
-        type: integer
-    type: object
-  customer.CodeRequest:
-    properties:
-      code:
-        type: string
-    type: object
-  customer.CodeResponse:
-    properties:
-      code:
-        type: string
-      created_at:
-        type: string
-      default_profile:
-        $ref: '#/definitions/customer.ProfileResponse'
-      id:
-        type: integer
-      profile_count:
-        type: integer
-      profiles:
-        items:
-          $ref: '#/definitions/model.CustomerProfile'
-        type: array
-      updated_at:
-        type: string
-    type: object
-  customer.ErrorResponse:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  customer.ImportPreview:
-    properties:
-      errors:
-        items:
-          $ref: '#/definitions/spreadsheet.CellError'
-        type: array
-      expires_at:
-        type: string
-      summary:
-        $ref: '#/definitions/customer.ImportSummary'
-      token:
-        type: string
-    type: object
-  customer.ImportResult:
-    properties:
-      completed_at:
-        type: string
-      imported_codes:
-        type: integer
-      imported_profiles:
-        type: integer
-    type: object
-  customer.ImportSummary:
-    properties:
-      multiple_code_groups:
-        type: integer
-      new_codes:
-        type: integer
-      new_profiles:
-        type: integer
-      total_rows:
-        type: integer
-    type: object
-  customer.OptionResponse:
-    properties:
-      code:
-        type: string
-      id:
-        type: integer
-      is_default:
-        type: boolean
-      name:
-        type: string
-      short_name:
-        type: string
-    type: object
-  customer.ProfileInput:
-    properties:
-      address:
-        type: string
-      contact_name:
-        type: string
-      contact_phone:
-        type: string
-      customer_code_id:
-        type: integer
-      name:
-        type: string
-      phone:
-        type: string
-      salesperson:
-        type: string
-      short_name:
-        type: string
-    required:
-    - customer_code_id
-    type: object
-  customer.ProfilePage:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/customer.ProfileResponse'
-        type: array
-      keyword:
-        type: string
-      page:
-        type: integer
-      page_size:
-        type: integer
-      total:
-        type: integer
-    type: object
-  customer.ProfileResponse:
-    properties:
-      address:
-        type: string
-      code:
-        type: string
-      contact_name:
-        type: string
-      contact_phone:
-        type: string
-      created_at:
-        type: string
-      customer_code_id:
-        type: integer
-      id:
-        type: integer
-      is_default:
-        type: boolean
-      name:
-        type: string
-      phone:
-        type: string
-      salesperson:
-        type: string
-      short_name:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  customer.ProfileUpdate:
-    properties:
-      address:
-        type: string
-      contact_name:
-        type: string
-      contact_phone:
-        type: string
-      name:
-        type: string
-      phone:
-        type: string
-      salesperson:
-        type: string
-      short_name:
-        type: string
-    type: object
-  employee.DepartmentSummary:
-    properties:
-      code:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      status:
-        type: string
-    type: object
-  employee.EmployeeResponse:
-    properties:
-      age:
-        type: integer
-      birth_date:
-        type: string
-      birthplace:
-        type: string
-      created_at:
-        type: string
-      departments:
-        items:
-          $ref: '#/definitions/employee.DepartmentSummary'
-        type: array
-      hire_date:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      organization_id:
-        type: integer
-      phone:
-        type: string
-      residential_address:
-        type: string
-      status:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  employee.OperatorDepartment:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-    type: object
-  employee.OperatorEmployee:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-    type: object
-  employee.OperatorEmployeesResponse:
-    properties:
-      department:
-        $ref: '#/definitions/employee.OperatorDepartment'
-      employees:
-        items:
-          $ref: '#/definitions/employee.OperatorEmployee'
-        type: array
-    type: object
-  employee.employeeRequest:
-    properties:
-      birth_date:
-        type: string
-      birthplace:
-        type: string
-      hire_date:
-        type: string
-      name:
-        type: string
-      phone:
-        type: string
-      residential_address:
-        type: string
-    type: object
-  employee.employeeStatusRequest:
-    properties:
-      status:
-        type: string
-    type: object
-  file.ErrorResponse:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  file.ImageResponse:
-    properties:
-      category:
-        type: string
-      content_url:
-        type: string
-      created_at:
-        type: string
-      extension:
-        type: string
-      id:
-        type: integer
-      mime_type:
-        type: string
-      original_name:
-        type: string
-      owner_id:
-        type: integer
-      owner_type:
-        type: string
-      replaces_id:
-        type: integer
-      size:
-        type: integer
-      uploaded_by:
-        type: integer
-    type: object
-  inventory.ErrorResponse:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  inventory.documentRequest:
-    properties:
-      code:
-        type: string
-      lines:
-        items:
-          $ref: '#/definitions/inventory.lineRequest'
-        minItems: 1
-        type: array
-      operator_employee_id:
-        example: 1
-        type: integer
-      reason:
-        type: string
-      to_warehouse_id:
-        type: integer
-      type:
-        enum:
-        - inbound
-        - outbound
-        - transfer
-        type: string
-      warehouse_id:
-        type: integer
-    required:
-    - code
-    - lines
-    - operator_employee_id
-    - type
-    - warehouse_id
-    type: object
-  inventory.itemMovementRequest:
-    properties:
-      business_type:
-        enum:
-        - purchase_inbound
-        - return_rework_inbound
-        - customer_outbound
-        - department_outbound
-        type: string
-      customer_id:
-        type: integer
-      department_id:
-        type: integer
-      operator_employee_id:
-        example: 1
-        type: integer
-      original_document_id:
-        type: integer
-      quantity:
-        type: integer
-      reason:
-        type: string
-      remark:
-        type: string
-      supplier_id:
-        type: integer
-      unit_cost:
-        type: integer
-    required:
-    - business_type
-    - operator_employee_id
-    - quantity
-    type: object
-  inventory.lineRequest:
-    properties:
-      amount:
-        type: integer
-      item_id:
-        type: integer
-      item_type:
-        enum:
-        - material
-        - product
-        type: string
-      location_id:
-        type: integer
-      quantity:
-        type: integer
-      remark:
-        type: string
-      unit_cost:
-        type: integer
-    required:
-    - item_id
-    - item_type
-    - quantity
-    type: object
-  inventory.operatorActionRequest:
-    properties:
-      operator_employee_id:
-        example: 1
-        type: integer
-    required:
-    - operator_employee_id
-    type: object
-  inventory.reverseDocumentRequest:
-    properties:
-      operator_employee_id:
-        example: 1
-        type: integer
-      reason:
-        type: string
-    required:
-    - operator_employee_id
-    - reason
-    type: object
-  material.ErrorResponse:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  material.createMaterialRequest:
-    properties:
-      category:
-        example: 生产物资
-        type: string
-      code:
-        example: M-001
-        type: string
-      default_cost:
-        example: 10000
-        type: integer
-      name:
-        example: 铝材
-        type: string
-      operator_employee_id:
-        example: 1
-        type: integer
-      safety_stock:
-        example: 10
-        type: integer
-      spec:
-        example: 标准
-        type: string
-      unit:
-        example: 个
-        type: string
-    required:
-    - code
-    - name
-    - operator_employee_id
-    type: object
-  model.CustomerProfile:
+  bb_erp_echo_internal_model.CustomerProfile:
     properties:
       address:
         type: string
@@ -619,7 +27,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.Department:
+  bb_erp_echo_internal_model.Department:
     properties:
       code:
         type: string
@@ -638,7 +46,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.DepartmentTask:
+  bb_erp_echo_internal_model.DepartmentTask:
     properties:
       accepted_at:
         type: string
@@ -671,7 +79,7 @@ definitions:
       work_order_id:
         type: integer
     type: object
-  model.InventoryBalance:
+  bb_erp_echo_internal_model.InventoryBalance:
     properties:
       amount:
         type: integer
@@ -697,7 +105,7 @@ definitions:
           NULL 分成两个部分唯一索引，确保默认库位和明确库位都只能有一条余额。
         type: integer
     type: object
-  model.InventoryLedger:
+  bb_erp_echo_internal_model.InventoryLedger:
     properties:
       amount:
         type: integer
@@ -730,7 +138,7 @@ definitions:
       warehouse_id:
         type: integer
     type: object
-  model.Location:
+  bb_erp_echo_internal_model.Location:
     properties:
       code:
         type: string
@@ -761,7 +169,7 @@ definitions:
       warehouse_id:
         type: integer
     type: object
-  model.Material:
+  bb_erp_echo_internal_model.Material:
     properties:
       category:
         type: string
@@ -800,7 +208,89 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.Product:
+  bb_erp_echo_internal_model.Mold:
+    properties:
+      cavity_count:
+        type: integer
+      code:
+        type: string
+      created_at:
+        type: string
+      current_location:
+        type: string
+      customer_id:
+        type: integer
+      events:
+        items:
+          $ref: '#/definitions/bb_erp_echo_internal_model.MoldEvent'
+        type: array
+      id:
+        type: integer
+      last_maintenance_at:
+        type: string
+      last_repair_at:
+        type: string
+      maintenance_cycle_days:
+        type: integer
+      manufacturer:
+        type: string
+      mold_material:
+        type: string
+      name:
+        type: string
+      next_maintenance_at:
+        type: string
+      owner:
+        type: string
+      product_id:
+        type: integer
+      remark:
+        type: string
+      size:
+        type: string
+      status:
+        type: string
+      steel:
+        type: string
+      storage_location:
+        type: string
+      updated_at:
+        type: string
+      weight_gram:
+        type: integer
+    type: object
+  bb_erp_echo_internal_model.MoldEvent:
+    properties:
+      counterparty:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      finished_at:
+        type: string
+      handler_name:
+        type: string
+      id:
+        type: integer
+      location:
+        type: string
+      mold_id:
+        type: integer
+      reason:
+        type: string
+      started_at:
+        type: string
+      status_after:
+        type: string
+      status_before:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  bb_erp_echo_internal_model.Product:
     properties:
       code:
         type: string
@@ -837,7 +327,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.User:
+  bb_erp_echo_internal_model.User:
     properties:
       account_type:
         type: string
@@ -862,7 +352,7 @@ definitions:
       username:
         type: string
     type: object
-  model.Warehouse:
+  bb_erp_echo_internal_model.Warehouse:
     properties:
       code:
         type: string
@@ -891,7 +381,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.WorkOrder:
+  bb_erp_echo_internal_model.WorkOrder:
     properties:
       cancel_reason:
         type: string
@@ -907,7 +397,7 @@ definitions:
         type: integer
       department_tasks:
         items:
-          $ref: '#/definitions/model.DepartmentTask'
+          $ref: '#/definitions/bb_erp_echo_internal_model.DepartmentTask'
         type: array
       description:
         type: string
@@ -936,7 +426,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  model.WorkOrderFlowLog:
+  bb_erp_echo_internal_model.WorkOrderFlowLog:
     properties:
       action:
         type: string
@@ -979,7 +469,132 @@ definitions:
       work_order_id:
         type: integer
     type: object
-  product.ErrorResponse:
+  bb_erp_echo_internal_spreadsheet.CellError:
+    properties:
+      column:
+        type: string
+      reason:
+        type: string
+      row:
+        type: integer
+      value:
+        type: string
+    type: object
+  bb_erp_echo_internal_spreadsheet.Column:
+    properties:
+      alignment:
+        type: string
+      key:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      width:
+        type: number
+    type: object
+  bb_erp_echo_internal_spreadsheet.SpreadsheetDocument:
+    properties:
+      columns:
+        items:
+          $ref: '#/definitions/bb_erp_echo_internal_spreadsheet.Column'
+        type: array
+      empty:
+        type: boolean
+      has_more:
+        type: boolean
+      page:
+        type: integer
+      page_size:
+        type: integer
+      rows:
+        items:
+          items:
+            type: string
+          type: array
+        type: array
+      sheet_name:
+        type: string
+      title:
+        type: string
+      total_rows:
+        type: integer
+    type: object
+  internal_app.HealthResponse:
+    properties:
+      status:
+        description: Status 是服务存活状态。
+        example: ok
+        type: string
+      time:
+        description: Time 是服务端当前时间。
+        type: string
+    type: object
+  internal_app.ReadyResponse:
+    properties:
+      message:
+        description: Message 是不可用时的说明。
+        example: database ping failed
+        type: string
+      status:
+        description: Status 是服务就绪状态。
+        example: ready
+        type: string
+    type: object
+  internal_auth.ChangePasswordRequest:
+    properties:
+      current_password:
+        description: CurrentPassword 是当前密码。
+        example: admin123456
+        type: string
+      new_password:
+        description: NewPassword 是待设置的新密码，至少 8 个字符且不超过 bcrypt 支持的长度。
+        example: newAdmin123456
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
+  internal_auth.CurrentUserDTO:
+    properties:
+      account_type:
+        description: AccountType 是账号类型。
+        example: personal
+        type: string
+      department_id:
+        description: DepartmentID 是所属部门 ID。
+        type: integer
+      id:
+        description: ID 是用户 ID。
+        example: 1
+        type: integer
+      name:
+        description: Name 是账号显示名称。
+        example: 系统管理员
+        type: string
+      organization_id:
+        description: OrganizationID 是所属组织 ID。
+        example: 1
+        type: integer
+      permissions:
+        description: Permissions 是当前账号拥有的权限编码列表。
+        items:
+          type: string
+        type: array
+      roles:
+        description: Roles 是当前账号拥有的角色编码列表。
+        items:
+          type: string
+        type: array
+      terminal_id:
+        description: TerminalID 是所属终端 ID。
+        type: integer
+      username:
+        description: Username 是登录账号。
+        example: admin
+        type: string
+    type: object
+  internal_auth.ErrorResponse:
     properties:
       code:
         description: Code 是错误码。
@@ -991,7 +606,618 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  product.createProductRequest:
+  internal_auth.LoginRequest:
+    properties:
+      password:
+        description: Password 是登录密码。
+        example: admin123456
+        type: string
+      username:
+        description: Username 是登录账号。
+        example: admin
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  internal_auth.LoginResponse:
+    properties:
+      access_token:
+        description: AccessToken 是 JWT 访问令牌。
+        type: string
+      expires_at:
+        description: ExpiresAt 是令牌过期时间。
+        type: string
+      refresh_expires_at:
+        description: RefreshExpiresAt 是本次 refresh token 的滚动失效时间。
+        type: string
+      refresh_token:
+        description: RefreshToken 是用于静默续期的轮换令牌。
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/internal_auth.CurrentUserDTO'
+        description: User 是当前登录身份快照。
+    type: object
+  internal_auth.RefreshRequest:
+    properties:
+      refresh_token:
+        description: RefreshToken 是登录或上次续期返回的 refresh token。
+        type: string
+    required:
+    - refresh_token
+    type: object
+  internal_customer.CodePage:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_customer.CodeResponse'
+        type: array
+      keyword:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_customer.CodeRequest:
+    properties:
+      code:
+        type: string
+    type: object
+  internal_customer.CodeResponse:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      default_profile:
+        $ref: '#/definitions/internal_customer.ProfileResponse'
+      id:
+        type: integer
+      profile_count:
+        type: integer
+      profiles:
+        items:
+          $ref: '#/definitions/bb_erp_echo_internal_model.CustomerProfile'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  internal_customer.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_customer.ImportPreview:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/bb_erp_echo_internal_spreadsheet.CellError'
+        type: array
+      expires_at:
+        type: string
+      summary:
+        $ref: '#/definitions/internal_customer.ImportSummary'
+      token:
+        type: string
+    type: object
+  internal_customer.ImportResult:
+    properties:
+      completed_at:
+        type: string
+      imported_codes:
+        type: integer
+      imported_profiles:
+        type: integer
+    type: object
+  internal_customer.ImportSummary:
+    properties:
+      multiple_code_groups:
+        type: integer
+      new_codes:
+        type: integer
+      new_profiles:
+        type: integer
+      total_rows:
+        type: integer
+    type: object
+  internal_customer.OptionResponse:
+    properties:
+      code:
+        type: string
+      id:
+        type: integer
+      is_default:
+        type: boolean
+      name:
+        type: string
+      short_name:
+        type: string
+    type: object
+  internal_customer.ProfileInput:
+    properties:
+      address:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      customer_code_id:
+        type: integer
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
+    required:
+    - customer_code_id
+    type: object
+  internal_customer.ProfilePage:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_customer.ProfileResponse'
+        type: array
+      keyword:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_customer.ProfileResponse:
+    properties:
+      address:
+        type: string
+      code:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      customer_code_id:
+        type: integer
+      id:
+        type: integer
+      is_default:
+        type: boolean
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_customer.ProfileUpdate:
+    properties:
+      address:
+        type: string
+      contact_name:
+        type: string
+      contact_phone:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      salesperson:
+        type: string
+      short_name:
+        type: string
+    type: object
+  internal_department.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_discovery.IdentityResponse:
+    properties:
+      discovery_protocol:
+        type: integer
+      instance_id:
+        type: string
+      product:
+        type: string
+      server_name:
+        type: string
+      server_version:
+        type: string
+    type: object
+  internal_employee.DepartmentSummary:
+    properties:
+      code:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_employee.EmployeeResponse:
+    properties:
+      age:
+        type: integer
+      birth_date:
+        type: string
+      birthplace:
+        type: string
+      created_at:
+        type: string
+      departments:
+        items:
+          $ref: '#/definitions/internal_employee.DepartmentSummary'
+        type: array
+      hire_date:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      organization_id:
+        type: integer
+      phone:
+        type: string
+      residential_address:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_employee.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_employee.OperatorDepartment:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  internal_employee.OperatorEmployee:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  internal_employee.OperatorEmployeesResponse:
+    properties:
+      department:
+        $ref: '#/definitions/internal_employee.OperatorDepartment'
+      employees:
+        items:
+          $ref: '#/definitions/internal_employee.OperatorEmployee'
+        type: array
+    type: object
+  internal_employee.employeeRequest:
+    properties:
+      birth_date:
+        type: string
+      birthplace:
+        type: string
+      hire_date:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      residential_address:
+        type: string
+    type: object
+  internal_employee.employeeStatusRequest:
+    properties:
+      status:
+        type: string
+    type: object
+  internal_file.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_file.ImageResponse:
+    properties:
+      category:
+        type: string
+      content_url:
+        type: string
+      created_at:
+        type: string
+      extension:
+        type: string
+      id:
+        type: integer
+      mime_type:
+        type: string
+      original_name:
+        type: string
+      owner_id:
+        type: integer
+      owner_type:
+        type: string
+      replaces_id:
+        type: integer
+      size:
+        type: integer
+      uploaded_by:
+        type: integer
+    type: object
+  internal_inventory.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_inventory.documentRequest:
+    properties:
+      code:
+        type: string
+      lines:
+        items:
+          $ref: '#/definitions/internal_inventory.lineRequest'
+        minItems: 1
+        type: array
+      operator_employee_id:
+        example: 1
+        type: integer
+      reason:
+        type: string
+      to_warehouse_id:
+        type: integer
+      type:
+        enum:
+        - inbound
+        - outbound
+        - transfer
+        type: string
+      warehouse_id:
+        type: integer
+    required:
+    - code
+    - lines
+    - operator_employee_id
+    - type
+    - warehouse_id
+    type: object
+  internal_inventory.itemMovementRequest:
+    properties:
+      business_type:
+        enum:
+        - purchase_inbound
+        - return_rework_inbound
+        - customer_outbound
+        - department_outbound
+        type: string
+      customer_id:
+        type: integer
+      department_id:
+        type: integer
+      operator_employee_id:
+        example: 1
+        type: integer
+      original_document_id:
+        type: integer
+      quantity:
+        type: integer
+      reason:
+        type: string
+      remark:
+        type: string
+      supplier_id:
+        type: integer
+      unit_cost:
+        type: integer
+    required:
+    - business_type
+    - operator_employee_id
+    - quantity
+    type: object
+  internal_inventory.lineRequest:
+    properties:
+      amount:
+        type: integer
+      item_id:
+        type: integer
+      item_type:
+        enum:
+        - material
+        - product
+        type: string
+      location_id:
+        type: integer
+      quantity:
+        type: integer
+      remark:
+        type: string
+      unit_cost:
+        type: integer
+    required:
+    - item_id
+    - item_type
+    - quantity
+    type: object
+  internal_inventory.operatorActionRequest:
+    properties:
+      operator_employee_id:
+        example: 1
+        type: integer
+    required:
+    - operator_employee_id
+    type: object
+  internal_inventory.reverseDocumentRequest:
+    properties:
+      operator_employee_id:
+        example: 1
+        type: integer
+      reason:
+        type: string
+    required:
+    - operator_employee_id
+    - reason
+    type: object
+  internal_material.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_material.createMaterialRequest:
+    properties:
+      category:
+        example: 生产物资
+        type: string
+      code:
+        example: M-001
+        type: string
+      default_cost:
+        example: 10000
+        type: integer
+      name:
+        example: 铝材
+        type: string
+      operator_employee_id:
+        example: 1
+        type: integer
+      safety_stock:
+        example: 10
+        type: integer
+      spec:
+        example: 标准
+        type: string
+      unit:
+        example: 个
+        type: string
+    required:
+    - code
+    - name
+    - operator_employee_id
+    type: object
+  internal_mold.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_mold.moldRequest:
+    properties:
+      cavity_count:
+        type: integer
+      code:
+        type: string
+      current_location:
+        type: string
+      customer_id:
+        type: integer
+      maintenance_cycle_days:
+        type: integer
+      manufacturer:
+        type: string
+      mold_material:
+        type: string
+      name:
+        type: string
+      owner:
+        type: string
+      product_id:
+        type: integer
+      remark:
+        type: string
+      size:
+        type: string
+      status:
+        enum:
+        - in_stock
+        - loaned
+        - repairing
+        - maintenance
+        - scrapped
+        type: string
+      steel:
+        type: string
+      storage_location:
+        type: string
+      weight_gram:
+        type: integer
+    required:
+    - code
+    - name
+    type: object
+  internal_product.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_product.createProductRequest:
     properties:
       code:
         example: P-001
@@ -1019,111 +1245,48 @@ definitions:
     - name
     - operator_employee_id
     type: object
-  response.ErrorBody:
-    properties:
-      code:
-        description: Code 是错误码。
-        type: string
-      message:
-        description: Message 是前端可展示错误信息。
-        type: string
-      request_id:
-        description: RequestID 是请求 ID，用于关联日志。
-        type: string
-    type: object
-  spreadsheet.CellError:
-    properties:
-      column:
-        type: string
-      reason:
-        type: string
-      row:
-        type: integer
-      value:
-        type: string
-    type: object
-  spreadsheet.Column:
-    properties:
-      alignment:
-        type: string
-      key:
-        type: string
-      title:
-        type: string
-      type:
-        type: string
-      width:
-        type: number
-    type: object
-  spreadsheet.SpreadsheetDocument:
-    properties:
-      columns:
-        items:
-          $ref: '#/definitions/spreadsheet.Column'
-        type: array
-      empty:
-        type: boolean
-      has_more:
-        type: boolean
-      page:
-        type: integer
-      page_size:
-        type: integer
-      rows:
-        items:
-          items:
-            type: string
-          type: array
-        type: array
-      sheet_name:
-        type: string
-      title:
-        type: string
-      total_rows:
-        type: integer
-    type: object
-  statistics.AuditStatistics:
+  internal_statistics.AuditStatistics:
     properties:
       by_result:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       trend:
         items:
-          $ref: '#/definitions/statistics.TrendItem'
+          $ref: '#/definitions/internal_statistics.TrendItem'
         type: array
     type: object
-  statistics.BusinessStatistics:
+  internal_statistics.BusinessStatistics:
     properties:
       by_master_data:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
     type: object
-  statistics.DashboardResponse:
+  internal_statistics.DashboardResponse:
     properties:
       audit:
-        $ref: '#/definitions/statistics.AuditStatistics'
+        $ref: '#/definitions/internal_statistics.AuditStatistics'
       business:
-        $ref: '#/definitions/statistics.BusinessStatistics'
+        $ref: '#/definitions/internal_statistics.BusinessStatistics'
       can_view_cost:
         type: boolean
       generated_at:
         type: string
       inventory:
-        $ref: '#/definitions/statistics.InventoryStatistics'
+        $ref: '#/definitions/internal_statistics.InventoryStatistics'
       molds:
-        $ref: '#/definitions/statistics.MoldStatistics'
+        $ref: '#/definitions/internal_statistics.MoldStatistics'
       recent_workorders:
         items:
-          $ref: '#/definitions/model.WorkOrder'
+          $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         type: array
       summary:
-        $ref: '#/definitions/statistics.Summary'
+        $ref: '#/definitions/internal_statistics.Summary'
       workorders:
-        $ref: '#/definitions/statistics.WorkOrderStatistics'
+        $ref: '#/definitions/internal_statistics.WorkOrderStatistics'
     type: object
-  statistics.DepartmentStat:
+  internal_statistics.DepartmentStat:
     properties:
       completed:
         type: integer
@@ -1140,7 +1303,7 @@ definitions:
       total:
         type: integer
     type: object
-  statistics.ErrorResponse:
+  internal_statistics.ErrorResponse:
     properties:
       code:
         description: Code 是错误码。
@@ -1152,26 +1315,26 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  statistics.InventoryStatistics:
+  internal_statistics.InventoryStatistics:
     properties:
       by_item_type:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       by_material_type:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       low_stock:
         items:
-          $ref: '#/definitions/statistics.StockItem'
+          $ref: '#/definitions/internal_statistics.StockItem'
         type: array
       trend:
         items:
-          $ref: '#/definitions/statistics.TrendItem'
+          $ref: '#/definitions/internal_statistics.TrendItem'
         type: array
     type: object
-  statistics.MoldItem:
+  internal_statistics.MoldItem:
     properties:
       code:
         type: string
@@ -1186,18 +1349,18 @@ definitions:
       status:
         type: string
     type: object
-  statistics.MoldStatistics:
+  internal_statistics.MoldStatistics:
     properties:
       by_status:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       need_care:
         items:
-          $ref: '#/definitions/statistics.MoldItem'
+          $ref: '#/definitions/internal_statistics.MoldItem'
         type: array
     type: object
-  statistics.NameValue:
+  internal_statistics.NameValue:
     properties:
       amount:
         type: integer
@@ -1206,7 +1369,7 @@ definitions:
       value:
         type: integer
     type: object
-  statistics.StockItem:
+  internal_statistics.StockItem:
     properties:
       amount:
         type: integer
@@ -1225,7 +1388,7 @@ definitions:
       safety_stock:
         type: integer
     type: object
-  statistics.Summary:
+  internal_statistics.Summary:
     properties:
       customers:
         type: integer
@@ -1250,7 +1413,7 @@ definitions:
       warehouse_items:
         type: integer
     type: object
-  statistics.TrendItem:
+  internal_statistics.TrendItem:
     properties:
       amount:
         type: integer
@@ -1263,26 +1426,26 @@ definitions:
       value:
         type: integer
     type: object
-  statistics.WorkOrderStatistics:
+  internal_statistics.WorkOrderStatistics:
     properties:
       by_department:
         items:
-          $ref: '#/definitions/statistics.DepartmentStat'
+          $ref: '#/definitions/internal_statistics.DepartmentStat'
         type: array
       by_status:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       by_type:
         items:
-          $ref: '#/definitions/statistics.NameValue'
+          $ref: '#/definitions/internal_statistics.NameValue'
         type: array
       trend:
         items:
-          $ref: '#/definitions/statistics.TrendItem'
+          $ref: '#/definitions/internal_statistics.TrendItem'
         type: array
     type: object
-  update.ClientComponentStatus:
+  internal_update.ClientComponentStatus:
     properties:
       available:
         type: boolean
@@ -1299,22 +1462,20 @@ definitions:
       latest_version:
         type: string
       manifest:
-        $ref: '#/definitions/update.PackageManifest'
+        $ref: '#/definitions/internal_update.PackageManifest'
       sha256:
         type: string
       size:
         type: integer
     type: object
-  update.ClientUpdatePlan:
+  internal_update.ClientUpdatePlan:
     properties:
       artifact:
-        $ref: '#/definitions/update.ClientUpdatePlanArtifact'
+        $ref: '#/definitions/internal_update.ClientUpdatePlanArtifact'
       current_version:
         type: string
       download_size:
         type: integer
-      full_fallback:
-        $ref: '#/definitions/update.ClientUpdatePlanArtifact'
       full_size:
         type: integer
       install_mode:
@@ -1325,8 +1486,6 @@ definitions:
         type: string
       protocol_version:
         type: integer
-      saved_bytes:
-        type: integer
       signature:
         type: string
       signed_payload:
@@ -1336,15 +1495,9 @@ definitions:
       target:
         type: string
     type: object
-  update.ClientUpdatePlanArtifact:
+  internal_update.ClientUpdatePlanArtifact:
     properties:
-      algorithm:
-        type: string
       download_path:
-        type: string
-      from_sha256:
-        type: string
-      from_version:
         type: string
       kind:
         type: string
@@ -1354,31 +1507,8 @@ definitions:
         type: string
       size:
         type: integer
-      target_sha256:
-        type: string
     type: object
-  update.ClientUpdateStatus:
-    properties:
-      available:
-        type: boolean
-      cached:
-        type: boolean
-      checked_at:
-        type: string
-      current_version:
-        type: string
-      download_path:
-        type: string
-      file_name:
-        type: string
-      latest_version:
-        type: string
-      manifest:
-        $ref: '#/definitions/update.PackageManifest'
-      message:
-        type: string
-    type: object
-  update.ComponentStatus:
+  internal_update.ComponentStatus:
     properties:
       available:
         type: boolean
@@ -1393,32 +1523,30 @@ definitions:
       latest_version:
         type: string
       manifest:
-        $ref: '#/definitions/update.PackageManifest'
+        $ref: '#/definitions/internal_update.PackageManifest'
       sha256:
         type: string
       size:
         type: integer
     type: object
-  update.Manifest:
+  internal_update.Manifest:
     properties:
       all_in_one:
-        $ref: '#/definitions/update.PackageManifest'
-      client:
-        $ref: '#/definitions/update.PackageManifest'
+        $ref: '#/definitions/internal_update.PackageManifest'
       client_update_v2:
-        $ref: '#/definitions/update.SignedClientUpdateManifest'
+        $ref: '#/definitions/internal_update.SignedClientUpdateManifest'
       notes:
         type: string
       published_at:
         type: string
       server:
-        $ref: '#/definitions/update.PackageManifest'
+        $ref: '#/definitions/internal_update.PackageManifest'
       updater:
-        $ref: '#/definitions/update.PackageManifest'
+        $ref: '#/definitions/internal_update.PackageManifest'
       version:
         type: string
     type: object
-  update.PackageManifest:
+  internal_update.PackageManifest:
     properties:
       sha256:
         type: string
@@ -1431,29 +1559,23 @@ definitions:
       version:
         type: string
     type: object
-  update.SignedClientUpdateManifest:
+  internal_update.SignedClientUpdateManifest:
     properties:
       payload:
         type: string
       signature:
         type: string
     type: object
-  update.SystemUpdateStatus:
+  internal_update.SystemUpdateStatus:
     properties:
       check_interval:
         type: string
       checking:
         type: boolean
       client:
-        $ref: '#/definitions/update.ClientComponentStatus'
+        $ref: '#/definitions/internal_update.ClientComponentStatus'
       client_cache_bytes:
         type: integer
-      client_delta_cached:
-        type: boolean
-      client_delta_degraded:
-        type: string
-      client_delta_from_version:
-        type: string
       client_full_cached:
         type: boolean
       client_protocol_version:
@@ -1469,7 +1591,7 @@ definitions:
       last_success_at:
         type: string
       manifest:
-        $ref: '#/definitions/update.Manifest'
+        $ref: '#/definitions/internal_update.Manifest'
       manifest_url:
         type: string
       next_check_at:
@@ -1477,9 +1599,9 @@ definitions:
       reachable:
         type: boolean
       server:
-        $ref: '#/definitions/update.ComponentStatus'
+        $ref: '#/definitions/internal_update.ComponentStatus'
     type: object
-  update.TauriUpdateResponse:
+  internal_update.TauriUpdateResponse:
     properties:
       pub_date:
         type: string
@@ -1490,12 +1612,10 @@ definitions:
       version:
         type: string
     type: object
-  update.VersionResponse:
+  internal_update.VersionResponse:
     properties:
       app_name:
         type: string
-      client_update:
-        $ref: '#/definitions/update.ClientUpdateStatus'
       client_version:
         type: string
       server_version:
@@ -1503,7 +1623,19 @@ definitions:
       update_enabled:
         type: boolean
     type: object
-  warehouse.CatalogItem:
+  internal_user.ErrorResponse:
+    properties:
+      code:
+        description: Code 是错误码。
+        type: string
+      message:
+        description: Message 是前端可展示错误信息。
+        type: string
+      request_id:
+        description: RequestID 是请求 ID，用于关联日志。
+        type: string
+    type: object
+  internal_warehouse.CatalogItem:
     properties:
       amount:
         type: integer
@@ -1534,11 +1666,11 @@ definitions:
       unit:
         type: string
     type: object
-  warehouse.CatalogItemsResponse:
+  internal_warehouse.CatalogItemsResponse:
     properties:
       items:
         items:
-          $ref: '#/definitions/warehouse.CatalogItem'
+          $ref: '#/definitions/internal_warehouse.CatalogItem'
         type: array
       keyword:
         example: 外壳
@@ -1553,7 +1685,7 @@ definitions:
         example: 1
         type: integer
     type: object
-  warehouse.CatalogTabSpec:
+  internal_warehouse.CatalogTabSpec:
     properties:
       category:
         type: string
@@ -1564,7 +1696,7 @@ definitions:
       title:
         type: string
     type: object
-  warehouse.ErrorResponse:
+  internal_warehouse.ErrorResponse:
     properties:
       code:
         description: Code 是错误码。
@@ -1576,7 +1708,7 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  warehouse.createLocationRequest:
+  internal_warehouse.createLocationRequest:
     properties:
       code:
         example: A-01
@@ -1596,7 +1728,7 @@ definitions:
     - operator_employee_id
     - warehouse_id
     type: object
-  warehouse.createWarehouseItemRequest:
+  internal_warehouse.createWarehouseItemRequest:
     properties:
       code:
         example: P-001
@@ -1628,7 +1760,7 @@ definitions:
     - operator_employee_id
     - tab
     type: object
-  warehouse.createWarehouseRequest:
+  internal_warehouse.createWarehouseRequest:
     properties:
       code:
         example: MAIN
@@ -1643,7 +1775,7 @@ definitions:
     - name
     - operator_employee_id
     type: object
-  workorder.ErrorResponse:
+  internal_workorder.ErrorResponse:
     properties:
       code:
         description: Code 是错误码。
@@ -1655,11 +1787,11 @@ definitions:
         description: RequestID 是请求 ID，用于关联日志。
         type: string
     type: object
-  workorder.ListResponse:
+  internal_workorder.ListResponse:
     properties:
       items:
         items:
-          $ref: '#/definitions/model.WorkOrder'
+          $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         type: array
       keyword:
         example: 白色
@@ -1674,7 +1806,7 @@ definitions:
         example: 1
         type: integer
     type: object
-  workorder.completeRequest:
+  internal_workorder.completeRequest:
     properties:
       mode:
         type: string
@@ -1685,7 +1817,7 @@ definitions:
     required:
     - operator_employee_id
     type: object
-  workorder.createRequest:
+  internal_workorder.createRequest:
     properties:
       code:
         type: string
@@ -1714,14 +1846,14 @@ definitions:
     required:
     - operator_employee_id
     type: object
-  workorder.operatorActionRequest:
+  internal_workorder.operatorActionRequest:
     properties:
       operator_employee_id:
         type: integer
     required:
     - operator_employee_id
     type: object
-  workorder.partialCompleteRequest:
+  internal_workorder.partialCompleteRequest:
     properties:
       completed_quantity:
         type: integer
@@ -1732,7 +1864,7 @@ definitions:
     required:
     - operator_employee_id
     type: object
-  workorder.reasonRequest:
+  internal_workorder.reasonRequest:
     properties:
       operator_employee_id:
         type: integer
@@ -1741,7 +1873,7 @@ definitions:
     required:
     - operator_employee_id
     type: object
-  workorder.remarkRequest:
+  internal_workorder.remarkRequest:
     properties:
       operator_employee_id:
         type: integer
@@ -1750,7 +1882,7 @@ definitions:
     required:
     - operator_employee_id
     type: object
-  workorder.temporaryProductRequest:
+  internal_workorder.temporaryProductRequest:
     properties:
       code:
         example: P-001
@@ -1771,7 +1903,7 @@ definitions:
     - name
     - operator_employee_id
     type: object
-  workorder.urgentRequest:
+  internal_workorder.urgentRequest:
     properties:
       operator_employee_id:
         type: integer
@@ -1798,7 +1930,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.ChangePasswordRequest'
+          $ref: '#/definitions/internal_auth.ChangePasswordRequest'
       produces:
       - application/json
       responses:
@@ -1807,23 +1939,23 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 修改当前用户密码
@@ -1840,30 +1972,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.LoginRequest'
+          $ref: '#/definitions/internal_auth.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.LoginResponse'
+            $ref: '#/definitions/internal_auth.LoginResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
       summary: 账号登录
       tags:
       - 登录认证
@@ -1878,7 +2010,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.RefreshRequest'
+          $ref: '#/definitions/internal_auth.RefreshRequest'
       produces:
       - application/json
       responses:
@@ -1887,11 +2019,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
       summary: 退出登录
       tags:
       - 登录认证
@@ -1904,15 +2036,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.CurrentUserDTO'
+            $ref: '#/definitions/internal_auth.CurrentUserDTO'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 当前用户
@@ -1929,30 +2061,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.RefreshRequest'
+          $ref: '#/definitions/internal_auth.RefreshRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.LoginResponse'
+            $ref: '#/definitions/internal_auth.LoginResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/auth.ErrorResponse'
+            $ref: '#/definitions/internal_auth.ErrorResponse'
       summary: 刷新登录会话
       tags:
       - 登录认证
@@ -1981,7 +2113,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.CodePage'
+            $ref: '#/definitions/internal_customer.CodePage'
       security:
       - BearerAuth: []
       summary: 客户编码分组列表
@@ -1995,22 +2127,22 @@ paths:
         in: body
         name: body
         schema:
-          $ref: '#/definitions/customer.CodeRequest'
+          $ref: '#/definitions/internal_customer.CodeRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/customer.CodeResponse'
+            $ref: '#/definitions/internal_customer.CodeResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建客户编码
@@ -2030,11 +2162,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 删除空客户编码
@@ -2054,22 +2186,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/customer.CodeRequest'
+          $ref: '#/definitions/internal_customer.CodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.CodeResponse'
+            $ref: '#/definitions/internal_customer.CodeResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 修改客户编码
@@ -2112,7 +2244,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.ProfilePage'
+            $ref: '#/definitions/internal_customer.ProfilePage'
       security:
       - BearerAuth: []
       summary: 查询客户资料
@@ -2127,14 +2259,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/customer.ProfileInput'
+          $ref: '#/definitions/internal_customer.ProfileInput'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/customer.ProfileResponse'
+            $ref: '#/definitions/internal_customer.ProfileResponse'
       security:
       - BearerAuth: []
       summary: 创建客户资料
@@ -2159,11 +2291,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 物理删除客户资料
@@ -2182,11 +2314,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.ProfileResponse'
+            $ref: '#/definitions/internal_customer.ProfileResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询客户资料详情
@@ -2206,18 +2338,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/customer.ProfileUpdate'
+          $ref: '#/definitions/internal_customer.ProfileUpdate'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.ProfileResponse'
+            $ref: '#/definitions/internal_customer.ProfileResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 修改客户资料
@@ -2237,11 +2369,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.ProfileResponse'
+            $ref: '#/definitions/internal_customer.ProfileResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 设为默认客户资料
@@ -2273,7 +2405,7 @@ paths:
         "422":
           description: Unprocessable Entity
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 导出客户资料 XLSX
@@ -2309,7 +2441,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/spreadsheet.SpreadsheetDocument'
+            $ref: '#/definitions/bb_erp_echo_internal_spreadsheet.SpreadsheetDocument'
       security:
       - BearerAuth: []
       summary: 预览客户资料 XLSX 导出
@@ -2350,11 +2482,11 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/customer.ImportResult'
+            $ref: '#/definitions/internal_customer.ImportResult'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 确认客户 Excel 导入
@@ -2376,11 +2508,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/customer.ImportPreview'
+            $ref: '#/definitions/internal_customer.ImportPreview'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/customer.ErrorResponse'
+            $ref: '#/definitions/internal_customer.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 校验客户 Excel 导入
@@ -2400,13 +2532,30 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/customer.OptionResponse'
+              $ref: '#/definitions/internal_customer.OptionResponse'
             type: array
       security:
       - BearerAuth: []
       summary: 查询客户资料选择项
       tags:
       - 客户
+  /api/v1/discovery/identity:
+    get:
+      description: 返回客户端验证连接所需的最小服务身份，不需要登录，不包含组织、账号、业务数据、更新地址或凭据。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control:
+              description: no-store
+              type: string
+          schema:
+            $ref: '#/definitions/internal_discovery.IdentityResponse'
+      summary: 查询服务身份
+      tags:
+      - 局域网发现
   /api/v1/files:
     get:
       parameters:
@@ -2431,28 +2580,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/file.ImageResponse'
+              $ref: '#/definitions/internal_file.ImageResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询业务图片
@@ -2472,23 +2621,23 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 删除业务图片
@@ -2515,23 +2664,23 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 读取业务图片内容
@@ -2561,27 +2710,27 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/file.ImageResponse'
+            $ref: '#/definitions/internal_file.ImageResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 替换业务图片
@@ -2618,122 +2767,33 @@ paths:
           description: Created
           schema:
             items:
-              $ref: '#/definitions/file.ImageResponse'
+              $ref: '#/definitions/internal_file.ImageResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/file.ErrorResponse'
+            $ref: '#/definitions/internal_file.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 上传业务图片
       tags:
       - files
-  /api/v1/inventory:
-    get:
-      parameters:
-      - description: 仓库 ID
-        in: query
-        name: warehouse_id
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.InventoryBalance'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询库存余额
-      tags:
-      - inventory
-    post:
-      consumes:
-      - application/json
-      description: 创建库存草稿单据；必须选择当前账号部门下的在职员工作为本次操作人。相同 Idempotency-Key 重试会返回首次创建结果。
-      parameters:
-      - description: 幂等键；相同键重试返回首次创建结果
-        in: header
-        name: Idempotency-Key
-        type: string
-      - description: 库存单据参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/inventory.documentRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 创建库存草稿单据
-      tags:
-      - inventory
   /api/v1/inventory-balances:
     get:
       parameters:
@@ -2748,28 +2808,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.InventoryBalance'
+              $ref: '#/definitions/bb_erp_echo_internal_model.InventoryBalance'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询库存余额
@@ -2791,23 +2851,23 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询库存单据
@@ -2827,7 +2887,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/inventory.documentRequest'
+          $ref: '#/definitions/internal_inventory.documentRequest'
       produces:
       - application/json
       responses:
@@ -2839,23 +2899,23 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建库存草稿单据
@@ -2877,7 +2937,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/inventory.operatorActionRequest'
+          $ref: '#/definitions/internal_inventory.operatorActionRequest'
       produces:
       - application/json
       responses:
@@ -2889,27 +2949,27 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 审核过账库存单据
@@ -2931,7 +2991,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/inventory.reverseDocumentRequest'
+          $ref: '#/definitions/internal_inventory.reverseDocumentRequest'
       produces:
       - application/json
       responses:
@@ -2943,27 +3003,27 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 冲销已过账库存单据
@@ -2978,28 +3038,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.InventoryLedger'
+              $ref: '#/definitions/bb_erp_echo_internal_model.InventoryLedger'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询库存流水
@@ -3019,28 +3079,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Location'
+              $ref: '#/definitions/bb_erp_echo_internal_model.Location'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库库位
@@ -3056,118 +3116,39 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/warehouse.createLocationRequest'
+          $ref: '#/definitions/internal_warehouse.createLocationRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/model.Location'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Location'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建仓库库位
       tags:
       - warehouse
-  /api/v1/material:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.Material'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询物料
-      tags:
-      - material
-    post:
-      consumes:
-      - application/json
-      description: 创建物料主数据；必须选择当前账号部门下的在职员工。
-      parameters:
-      - description: 物料参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/material.createMaterialRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/model.Material'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/material.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 创建物料
-      tags:
-      - material
   /api/v1/materials:
     get:
       produces:
@@ -3177,28 +3158,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Material'
+              $ref: '#/definitions/bb_erp_echo_internal_model.Material'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询物料
@@ -3214,39 +3195,467 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/material.createMaterialRequest'
+          $ref: '#/definitions/internal_material.createMaterialRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/model.Material'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Material'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/material.ErrorResponse'
+            $ref: '#/definitions/internal_material.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建物料
       tags:
       - material
+  /api/v1/molds:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 模糊关键字
+        in: query
+        name: q
+        type: string
+      - description: 模具状态
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询模具台账
+      tags:
+      - mold
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具档案参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_mold.moldRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建模具档案
+      tags:
+      - mold
+  /api/v1/molds/{id}:
+    delete:
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 删除模具档案
+      tags:
+      - mold
+    get:
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 查询模具详情
+      tags:
+      - mold
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 模具档案参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_mold.moldRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新模具档案
+      tags:
+      - mold
+  /api/v1/molds/{id}/loan:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 借出参数
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 登记模具借出
+      tags:
+      - mold
+  /api/v1/molds/{id}/maintenance:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 保养参数
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 登记模具保养
+      tags:
+      - mold
+  /api/v1/molds/{id}/repair:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 维修参数
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 登记模具维修
+      tags:
+      - mold
+  /api/v1/molds/{id}/return:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模具 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 归还参数
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bb_erp_echo_internal_model.Mold'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_mold.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 登记模具归还
+      tags:
+      - mold
   /api/v1/operator-employees:
     get:
       produces:
@@ -3255,99 +3664,20 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/employee.OperatorEmployeesResponse'
+            $ref: '#/definitions/internal_employee.OperatorEmployeesResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询当前部门操作人候选
       tags:
       - 操作人
-  /api/v1/product:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.Product'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询产品
-      tags:
-      - product
-    post:
-      consumes:
-      - application/json
-      description: 创建产品主数据；必须选择当前账号部门下的在职员工。
-      parameters:
-      - description: 产品参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/product.createProductRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/model.Product'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/product.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 创建产品
-      tags:
-      - product
   /api/v1/products:
     get:
       produces:
@@ -3357,28 +3687,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Product'
+              $ref: '#/definitions/bb_erp_echo_internal_model.Product'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询产品
@@ -3394,34 +3724,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/product.createProductRequest'
+          $ref: '#/definitions/internal_product.createProductRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/model.Product'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/product.ErrorResponse'
+            $ref: '#/definitions/internal_product.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建产品
@@ -3433,19 +3763,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/statistics.DashboardResponse'
+            $ref: '#/definitions/internal_statistics.DashboardResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/statistics.ErrorResponse'
+            $ref: '#/definitions/internal_statistics.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/statistics.ErrorResponse'
+            $ref: '#/definitions/internal_statistics.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/statistics.ErrorResponse'
+            $ref: '#/definitions/internal_statistics.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询统计报表
@@ -3467,19 +3797,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.Department'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Department'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 更新部门
@@ -3504,11 +3834,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询部门员工
@@ -3541,15 +3871,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 替换部门员工
@@ -3571,15 +3901,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_department.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 启用或停用部门
@@ -3644,22 +3974,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/employee.employeeRequest'
+          $ref: '#/definitions/internal_employee.employeeRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/employee.EmployeeResponse'
+            $ref: '#/definitions/internal_employee.EmployeeResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 新增员工档案
@@ -3679,11 +4009,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 离职停用员工
@@ -3703,26 +4033,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/employee.employeeRequest'
+          $ref: '#/definitions/internal_employee.employeeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/employee.EmployeeResponse'
+            $ref: '#/definitions/internal_employee.EmployeeResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 更新员工档案
@@ -3743,18 +4073,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/employee.employeeStatusRequest'
+          $ref: '#/definitions/internal_employee.employeeStatusRequest'
       responses:
         "204":
           description: No Content
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_employee.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 启用或停用员工
@@ -3768,7 +4098,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/update.SystemUpdateStatus'
+            $ref: '#/definitions/internal_update.SystemUpdateStatus'
         "401":
           description: Unauthorized
           schema:
@@ -3826,7 +4156,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/update.SystemUpdateStatus'
+            $ref: '#/definitions/internal_update.SystemUpdateStatus'
         "401":
           description: Unauthorized
           schema:
@@ -3865,456 +4195,28 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.User'
+            $ref: '#/definitions/bb_erp_echo_internal_model.User'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_user.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_user.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_user.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/response.ErrorBody'
+            $ref: '#/definitions/internal_user.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 修改用户部门和终端归属
       tags:
       - 用户管理
-  /api/v1/tasks:
-    get:
-      parameters:
-      - description: 页码
-        in: query
-        name: page
-        type: integer
-      - description: 每页条数
-        in: query
-        name: page_size
-        type: integer
-      - description: 模糊关键字
-        in: query
-        name: q
-        type: string
-      - description: 主任务状态
-        in: query
-        name: status
-        type: string
-      - description: 任务类型
-        in: query
-        name: type
-        type: string
-      - description: 流转部门 ID
-        in: query
-        name: department_id
-        type: integer
-      - description: 优先级
-        in: query
-        name: priority
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/workorder.ListResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 分页查询任务单
-      tags:
-      - workorder
-    post:
-      description: 创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。
-      parameters:
-      - description: 任务单创建参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.createRequest'
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 创建草稿任务单
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/complete:
-    post:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 完成参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.completeRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 办公室确认完成任务单
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/dispatch:
-    post:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 操作人参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.operatorActionRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 派发任务单
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/logs:
-    get:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.WorkOrderFlowLog'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询任务流转日志
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/pause:
-    post:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 暂停原因
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.reasonRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 暂停任务单
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/resume:
-    post:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 操作人参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.operatorActionRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 恢复任务单
-      tags:
-      - workorder
-  /api/v1/tasks/{id}/urgent:
-    post:
-      parameters:
-      - description: 任务单 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 加急参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.urgentRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 设置或取消加急
-      tags:
-      - workorder
-  /api/v1/tasks/department-tasks/{id}/complete:
-    post:
-      parameters:
-      - description: 部门子任务 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 操作人和备注参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.remarkRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 部门完成子任务
-      tags:
-      - workorder
-  /api/v1/tasks/department-tasks/{id}/partial-complete:
-    post:
-      parameters:
-      - description: 部门子任务 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 部分完成参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.partialCompleteRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 部门提交部分完成数量
-      tags:
-      - workorder
-  /api/v1/tasks/department-tasks/{id}/start:
-    post:
-      parameters:
-      - description: 部门子任务 ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 操作人和备注参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/workorder.remarkRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.WorkOrder'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 部门开始处理子任务
-      tags:
-      - workorder
   /api/v1/updates/client/artifacts/{sha256}:
     get:
       parameters:
@@ -4342,34 +4244,12 @@ paths:
       summary: 下载已验签客户端更新资源
       tags:
       - updates
-  /api/v1/updates/client/download:
-    get:
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: file
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 下载已校验缓存的桌面客户端包
-      tags:
-      - updates
   /api/v1/updates/client/plan:
     get:
       parameters:
       - description: 当前客户端 SemVer
         in: query
         name: current_version
-        required: true
-        type: string
-      - description: 当前客户端 EXE SHA-256
-        in: query
-        name: current_sha256
         required: true
         type: string
       - description: 目标平台，固定 windows-x86_64
@@ -4388,7 +4268,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/update.ClientUpdatePlan'
+            $ref: '#/definitions/internal_update.ClientUpdatePlan'
         "204":
           description: No Content
         "400":
@@ -4396,24 +4276,7 @@ paths:
           schema:
             additionalProperties: true
             type: object
-      summary: 规划 Windows 客户端自动更新
-      tags:
-      - updates
-  /api/v1/updates/client/status:
-    get:
-      parameters:
-      - description: Tauri 真实安装版本
-        in: query
-        name: current_version
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/update.ClientUpdateStatus'
-      summary: 查询桌面客户端更新状态
+      summary: 查询 Windows 客户端完整更新
       tags:
       - updates
   /api/v1/updates/client/tauri/{target}/{arch}/{current_version}:
@@ -4440,7 +4303,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/update.TauriUpdateResponse'
+            $ref: '#/definitions/internal_update.TauriUpdateResponse'
         "204":
           description: No Content
         "400":
@@ -4459,89 +4322,10 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/update.VersionResponse'
+            $ref: '#/definitions/internal_update.VersionResponse'
       summary: 查询服务端与客户端版本
       tags:
       - updates
-  /api/v1/warehouse:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/model.Warehouse'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 查询仓库
-      tags:
-      - warehouse
-    post:
-      consumes:
-      - application/json
-      description: 更新系统默认仓库名称；仓库编码固定为 MAIN，必须选择当前账号部门下的在职员工。
-      parameters:
-      - description: 仓库参数
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/warehouse.createWarehouseRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/model.Warehouse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: 更新系统默认仓库
-      tags:
-      - warehouse
   /api/v1/warehouse/items:
     get:
       parameters:
@@ -4576,27 +4360,27 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/warehouse.CatalogItemsResponse'
+            $ref: '#/definitions/internal_warehouse.CatalogItemsResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库标签物品
@@ -4612,34 +4396,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/warehouse.createWarehouseItemRequest'
+          $ref: '#/definitions/internal_warehouse.createWarehouseItemRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/warehouse.CatalogItem'
+            $ref: '#/definitions/internal_warehouse.CatalogItem'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建仓库物品
@@ -4672,27 +4456,27 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库物品详情
@@ -4733,27 +4517,27 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库物品出入库记录
@@ -4786,7 +4570,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/inventory.itemMovementRequest'
+          $ref: '#/definitions/internal_inventory.itemMovementRequest'
       produces:
       - application/json
       responses:
@@ -4798,27 +4582,27 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/inventory.ErrorResponse'
+            $ref: '#/definitions/internal_inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建即时出入库记录
@@ -4833,28 +4617,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/warehouse.CatalogTabSpec'
+              $ref: '#/definitions/internal_warehouse.CatalogTabSpec'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库分类标签
@@ -4869,28 +4653,28 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Warehouse'
+              $ref: '#/definitions/bb_erp_echo_internal_model.Warehouse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库
@@ -4906,34 +4690,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/warehouse.createWarehouseRequest'
+          $ref: '#/definitions/internal_warehouse.createWarehouseRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.Warehouse'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Warehouse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/warehouse.ErrorResponse'
+            $ref: '#/definitions/internal_warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 更新系统默认仓库
@@ -4974,15 +4758,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/workorder.ListResponse'
+            $ref: '#/definitions/internal_workorder.ListResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 分页查询任务单
@@ -4996,24 +4780,24 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.createRequest'
+          $ref: '#/definitions/internal_workorder.createRequest'
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 创建草稿任务单
@@ -5032,28 +4816,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.completeRequest'
+          $ref: '#/definitions/internal_workorder.completeRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 办公室确认完成任务单
@@ -5072,28 +4856,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.operatorActionRequest'
+          $ref: '#/definitions/internal_workorder.operatorActionRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 派发任务单
@@ -5112,16 +4896,16 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.WorkOrderFlowLog'
+              $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrderFlowLog'
             type: array
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询任务流转日志
@@ -5140,28 +4924,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.reasonRequest'
+          $ref: '#/definitions/internal_workorder.reasonRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 暂停任务单
@@ -5180,28 +4964,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.operatorActionRequest'
+          $ref: '#/definitions/internal_workorder.operatorActionRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 恢复任务单
@@ -5220,28 +5004,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.urgentRequest'
+          $ref: '#/definitions/internal_workorder.urgentRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 设置或取消加急
@@ -5260,28 +5044,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.remarkRequest'
+          $ref: '#/definitions/internal_workorder.remarkRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 部门完成子任务
@@ -5300,28 +5084,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.partialCompleteRequest'
+          $ref: '#/definitions/internal_workorder.partialCompleteRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 部门提交部分完成数量
@@ -5340,28 +5124,28 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.remarkRequest'
+          $ref: '#/definitions/internal_workorder.remarkRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.WorkOrder'
+            $ref: '#/definitions/bb_erp_echo_internal_model.WorkOrder'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 部门开始处理子任务
@@ -5379,34 +5163,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/workorder.temporaryProductRequest'
+          $ref: '#/definitions/internal_workorder.temporaryProductRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/model.Product'
+            $ref: '#/definitions/bb_erp_echo_internal_model.Product'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/workorder.ErrorResponse'
+            $ref: '#/definitions/internal_workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 临时建立仓库产品档案
@@ -5421,7 +5205,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/app.HealthResponse'
+            $ref: '#/definitions/internal_app.HealthResponse'
       summary: 健康检查
       tags:
       - 公共接口
@@ -5434,11 +5218,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/app.ReadyResponse'
+            $ref: '#/definitions/internal_app.ReadyResponse'
         "503":
           description: Service Unavailable
           schema:
-            $ref: '#/definitions/app.ReadyResponse'
+            $ref: '#/definitions/internal_app.ReadyResponse'
       summary: 就绪检查
       tags:
       - 公共接口

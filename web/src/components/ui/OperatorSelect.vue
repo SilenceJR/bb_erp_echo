@@ -97,3 +97,45 @@ function handleVisible(visible: boolean) {
 }
 
 </script>
+
+<style scoped>
+.operator-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--bb-space-2);
+}
+
+.operator-field__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--bb-space-3);
+}
+
+.operator-field__heading strong {
+  color: var(--bb-text-primary);
+  font-size: var(--bb-font-size-14);
+}
+
+.operator-field__heading small,
+.operator-field__help {
+  color: var(--bb-text-secondary);
+  font-size: var(--bb-font-size-12);
+  line-height: var(--bb-line-height-base);
+}
+
+.operator-field__help {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bb-space-2);
+}
+
+.operator-field__error {
+  color: var(--bb-danger);
+  font-size: var(--bb-font-size-12);
+}
+
+.operator-field :deep(.el-select) { width: 100%; }
+</style>

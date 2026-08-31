@@ -1,0 +1,56 @@
+/* Element Plus component styling. Variable mappings live with the design tokens. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--bb-brand-500);
+  outline-offset: 2px;
+}
+
+.el-button:focus-visible,
+.el-input__wrapper:focus-within,
+.el-select__wrapper:focus-within,
+.el-textarea__inner:focus-visible {
+  box-shadow: var(--bb-focus-ring);
+}
+
+.v-modal {
+  background: var(--bb-bg-overlay) !important;
+  opacity: 1 !important;
+}
+
+.el-overlay-message-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--bb-space-6);
+}
+
+.el-overlay-message-box::after { display: none; }
+
+.el-overlay-message-box .el-message-box.bb-message-box {
+  max-width: min(420px, calc(100vw - 48px));
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-xl);
+  background: var(--bb-bg-surface);
+  box-shadow: var(--bb-shadow-lg);
+}
+
+.el-message-box.bb-message-box .el-message-box__title {
+  color: var(--bb-text-primary);
+  font-weight: var(--bb-font-weight-bold);
+}
+
+.el-message-box.bb-message-box .el-message-box__message {
+  color: var(--bb-text-secondary);
+  line-height: var(--bb-line-height-relaxed);
+}
+
+.el-message-box.bb-message-box .el-message-box__btns {
+  gap: var(--bb-space-2);
+}
+
+.el-table th.el-table__cell {
+  background: var(--bb-bg-subtle);
+  color: var(--bb-text-secondary);
+  font-weight: var(--bb-font-weight-semibold);
+}
+
+.el-drawer__header { color: var(--bb-text-primary); }

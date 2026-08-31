@@ -10,9 +10,7 @@
         <strong>{{ compactTitle }}</strong>
         <span>{{ compactDescription }}</span>
       </div>
-      <el-tag v-if="displayStrategy" :type="displayStrategy === 'delta' ? 'success' : 'info'" effect="light" round>
-        {{ strategyLabel }}
-      </el-tag>
+      <el-tag v-if="plan" type="info" effect="light" round>完整更新</el-tag>
       <el-progress
         v-if="downloadPercent !== null"
         class="desktop-update-compact__progress"
@@ -42,38 +40,14 @@
         <el-tag :type="statusTone" effect="light">{{ statusLabel }}</el-tag>
       </div>
 
-      <el-alert
-        v-if="compatibilityMode"
-        title="当前服务端不支持自动更新协议"
-        description="可继续使用服务端提供的完整客户端 ZIP；升级服务端后即可使用自动更新。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-alert
-        v-if="fallbackReason"
-        :title="`增量更新已自动切换为完整更新：${fallbackReason}`"
-        type="warning"
-        :closable="false"
-        show-icon
-      />
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
 
       <dl class="desktop-update-facts">
-        <div><dt>当前版本</dt><dd>{{ currentVersion || legacyStatus?.current_version || '—' }}</dd></div>
+        <div><dt>当前版本</dt><dd>{{ currentVersion || '—' }}</dd></div>
         <div><dt>目标版本</dt><dd>{{ targetVersion }}</dd></div>
-        <div><dt>更新方式</dt><dd>{{ strategyLabel }}</dd></div>
+        <div><dt>更新方式</dt><dd>完整更新</dd></div>
         <div><dt>下载大小</dt><dd>{{ formatBytes(downloadSize) }}</dd></div>
       </dl>
-
-      <div v-if="displayStrategy === 'delta'" class="desktop-update-saving">
-        <div>
-          <strong>预计节省 {{ savingPercent }}%</strong>
-          <span>少下载 {{ formatBytes(savedBytes) }}</span>
-        </div>
-        <el-progress :percentage="savingPercent" :stroke-width="8" status="success" />
-        <small>若增量包校验或应用失败，将自动切换为签名完整安装包，无需再次确认。</small>
-      </div>
 
       <div class="desktop-update-status" role="status" aria-live="polite" aria-atomic="true">
         <strong>{{ message || idleMessage }}</strong>
@@ -89,14 +63,6 @@
       />
 
       <div class="update-actions desktop-update-actions">
-        <small v-if="compatibilityMode">兼容模式只提供完整安装包，不执行自动安装。</small>
-        <el-button
-          v-if="recoveryAvailable"
-          plain
-          @click="$emit('download-recovery', legacyStatus)"
-        >
-          下载完整 ZIP（故障恢复）
-        </el-button>
         <el-button v-if="state === 'Ready' && plan" type="primary" @click="openConfirmation">立即更新</el-button>
         <el-button v-else-if="state === 'Failed'" type="primary" @click="retryUpdate">重试</el-button>
         <el-button v-else-if="taskInProgress" type="primary" plain @click="progressDialogVisible = true">查看进度</el-button>
@@ -120,7 +86,7 @@
         <div class="desktop-update-confirmation">
           <p>将客户端从 <strong>{{ currentVersion || '当前版本' }}</strong> 更新到 <strong>{{ targetVersion }}</strong>。</p>
           <dl>
-            <div><dt>更新方式</dt><dd>{{ strategyLabel }}</dd></div>
+            <div><dt>更新方式</dt><dd>完整更新</dd></div>
             <div><dt>下载大小</dt><dd>{{ formatBytes(downloadSize) }}</dd></div>
           </dl>
           <el-alert
@@ -132,13 +98,6 @@
         </div>
       </template>
       <template v-else>
-        <el-alert
-          v-if="fallbackReason"
-          :title="`增量更新未能继续，已自动改用完整更新：${fallbackReason}`"
-          type="warning"
-          :closable="false"
-          show-icon
-        />
         <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <el-steps class="desktop-update-steps" :active="activeStep" finish-status="success" align-center>
           <el-step title="检查" />
@@ -183,80 +142,55 @@
 
 <script setup lang="ts">
 import {computed, nextTick, onMounted, ref, watch} from 'vue'
-import type {UpdatePackageStatus} from '../types'
 import {useDesktopUpdate} from '../composables/useDesktopUpdate'
 
 const props = withDefaults(defineProps<{
   compact?: boolean
-  legacyStatus?: UpdatePackageStatus
 }>(), {
   compact: false,
-  legacyStatus: () => ({}),
 })
-
-const emit = defineEmits<{
-  (event: 'download-recovery', item: UpdatePackageStatus): void
-}>()
 
 const updater = useDesktopUpdate()
 const {
   state, plan, currentVersion, message, error, downloadedBytes, totalBytes,
-  activeStrategy, fallbackReason, compatibilityMode, taskInProgress,
+  taskInProgress,
   closeLocked, downloadPercent, initialize, check, apply, retry,
 } = updater
 const progressDialogVisible = ref(false)
 const updateStarted = ref(false)
 const laterButton = ref<{ $el: HTMLButtonElement } | null>(null)
 
-const targetVersion = computed(() => String(plan.value?.latest_version || plan.value?.version || props.legacyStatus?.latest_version || '—'))
-const displayStrategy = computed(() => activeStrategy.value || plan.value?.strategy || null)
-const strategyLabel = computed(() => displayStrategy.value === 'delta' ? '增量更新' : displayStrategy.value === 'full' ? '完整更新' : '—')
-const downloadSize = computed(() => Number(
-  (displayStrategy.value === 'full' ? plan.value?.full_size : plan.value?.download_size)
-  || props.legacyStatus?.size
-  || 0,
-))
-const savedBytes = computed(() => Math.max(0, Number(plan.value?.saved_bytes || 0)))
-const savingPercent = computed(() => {
-  if (plan.value?.saved_percent !== undefined) return Math.min(100, Math.max(0, Math.round(Number(plan.value.saved_percent))))
-  const full = Number(plan.value?.full_size || 0)
-  return full > 0 ? Math.min(100, Math.max(0, Math.round(savedBytes.value / full * 100))) : 0
-})
-const recoveryAvailable = computed(() => Boolean(props.legacyStatus?.download_url || props.legacyStatus?.download_path))
-const compactVisible = computed(() => Boolean(plan.value || taskInProgress.value || state.value === 'Failed' || fallbackReason.value || (compatibilityMode.value && recoveryAvailable.value)))
+const targetVersion = computed(() => String(plan.value?.latest_version || plan.value?.version || '—'))
+const downloadSize = computed(() => Number(plan.value?.download_size || plan.value?.full_size || 0))
+const compactVisible = computed(() => Boolean(plan.value || taskInProgress.value || state.value === 'Failed'))
 const confirmationVisible = computed(() => state.value === 'Ready' && Boolean(plan.value) && !updateStarted.value)
-const idleMessage = computed(() => compatibilityMode.value ? '当前服务端仅支持完整包更新' : '当前客户端已是最新版本')
+const idleMessage = computed(() => '当前客户端已是最新版本')
 const statusLabel = computed(() => {
   if (state.value === 'Ready') return '发现新版本'
   if (state.value === 'Failed') return '更新失败'
   if (taskInProgress.value) return '更新进行中'
-  if (compatibilityMode.value) return '兼容模式'
   return '已是最新'
 })
 const statusTone = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
   if (state.value === 'Failed') return 'danger'
-  if (state.value === 'Ready' || fallbackReason.value) return 'warning'
+  if (state.value === 'Ready') return 'warning'
   if (taskInProgress.value) return 'info'
-  return compatibilityMode.value ? 'info' : 'success'
+  return 'success'
 })
 const compactTitle = computed(() => {
   if (state.value === 'Failed') return '客户端更新未完成'
   if (taskInProgress.value) return stageLabel.value
-  if (compatibilityMode.value) return `客户端 ${targetVersion.value} 可下载`
   return `客户端 ${targetVersion.value} 可更新`
 })
 const compactDescription = computed(() => {
   if (state.value === 'Downloading') return '正在下载安装包'
-  if (fallbackReason.value) return '增量失败，正在自动改用完整更新'
   if (state.value === 'Failed') return error.value
-  if (compatibilityMode.value) return '旧服务端兼容模式'
-  return `${strategyLabel.value} · ${formatBytes(downloadSize.value)}`
+  return `完整更新 · ${formatBytes(downloadSize.value)}`
 })
 const compactAction = computed(() => {
   if (state.value === 'Ready' && plan.value) return '立即更新'
   if (state.value === 'Failed') return '重试'
   if (taskInProgress.value) return '查看进度'
-  if (compatibilityMode.value && recoveryAvailable.value) return '下载完整包'
   return ''
 })
 const activeStep = computed(() => ({
@@ -304,9 +238,6 @@ function handleCompactAction() {
   if (state.value === 'Ready' && plan.value) openConfirmation()
   else if (state.value === 'Failed') void retryUpdate()
   else if (taskInProgress.value) progressDialogVisible.value = true
-  else if (compatibilityMode.value && recoveryAvailable.value) {
-    emit('download-recovery', props.legacyStatus)
-  }
 }
 
 function beforeDialogClose(done: () => void) {

@@ -42,12 +42,8 @@ func NewHandler(db *gorm.DB) *Handler {
 // RegisterRoutes 注册物料模块路由。
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	group := v1.Group("/materials", audit)
-	group.GET("", h.ListMaterials, require("/api/v1/material", "read"))
-	group.POST("", h.CreateMaterial, require("/api/v1/material", "write"))
-
-	legacy := v1.Group("/material", audit)
-	legacy.GET("", h.ListMaterials, require("/api/v1/material", "read"))
-	legacy.POST("", h.CreateMaterial, require("/api/v1/material", "write"))
+	group.GET("", h.ListMaterials, require("/api/v1/materials", "read"))
+	group.POST("", h.CreateMaterial, require("/api/v1/materials", "write"))
 }
 
 // ListMaterials 查询物料列表。
@@ -62,7 +58,6 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/materials [get]
-// @Router /api/v1/material [get]
 func (h *Handler) ListMaterials(c *echo.Context) error {
 	var items []model.Material
 	if err := h.DB.Order("id desc").Find(&items).Error; err != nil {
@@ -86,7 +81,6 @@ func (h *Handler) ListMaterials(c *echo.Context) error {
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/materials [post]
-// @Router /api/v1/material [post]
 func (h *Handler) CreateMaterial(c *echo.Context) error {
 	var req createMaterialRequest
 	if err := request.BindAndValidate(c, &req); err != nil {

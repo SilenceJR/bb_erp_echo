@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"bb_erp_echo/internal/shared/jsonstrict"
+
 	"aead.dev/minisign"
 )
 
@@ -23,7 +25,7 @@ const (
 	installModePortable    = "portable"
 )
 
-// SignedClientUpdateManifest 是 v1 manifest 中可选的 v2 客户端更新签名信封。
+// SignedClientUpdateManifest 是当前 Windows full-only 客户端更新签名信封。
 // Payload 必须是原始 JSON 字节的 base64 编码，Signature 使用 Minisign detached signature。
 type SignedClientUpdateManifest struct {
 	Payload   string `json:"payload"`
@@ -32,12 +34,11 @@ type SignedClientUpdateManifest struct {
 
 // ClientUpdatePayload 是经 Minisign 签名的客户端更新描述。
 type ClientUpdatePayload struct {
-	ProtocolVersion int                   `json:"protocol_version"`
-	Version         string                `json:"version"`
-	Target          string                `json:"target"`
-	LayoutVersion   int                   `json:"layout_version"`
-	Full            ClientFullArtifacts   `json:"full"`
-	Deltas          []ClientDeltaArtifact `json:"deltas,omitempty"`
+	ProtocolVersion int                 `json:"protocol_version"`
+	Version         string              `json:"version"`
+	Target          string              `json:"target"`
+	LayoutVersion   int                 `json:"layout_version"`
+	Full            ClientFullArtifacts `json:"full"`
 }
 
 // ClientFullArtifacts 描述两种完整客户端载荷。
@@ -50,25 +51,15 @@ type ClientFullArtifacts struct {
 // URL 只在服务端下载远端资源时使用，响应永远只暴露 DownloadPath。
 type ClientArtifact struct {
 	Kind      string `json:"kind"`
-	Algorithm string `json:"algorithm,omitempty"`
 	URL       string `json:"url"`
 	SHA256    string `json:"sha256"`
 	Size      int64  `json:"size"`
 	Signature string `json:"signature"`
 }
 
-// ClientDeltaArtifact 是从一个精确版本和 EXE 哈希生成的差分资源。
-type ClientDeltaArtifact struct {
-	ClientArtifact
-	FromVersion  string `json:"from_version"`
-	FromSHA256   string `json:"from_sha256"`
-	TargetSHA256 string `json:"target_sha256"`
-}
-
 // ClientUpdatePlanRequest 是桌面端请求更新策略时传入的当前安装信息。
 type ClientUpdatePlanRequest struct {
 	CurrentVersion string
-	CurrentSHA256  string
 	Target         string
 	InstallMode    string
 }
@@ -76,17 +67,13 @@ type ClientUpdatePlanRequest struct {
 // ClientUpdatePlanArtifact 是 API 返回的安全资源引用，不包含远端 URL 或本机路径。
 type ClientUpdatePlanArtifact struct {
 	Kind         string `json:"kind"`
-	Algorithm    string `json:"algorithm,omitempty"`
 	SHA256       string `json:"sha256"`
 	Size         int64  `json:"size"`
 	Signature    string `json:"signature"`
 	DownloadPath string `json:"download_path"`
-	FromVersion  string `json:"from_version,omitempty"`
-	FromSHA256   string `json:"from_sha256,omitempty"`
-	TargetSHA256 string `json:"target_sha256,omitempty"`
 }
 
-// ClientUpdatePlan 是桌面端增量/完整更新统一策略响应。
+// ClientUpdatePlan 是桌面端当前 Windows full-only 更新响应。
 type ClientUpdatePlan struct {
 	ProtocolVersion int                      `json:"protocol_version"`
 	CurrentVersion  string                   `json:"current_version"`
@@ -96,11 +83,9 @@ type ClientUpdatePlan struct {
 	Strategy        string                   `json:"strategy"`
 	DownloadSize    int64                    `json:"download_size"`
 	FullSize        int64                    `json:"full_size"`
-	SavedBytes      int64                    `json:"saved_bytes"`
 	SignedPayload   string                   `json:"signed_payload"`
 	Signature       string                   `json:"signature"`
 	Artifact        ClientUpdatePlanArtifact `json:"artifact"`
-	FullFallback    ClientUpdatePlanArtifact `json:"full_fallback"`
 	Message         string                   `json:"message,omitempty"`
 }
 
@@ -112,39 +97,10 @@ type TauriUpdateResponse struct {
 	Signature string `json:"signature"`
 }
 
-// SignedManifestVerifier 验证 v2 签名 payload。接口允许测试和未来密钥托管实现替换。
+// SignedManifestVerifier 验证当前签名 payload。接口允许测试和未来密钥托管实现替换。
 type SignedManifestVerifier interface {
 	Verify(payload []byte, signature string) error
 	VerifyFile(path, signature string) error
-}
-
-// UpdatePlanner isolates update-strategy selection from transport, signature
-// verification and storage. A future rollout can replace this policy (for
-// example with multi-hop deltas) without changing handlers or cache code.
-type UpdatePlanner interface {
-	Select(payload *ClientUpdatePayload, request ClientUpdatePlanRequest, cached func(ClientArtifact) bool) (full ClientArtifact, delta *ClientDeltaArtifact)
-}
-
-// PreviousVersionUpdatePlanner selects a delta only for an exact version and
-// executable hash match; every other case intentionally returns a full update.
-type PreviousVersionUpdatePlanner struct{}
-
-func (PreviousVersionUpdatePlanner) Select(payload *ClientUpdatePayload, request ClientUpdatePlanRequest, cached func(ClientArtifact) bool) (ClientArtifact, *ClientDeltaArtifact) {
-	full := payload.Full.NSIS
-	if request.InstallMode == installModePortable {
-		full = payload.Full.Portable
-	}
-	if !isSHA256(request.CurrentSHA256) {
-		return full, nil
-	}
-	for index := range payload.Deltas {
-		delta := &payload.Deltas[index]
-		if CompareVersions(delta.FromVersion, request.CurrentVersion) == 0 &&
-			strings.EqualFold(delta.FromSHA256, request.CurrentSHA256) && cached(delta.ClientArtifact) {
-			return full, delta
-		}
-	}
-	return full, nil
 }
 
 // MinisignVerifier 使用 Minisign Ed25519 公钥验证 detached signature 的原始 payload 签名。
@@ -210,7 +166,7 @@ func (v *MinisignVerifier) VerifyFile(path, signature string) error {
 	return nil
 }
 
-// LoadSignedManifestVerifier 按直接公钥优先、文件路径次之加载验证器；缺失公钥返回 nil，v1 不受影响。
+// LoadSignedManifestVerifier 按直接公钥优先、文件路径次之加载验证器；缺失公钥返回 nil。
 // 若直接值受 Windows 父进程环境污染且无法解析，但显式配置的公钥文件有效，则回退到文件。
 func LoadSignedManifestVerifier(publicKey, publicKeyFile string) (SignedManifestVerifier, error) {
 	publicKey = strings.TrimSpace(publicKey)
@@ -262,10 +218,17 @@ func DecodeSignedClientPayload(envelope *SignedClientUpdateManifest, verifier Si
 	if err := verifier.Verify(raw, envelope.Signature); err != nil {
 		return nil, fmt.Errorf("verify signed client payload: %w", err)
 	}
+	if err := jsonstrict.RejectDuplicateKeys(raw); err != nil {
+		return nil, fmt.Errorf("decode client update payload: %w", err)
+	}
 	var payload ClientUpdatePayload
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, fmt.Errorf("decode client update payload: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("decode client update payload: trailing JSON content is not allowed")
 	}
 	if err := validateClientUpdatePayload(&payload); err != nil {
 		return nil, err
@@ -302,17 +265,6 @@ func validateClientUpdatePayload(payload *ClientUpdatePayload) error {
 	}
 	if err := validateClientArtifact(payload.Full.Portable, "portable"); err != nil {
 		return fmt.Errorf("invalid full portable artifact: %w", err)
-	}
-	for index, delta := range payload.Deltas {
-		if err := validateClientArtifact(delta.ClientArtifact, "delta"); err != nil {
-			return fmt.Errorf("invalid delta %d: %w", index, err)
-		}
-		if strings.TrimSpace(delta.Algorithm) != "zstd-patch-from-v1" {
-			return fmt.Errorf("invalid delta %d algorithm", index)
-		}
-		if normalizeVersion(delta.FromVersion) == "" || !isSHA256(delta.FromSHA256) || !isSHA256(delta.TargetSHA256) {
-			return fmt.Errorf("invalid delta %d source or target hash", index)
-		}
 	}
 	return nil
 }
@@ -519,19 +471,12 @@ func (s *LocalArtifactStore) rememberVerifiedLocked(digest, path string, info os
 	s.verified[digest] = verifiedFileSnapshot{path: path, digest: digest, size: info.Size(), info: info}
 }
 
-func clientPlanArtifact(artifact ClientArtifact, delta *ClientDeltaArtifact) ClientUpdatePlanArtifact {
-	result := ClientUpdatePlanArtifact{
+func clientPlanArtifact(artifact ClientArtifact) ClientUpdatePlanArtifact {
+	return ClientUpdatePlanArtifact{
 		Kind:         artifact.Kind,
-		Algorithm:    artifact.Algorithm,
 		SHA256:       strings.ToLower(artifact.SHA256),
 		Size:         artifact.Size,
 		Signature:    artifact.Signature,
 		DownloadPath: "/api/v1/updates/client/artifacts/" + strings.ToLower(artifact.SHA256),
 	}
-	if delta != nil {
-		result.FromVersion = delta.FromVersion
-		result.FromSHA256 = strings.ToLower(delta.FromSHA256)
-		result.TargetSHA256 = strings.ToLower(delta.TargetSHA256)
-	}
-	return result
 }

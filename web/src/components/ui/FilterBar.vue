@@ -1,12 +1,14 @@
 <template>
   <form class="ui-filter-bar" role="search" :aria-label="ariaLabel" @submit.prevent="emit('submit')">
     <div class="ui-filter-bar__controls">
+      <slot name="prepend"></slot>
       <slot></slot>
       <el-button v-if="resettable" @click="emit('reset')">重置</el-button>
       <el-button native-type="submit" type="primary" plain>查询</el-button>
     </div>
     <div class="ui-filter-bar__actions">
       <span v-if="message" class="ui-filter-bar__message" aria-live="polite">{{ message }}</span>
+      <slot name="actions"></slot>
       <el-button :loading="loading" @click="emit('refresh')">刷新数据</el-button>
     </div>
   </form>
@@ -62,6 +64,8 @@ const emit = defineEmits<{
 
 .ui-filter-bar__actions {
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ui-filter-bar__message {
@@ -69,33 +73,7 @@ const emit = defineEmits<{
   font-size: var(--bb-font-size-13);
 }
 
-@media (max-width: 720px) {
-  .ui-filter-bar,
-  .ui-filter-bar__controls,
-  .ui-filter-bar__actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .ui-filter-bar__controls > :deep(*) {
-    width: 100%;
-    max-width: none;
-  }
-
-  .ui-filter-bar__actions {
-    padding-top: var(--bb-space-2);
-    border-top: 1px solid var(--bb-border-subtle);
-  }
-
-  .ui-filter-bar :deep(.el-input__wrapper),
-  .ui-filter-bar :deep(.el-select__wrapper),
-  .ui-filter-bar :deep(.el-button) {
-    min-height: 44px;
-  }
-
-  .ui-filter-bar :deep(.el-button) {
-    width: 100%;
-    margin: 0;
-  }
+.ui-filter-bar :deep(.el-button) {
+  margin: 0;
 }
 </style>

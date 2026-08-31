@@ -110,6 +110,7 @@ import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
 import {request, requestBlob} from '../api/http'
 import {appMessageBox} from '../composables/useAppMessageBox'
+import {useDirtyGuard} from '../composables/useDirtyGuard'
 import type {ImageFile} from '../types'
 
 const props = defineProps<{
@@ -137,6 +138,11 @@ const operation = ref<'upload' | 'replace' | 'delete' | null>(null)
 let loadSequence = 0
 
 const saving = computed(() => operation.value !== null)
+
+useDirtyGuard('image-gallery', {
+  busy: () => saving.value,
+  busyMessage: '图片正在上传、替换或删除，请等待完成后再离开',
+})
 
 const previewSources = computed(() => images.value
   .map((item) => previewUrls.value[item.id])

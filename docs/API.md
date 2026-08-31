@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-08-29
+更新时间：2026-09-01
 
 ## 文档入口
 
@@ -22,7 +22,7 @@ GET /swagger/doc.json
 
 ## 认证
 
-除 `/health`、`/ready`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/swagger/*` 外，业务接口默认需要：
+除 `/health`、`/ready`、`/api/v1/discovery/identity`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/swagger/*` 外，业务接口默认需要：
 
 ```http
 Authorization: Bearer <token>
@@ -33,9 +33,58 @@ Authorization: Bearer <token>
 ```text
 GET  /health
 GET  /ready
+GET  /api/v1/discovery/identity
 GET  /swagger/index.html
 GET  /swagger/doc.json
 ```
+
+## 局域网发现
+
+Windows Tauri 客户端启动时可向 UDP `39080` 广播一次发现请求；服务端只
+接受 loopback 或 RFC1918 IPv4 来源，并严格限制报文不超过 512 字节。服务端
+会把响应单播回请求来源，不携带或信任任意 URL：
+
+```json
+{"kind":"discover","protocol":1,"nonce":"0123456789abcdef0123456789abcdef"}
+```
+
+服务端响应：
+
+```json
+{
+  "kind": "announce",
+  "protocol": 1,
+  "nonce": "0123456789abcdef0123456789abcdef",
+  "product": "bb-erp",
+  "instance_id": "稳定 UUID",
+  "server_name": "服务器名称",
+  "http_port": 8080
+}
+```
+
+客户端必须保持 nonce 原样匹配，并使用 UDP 响应来源 IP 与 `http_port` 构造
+HTTP 地址；随后依次验证 `GET /ready` 返回 `200` 且 `status=ready`，以及
+`GET /api/v1/discovery/identity` 返回的 `instance_id` 与 UDP 响应一致。候选
+HTTP 请求不跟随重定向、不使用系统代理，响应体有大小上限；响应带有
+`Cache-Control: no-store`，身份 DTO 拒绝未知字段，`server_name` 和
+`server_version` 分别限制为最多 120/64 字节且不得包含控制字符。验证失败的
+地址不可保存。多个已验证服务不得静默选择。
+
+`GET /api/v1/discovery/identity` 是匿名接口，只返回客户端连接验证所需的
+`product`、`discovery_protocol`、`instance_id`、`server_name` 和
+`server_version`，不返回组织、账号、业务数据、更新地址或凭据。
+
+服务端启动时会在数据库就绪后执行一次同协议预检；发现任何一个已通过
+`/ready` 与身份验证的服务都会拒绝本实例启动，即使双方 `instance_id` 相同。
+预检默认在 3 秒全局截止时间内完成，其中 UDP 收集窗口为 2.5 秒；最多收集
+24 个去重候选，并以最多 4 个并发 HTTP 验证任务执行，慢候选不会阻塞其他候选。
+预检没有收到响应时继续启动，UDP 响应器运行期的监听失败则触发服务整体关闭。
+
+发现配置可通过环境变量覆盖：`BB_ERP_DISCOVERY_ENABLED`（默认 `true`）、
+`BB_ERP_DISCOVERY_SERVER_NAME`（默认本机主机名）、`BB_ERP_DISCOVERY_BIND_HOST`
+（默认 `0.0.0.0`）、`BB_ERP_DISCOVERY_PORT`（默认 `39080`），以及扫描、预检和
+HTTP 验证超时。测试夹具应将 `BB_ERP_DISCOVERY_ENABLED` 设为 `false`，避免
+多个进程争用发现端口。
 
 ## 列表分页与模糊查询
 
@@ -203,17 +252,19 @@ GET  /api/v1/operator-employees
 
 部门成员配置同时要求 `system:departments:write` 和 `system:employees:read`；员工档案使用 `system:employees:read/write`。管理员可通过用户归属接口修正账号的部门和终端。`GET /api/v1/operator-employees` 与完整员工档案权限分离，只返回当前账号部门及在职候选员工的 `id/name`。
 
-任务单及仓库/库存写请求统一要求 `operator_employee_id`。服务端在业务事务内重新读取当前账号并校验账号部门、部门状态、员工状态、组织和成员关系：缺字段返回 `400`，无部门或越权返回 `403`，员工/部门停用或成员关系失效返回 `409`。任务与库存状态流转使用带原状态及旧完成数量条件的更新，验证失败、并发状态冲突或关系刚失效均不产生部分业务写入。历史记录同时保留登录账号、终端、所选操作员工及请求时部门快照；旧数据不补造员工。操作员工是当前登录账号对现场责任人的申报，不等同于员工本人完成 PIN、刷卡或二次认证；追责时必须同时查看不可替代的登录账号和终端信息。带 `Idempotency-Key` 的库存请求只有在接口范围、账号/组织、规范化请求内容和操作员工都与首次请求一致时才返回原结果，任一差异均返回 `409`。旧数据库启动时会把同名普通索引显式升级为非空部分唯一索引；发现历史非空重复键时阻断启动并报告键和数量，不会静默删除数据。
+管理员通过 `POST /api/v1/system/users/:id/reset-password` 重置其他账号密码时，服务端在同一事务中递增目标账号的 `password_version` 并撤销该账号全部 refresh token；旧 access token 会因密码版本不匹配返回 `401`，旧 refresh token 也返回 `401`，目标账号必须使用新密码重新登录。
+
+任务单及仓库/库存写请求统一要求 `operator_employee_id`。服务端在业务事务内重新读取当前账号并校验账号部门、部门状态、员工状态、组织和成员关系：缺字段返回 `400`，无部门或越权返回 `403`，员工/部门停用或成员关系失效返回 `409`。任务与库存状态流转使用带原状态及旧完成数量条件的更新，验证失败、并发状态冲突或关系刚失效均不产生部分业务写入。历史记录同时保留登录账号、终端、所选操作员工及请求时部门快照；新库不补造历史员工。操作员工是当前登录账号对现场责任人的申报，不等同于员工本人完成 PIN、刷卡或二次认证；追责时必须同时查看不可替代的登录账号和终端信息。带 `Idempotency-Key` 的库存请求只有在接口范围、账号/组织、规范化请求内容和操作员工都与首次请求一致时才返回原结果，任一差异均返回 `409`。新 SQLite schema 直接创建非空部分唯一幂等索引，不包含旧库索引升级或重复历史数据修复逻辑。
+
+创建部门终端账号时，账号主记录和默认角色绑定在同一事务中写入，事务提交后立即刷新 Casbin 内存策略；默认角色配置缺失或绑定失败会返回服务端错误并回滚账号，不会返回 `201` 或留下无角色账号。数据库提交成功但策略刷新失败时返回 `503`，明确提示稍后重试，不会虚报账号已完全可用。角色权限编码必须全部存在，拼写错误或空结果会直接失败，不会被解释为绑定全部权限。
 
 ## 版本与更新
 
-更新源是普通 HTTPS JSON 地址，不绑定 Gitee 或 GitHub API。服务启动后异步检查，之后按配置周期检查；失败不会阻止业务服务，并保留上一次成功状态和已校验缓存。
+更新源是当前配置的 JSON 清单。服务启动后异步检查，之后按配置周期检查；失败不会阻止业务服务，并保留上一次成功状态和已校验缓存。Windows 客户端只连接已验证的 loopback/RFC1918 HTTP 服务，所有更新资源均由该内网服务同源代理。
 
 ```text
 GET  /api/v1/version
-GET  /api/v1/updates/client/status?current_version=1.2.2
-GET  /api/v1/updates/client/download
-GET  /api/v1/updates/client/plan?current_version=1.2.2&current_sha256=<sha256>&target=windows-x86_64&install_mode=portable
+GET  /api/v1/updates/client/plan?current_version=1.2.2&target=windows-x86_64&install_mode=portable
 GET  /api/v1/updates/client/tauri/windows/x86_64/1.2.2
 GET  /api/v1/updates/client/artifacts/<sha256>
 GET  /api/v1/system/updates/status
@@ -221,13 +272,13 @@ POST /api/v1/system/updates/check
 GET  /api/v1/system/updates/server/download
 ```
 
-- `/api/v1/version`、`status` 和 `download` 保持既有兼容；新客户端发现 `/plan` 为 `404` 时退回旧版完整 ZIP 体验。
-- Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。
-- 客户端下载接口只分发已通过大小、SHA-256 和 ZIP 校验的本地缓存包。
-- `/plan` 仅支持 `windows-x86_64`，无更新返回 `204`；按精确版本、当前 EXE SHA、布局与缓存状态返回 `delta` 或 `full`，并始终带完整兜底资源。
+- Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。客户端直接要求 `/plan` 当前契约，不执行协议降级，也不请求已删除的 `/updates/client/status` 或 `/updates/client/download`。
+- 客户端资源接口只分发已通过大小、SHA-256、签名和安装布局校验的本地缓存包。
+- `/plan` 仅支持 `windows-x86_64` 与 `nsis|portable`，无更新返回 `204`；`strategy` 固定为 `full`，资源与安装模式一一对应，不接受差分字段。
 - `/tauri/{target}/{arch}/{current_version}` 返回 Tauri updater 的 `version/url/signature`，无更新返回 `204`。
-- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 v2 manifest 声明并缓存的资源，支持 `ETag`、`Content-Length` 与 HTTP Range。
-- `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；服务端必须配置对应 Minisign 公钥后才接受 v2 更新。
+- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 manifest 声明并缓存的 NSIS/portable 完整资源，支持 `ETag`、`Content-Length` 与 HTTP Range。
+- `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；payload 只允许 `protocol_version/version/target/layout_version/full`，其中 `full` 必须同时包含 NSIS 与 portable。服务端必须配置对应 Minisign 公钥，未知字段（包括 `deltas`）会被拒绝。
+- 外层更新清单同样拒绝重复 JSON key、未知字段和尾随 JSON 内容；清单解析失败不会替换上一次成功状态或缓存。
 - `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
 - `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
 - `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存，并在返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次下载。下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
@@ -238,7 +289,7 @@ GET  /api/v1/system/updates/server/download
 ```json
 {
   "enabled": true,
-  "manifest_url": "https://gitee.com/example/bb-erp-release/raw/main/update-manifest.json",
+  "manifest_url": "http://192.168.1.10/releases/update-manifest.json",
   "reachable": true,
   "checking": false,
   "check_interval": "6h0m0s",
@@ -261,15 +312,12 @@ GET  /api/v1/system/updates/server/download
     "latest_version": "1.2.3",
     "available": true,
     "cached": true,
-    "file_name": "bb-erp-client-windows.zip",
-    "download_path": "/api/v1/updates/client/download"
+    "size": 18600000,
+    "sha256": "..."
   },
   "client_protocol_version": 2,
   "client_full_cached": true,
-  "client_delta_cached": true,
-  "client_delta_from_version": "1.2.2",
-  "client_cache_bytes": 34567890,
-  "client_delta_degraded": ""
+  "client_cache_bytes": 24000000
 }
 ```
 
@@ -303,19 +351,6 @@ GET  /api/v1/inventory-ledgers
 
 `GET /api/v1/warehouse/items` 和 `GET /api/v1/suppliers` 支持 `page`、`page_size`、`q`，返回统一分页结构。
 `GET /api/v1/warehouse/items/:itemType/:itemID` 返回默认仓库内所有库位的库存合计；没有余额记录时数量为 `0`。无 `cost:view` 权限时不返回成本字段。
-
-任务兼容旧路径：
-
-```text
-GET  /api/v1/warehouse
-POST /api/v1/warehouse
-GET  /api/v1/material
-POST /api/v1/material
-GET  /api/v1/product
-POST /api/v1/product
-GET  /api/v1/inventory
-POST /api/v1/inventory
-```
 
 首版按单仓库使用，`/api/v1/warehouses` 只返回初始化阶段创建的默认仓库。系统编码固定为 `MAIN`，更新接口只允许修改名称；请求省略 `code` 或传 `MAIN`，传入其他编码返回 `400`，避免库存被拆到两个仓库。仓库内物品采用标签策略统一管理：
 
@@ -369,7 +404,7 @@ customer_outbound      客户出库，customer_id 必填
 department_outbound    部门出库，department_id 必填
 ```
 
-退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。旧库存单据接口继续保留，用于历史兼容和冲销。即时出入库的创建和立即过账使用同一操作员工；库存单据创建、过账、冲销可以分别选择员工，并分别保存员工与部门快照。
+退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。即时出入库的创建和立即过账使用同一操作员工；库存单据创建、过账、冲销可以分别选择员工，并分别保存员工与部门快照。
 
 ## 图片文件接口
 
@@ -381,7 +416,7 @@ department_outbound    部门出库，department_id 必填
 product          仓库产品，权限继承 product=warehouse
 mold             模具，权限继承 mold
 workorder        任务单，权限继承 workorder
-department_task  部门子任务，权限继承 workorder，并兼容旧 tasks 权限
+department_task  部门子任务，权限继承 workorder
 ```
 
 ### GET /api/v1/files?owner_type=&owner_id=&category=
@@ -413,7 +448,7 @@ category    可选，图片分类
 
 软删除图片元数据并清理对应物理文件，成功返回 HTTP 204。
 
-权限规则：产品图片使用仓库权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限，同时兼容 `/api/v1/tasks` 权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
+权限规则：产品图片使用仓库权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
 
 ## 任务单接口
 
@@ -495,13 +530,6 @@ GET  /api/v1/workorder/:id/logs
 
 派发、暂停、恢复、加急、正常/强制完成，以及部门开始、部分完成、完成的 JSON 请求体都必须携带 `operator_employee_id`；强制完成还必须填写原因。部门部分完成提交的是累计完成数量，必须严格大于当前累计值且小于计划数量，重复提交相同累计值返回 `400`。派发后系统自动把每个目标部门子任务置为 `received`，主任务置为 `processing`。部门可执行开始处理、部分完成和完成；全部部门完成后主任务自动进入 `pending_close`。流转日志保存操作员工、当前账号部门、登录账号和终端快照，员工改名、调部门或停用不会改写历史。
 
-兼容旧路径：
-
-```text
-GET  /api/v1/tasks
-POST /api/v1/tasks
-```
-
 ## 统计报表接口
 
 ```text
@@ -569,13 +597,6 @@ POST   /api/v1/molds/:id/maintenance
 ```
 
 `GET /api/v1/molds` 支持 `page`、`page_size`、`q`，并可继续使用 `status` 精确筛选状态。
-
-兼容旧路径：
-
-```text
-GET  /api/v1/mold
-POST /api/v1/mold
-```
 
 创建模具示例：
 

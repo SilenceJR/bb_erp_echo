@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"bb_erp_echo/internal/customer"
 	"bb_erp_echo/internal/database"
 	"bb_erp_echo/internal/department"
+	"bb_erp_echo/internal/discovery"
 	"bb_erp_echo/internal/employee"
 	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/frontend"
@@ -37,7 +40,6 @@ import (
 	"bb_erp_echo/internal/warehouse"
 	"bb_erp_echo/internal/workorder"
 
-	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
 	echomiddleware "github.com/labstack/echo/v5/middleware"
@@ -53,7 +55,7 @@ import (
 // - DB：GORM 数据库连接。
 // - Echo：HTTP 路由和中间件实例。
 // - Server：标准库 HTTP Server，用于优雅关闭。
-// - Enforcer：Casbin 权限引擎。
+// - Authorizer：统一权限快照 provider，负责并发安全的权限判断和刷新。
 // - AuthService：登录、JWT 和当前用户组装服务。
 // - RoleService：角色、权限和策略重载服务。
 // - LogSystem：文件化日志系统，负责关闭文件句柄。
@@ -65,11 +67,15 @@ type App struct {
 	DB            *gorm.DB
 	Echo          *echo.Echo
 	Server        *http.Server
-	Enforcer      *casbin.Enforcer
+	Authorizer    role.Authorizer
 	AuthService   *auth.Service
 	RoleService   *role.Service
 	UpdateService update.UpdateService
-	LogSystem     *erplogger.System
+	// DiscoveryService 负责单服务启动预检、UDP 响应和其运行期错误。
+	DiscoveryService *discovery.Service
+	// DiscoveryIdentity 是匿名身份接口使用的稳定服务身份。
+	DiscoveryIdentity *discovery.Identity
+	LogSystem         *erplogger.System
 }
 
 // Validator 是 Echo 请求校验适配器。
@@ -138,42 +144,55 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	// 旧库可能已经有幂等键普通索引；先检查并升级，避免 AutoMigrate
-	// 在重复历史 key 上直接创建唯一索引而丢失可操作的诊断信息。
-	if err := database.EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
-		return nil, fmt.Errorf("preflight inventory document idempotency index: %w", err)
-	}
-	if err := db.AutoMigrate(model.AllModels()...); err != nil {
+	models := append(model.AllModels(), &discovery.Identity{})
+	if err := db.AutoMigrate(models...); err != nil {
 		return nil, fmt.Errorf("auto migrate database: %w", err)
+	}
+	identity, err := discovery.LoadOrCreate(db, discovery.IdentityMetadata{
+		Product:           discovery.Product,
+		DiscoveryProtocol: discovery.ProtocolVersion,
+		ServerName:        cfg.Discovery.ServerName,
+		ServerVersion:     cfg.App.Version,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load discovery identity: %w", err)
 	}
 	if err := database.EnsureEmployeeDepartmentConsistency(db); err != nil {
 		return nil, fmt.Errorf("check employee department consistency: %w", err)
 	}
-	if err := database.EnsureInventoryDocumentIdempotencyIndex(db); err != nil {
-		return nil, fmt.Errorf("upgrade inventory document idempotency index: %w", err)
-	}
-
-	enforcer, err := role.NewEnforcer()
+	authorizer, err := role.NewPolicyProvider(db)
 	if err != nil {
 		return nil, err
 	}
 
 	authService := auth.NewService(cfg, db)
-	roleService := role.NewService(db, enforcer)
+	roleService := role.NewService(db, authorizer)
 	updateService := update.NewService(cfg.Update, cfg.App.Version)
+	discoveryService := discovery.NewService(discovery.ServiceConfig{
+		Enabled:          cfg.Discovery.Enabled,
+		BindHost:         cfg.Discovery.BindHost,
+		Port:             cfg.Discovery.Port,
+		HTTPPort:         cfg.HTTP.Port,
+		ScanTimeout:      cfg.Discovery.ScanTimeout,
+		PreflightTimeout: cfg.Discovery.PreflightTimeout,
+		HTTPTimeout:      cfg.Discovery.HTTPTimeout,
+		Logger:           logSystem.App,
+	}, *identity)
 
 	app := &App{
-		Config:        cfg,
-		Logger:        logSystem.App,
-		AccessLogger:  logSystem.Access,
-		ErrorLogger:   logSystem.Error,
-		DB:            db,
-		Echo:          echo.New(),
-		Enforcer:      enforcer,
-		AuthService:   authService,
-		RoleService:   roleService,
-		UpdateService: updateService,
-		LogSystem:     logSystem,
+		Config:            cfg,
+		Logger:            logSystem.App,
+		AccessLogger:      logSystem.Access,
+		ErrorLogger:       logSystem.Error,
+		DB:                db,
+		Echo:              echo.New(),
+		Authorizer:        authorizer,
+		AuthService:       authService,
+		RoleService:       roleService,
+		UpdateService:     updateService,
+		DiscoveryService:  discoveryService,
+		DiscoveryIdentity: identity,
+		LogSystem:         logSystem,
 	}
 
 	app.configureEcho()
@@ -238,10 +257,11 @@ func (a *App) registerRoutes() error {
 	jwtMiddleware := erpmiddleware.JWT(a.AuthService, a.DB)
 	auditMiddleware := erpmiddleware.Audit(a.DB, a.ErrorLogger)
 	require := func(object string, action string) echo.MiddlewareFunc {
-		return erpmiddleware.RequirePermission(a.Enforcer, object, action)
+		return erpmiddleware.RequirePermission(a.Authorizer, object, action)
 	}
 
 	auth.NewHandler(a.DB, a.AuthService).RegisterRoutes(v1, jwtMiddleware)
+	discovery.NewHandler(*a.DiscoveryIdentity).RegisterRoutes(v1)
 	updateHandler := update.NewHandlerWithService(a.Config, a.UpdateService)
 	updateHandler.RegisterPublicRoutes(v1)
 
@@ -267,7 +287,7 @@ func (a *App) registerRoutes() error {
 	if err := imageService.EnsureRoot(); err != nil {
 		return fmt.Errorf("create image upload root: %w", err)
 	}
-	filemodule.NewHandler(imageService, a.DB, a.Enforcer).RegisterRoutes(protected, auditMiddleware)
+	filemodule.NewHandler(imageService, a.DB, a.Authorizer).RegisterRoutes(protected, auditMiddleware)
 	statistics.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 
 	// Swagger API 文档路由必须放在 Web 静态文件兜底之前，避免被前端路由覆盖。
@@ -285,19 +305,53 @@ func (a *App) registerRoutes() error {
 // 参数说明：无，监听地址来自 Config.HTTP。
 // 返回说明：正常关闭返回 nil，启动失败返回错误。
 func (a *App) Start() error {
-	address := fmt.Sprintf("%s:%d", a.Config.HTTP.Host, a.Config.HTTP.Port)
-	a.Logger.Info("ERP server starting", "address", address, "environment", a.Config.App.Environment, "database", a.Config.Database.Path)
+	listener, err := a.listenHTTP()
+	if err != nil {
+		return err
+	}
+	return a.serveHTTP(listener)
+}
 
+func (a *App) prepareServer() {
+	if a.Server != nil {
+		return
+	}
 	a.Server = &http.Server{
-		Addr:    address,
+		Addr:    fmt.Sprintf("%s:%d", a.Config.HTTP.Host, a.Config.HTTP.Port),
 		Handler: a.Echo,
 	}
+}
 
-	err := a.Server.ListenAndServe()
+func (a *App) listenHTTP() (net.Listener, error) {
+	a.prepareServer()
+	listener, err := net.Listen("tcp", a.Server.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("start echo server: %w", err)
+	}
+	a.Logger.Info("ERP server starting", "address", a.Server.Addr, "environment", a.Config.App.Environment, "database", a.Config.Database.Path)
+	return listener, nil
+}
+
+func (a *App) serveHTTP(listener net.Listener) error {
+	err := a.Server.Serve(listener)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("start echo server: %w", err)
 	}
 	return nil
+}
+
+// readyListener signals that http.Server.Serve has entered its accept loop.
+// Run uses this boundary to ensure the UDP responder never advertises a server
+// before its HTTP ready and identity endpoints can accept requests.
+type readyListener struct {
+	net.Listener
+	ready chan<- struct{}
+	once  sync.Once
+}
+
+func (l *readyListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { close(l.ready) })
+	return l.Listener.Accept()
 }
 
 // Run 启动服务并监听系统中断信号。
@@ -310,22 +364,73 @@ func (a *App) Run() error {
 	if a.UpdateService != nil {
 		a.UpdateService.Start(updateContext)
 	}
+
+	runContext, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	discoveryEnabled := a.DiscoveryService != nil && a.DiscoveryService.Enabled()
+	if discoveryEnabled {
+		if err := a.DiscoveryService.Preflight(runContext); err != nil {
+			return a.shutdownAfterRunError(err)
+		}
+	}
+
+	// Prepare the HTTP server before either serving goroutine starts. This makes
+	// a discovery listener failure able to shut down the HTTP server even when
+	// both goroutines report an error at the same instant.
+	a.prepareServer()
+	listener, err := a.listenHTTP()
+	if err != nil {
+		return a.shutdownAfterRunError(err)
+	}
 	errCh := make(chan error, 1)
+	httpReady := make(chan struct{})
 	go func() {
-		errCh <- a.Start()
+		errCh <- a.serveHTTP(&readyListener{Listener: listener, ready: httpReady})
 	}()
+	select {
+	case <-httpReady:
+	case err := <-errCh:
+		_ = listener.Close()
+		return a.shutdownAfterRunError(err)
+	}
+	if discoveryEnabled {
+		if err := a.DiscoveryService.Start(runContext); err != nil {
+			return a.shutdownAfterRunError(fmt.Errorf("start discovery service: %w", err))
+		}
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+	var discoveryErrors <-chan error
+	if a.DiscoveryService != nil {
+		discoveryErrors = a.DiscoveryService.Errors()
+	}
 
 	select {
 	case err := <-errCh:
-		return err
+		if err == nil {
+			return a.shutdownAfterRunError(nil)
+		}
+		return a.shutdownAfterRunError(err)
+	case err := <-discoveryErrors:
+		if err == nil {
+			return a.shutdownAfterRunError(errors.New("discovery service stopped unexpectedly"))
+		}
+		return a.shutdownAfterRunError(err)
 	case <-stop:
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		cancelRun()
 		return a.Shutdown(ctx)
 	}
+}
+
+func (a *App) shutdownAfterRunError(runErr error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	shutdownErr := a.Shutdown(ctx)
+	return errors.Join(runErr, shutdownErr)
 }
 
 // Shutdown 优雅关闭 HTTP 服务和数据库连接。
@@ -335,31 +440,40 @@ func (a *App) Run() error {
 //
 // 返回说明：HTTP 服务或数据库关闭失败时返回错误。
 func (a *App) Shutdown(ctx context.Context) error {
-	a.Logger.Info("ERP server shutting down")
+	if a.Logger != nil {
+		a.Logger.Info("ERP server shutting down")
+	}
+	var shutdownErrors []error
+	if a.DiscoveryService != nil {
+		if err := a.DiscoveryService.Shutdown(ctx); err != nil {
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown discovery service: %w", err))
+		}
+	}
 
 	if a.Server != nil {
 		if err := a.Server.Shutdown(ctx); err != nil {
-			return fmt.Errorf("shutdown echo server: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown echo server: %w", err))
 		}
 	}
 
-	sqlDB, err := a.DB.DB()
-	if err != nil {
-		return fmt.Errorf("get sql database: %w", err)
+	if a.DB != nil {
+		sqlDB, err := a.DB.DB()
+		if err != nil {
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("get sql database: %w", err))
+		} else if err := sqlDB.Close(); err != nil {
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("close database: %w", err))
+		}
+	}
+	if a.Logger != nil {
+		a.Logger.Info("ERP server stopped")
 	}
 
-	if err := sqlDB.Close(); err != nil {
-		return fmt.Errorf("close database: %w", err)
-	}
-
-	a.Logger.Info("ERP server stopped")
 	if a.LogSystem != nil {
 		if err := a.LogSystem.Close(); err != nil {
-			return fmt.Errorf("close log files: %w", err)
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("close log files: %w", err))
 		}
 	}
-
-	return nil
+	return errors.Join(shutdownErrors...)
 }
 
 // health 返回进程存活状态，不依赖数据库。

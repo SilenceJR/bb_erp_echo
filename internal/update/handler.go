@@ -14,11 +14,10 @@ import (
 
 // VersionResponse 是服务端和客户端版本信息。
 type VersionResponse struct {
-	AppName       string             `json:"app_name"`
-	ServerVersion string             `json:"server_version"`
-	ClientVersion string             `json:"client_version"`
-	UpdateEnabled bool               `json:"update_enabled"`
-	ClientUpdate  ClientUpdateStatus `json:"client_update"`
+	AppName       string `json:"app_name"`
+	ServerVersion string `json:"server_version"`
+	ClientVersion string `json:"client_version"`
+	UpdateEnabled bool   `json:"update_enabled"`
 }
 
 // Handler 处理版本检查和客户端升级包分发。
@@ -41,8 +40,6 @@ func NewHandlerWithService(cfg *config.Config, service UpdateService) *Handler {
 func (h *Handler) RegisterPublicRoutes(v1 *echo.Group) {
 	v1.GET("/version", h.Version)
 	updates := v1.Group("/updates/client")
-	updates.GET("/status", h.ClientStatus)
-	updates.GET("/download", h.DownloadClientPackage)
 	updates.GET("/plan", h.ClientPlan)
 	updates.GET("/tauri/:target/:arch/:current_version", h.TauriClientUpdate)
 	updates.GET("/artifacts/:sha256", h.DownloadClientArtifact)
@@ -67,35 +64,7 @@ func (h *Handler) Version(c *echo.Context) error {
 		ServerVersion: h.Config.App.Version,
 		ClientVersion: h.Config.Update.ClientVersion,
 		UpdateEnabled: h.Config.Update.Enabled,
-		ClientUpdate:  h.Service.ClientStatus(h.Config.Update.ClientVersion),
 	})
-}
-
-// ClientStatus 返回服务端已缓存的客户端升级包状态。
-// @Summary 查询桌面客户端更新状态
-// @Tags updates
-// @Produce json
-// @Param current_version query string false "Tauri 真实安装版本"
-// @Success 200 {object} ClientUpdateStatus
-// @Router /api/v1/updates/client/status [get]
-func (h *Handler) ClientStatus(c *echo.Context) error {
-	return c.JSON(http.StatusOK, h.Service.ClientStatus(c.QueryParam("current_version")))
-}
-
-// DownloadClientPackage 把服务端缓存的客户端升级包分发给员工电脑。
-// @Summary 下载已校验缓存的桌面客户端包
-// @Tags updates
-// @Produce application/octet-stream
-// @Success 200 {file} binary
-// @Failure 404 {object} map[string]any
-// @Router /api/v1/updates/client/download [get]
-func (h *Handler) DownloadClientPackage(c *echo.Context) error {
-	path := h.Service.CachedClientPackagePath()
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return echo.NewHTTPError(http.StatusNotFound, "暂无可下载的客户端升级包")
-	}
-	return c.Attachment(path, clientPackageName)
 }
 
 // DownloadServerPackage 按当前成功清单下载、校验并缓存服务端升级包，再分发给管理员。
@@ -133,12 +102,11 @@ func (h *Handler) DownloadServerPackage(c *echo.Context) error {
 	return nil
 }
 
-// ClientPlan 返回桌面端应采用的增量或完整更新策略。
-// @Summary 规划 Windows 客户端自动更新
+// ClientPlan 返回桌面端当前 Windows full-only 更新计划。
+// @Summary 查询 Windows 客户端完整更新
 // @Tags updates
 // @Produce json
 // @Param current_version query string true "当前客户端 SemVer"
-// @Param current_sha256 query string true "当前客户端 EXE SHA-256"
 // @Param target query string true "目标平台，固定 windows-x86_64"
 // @Param install_mode query string true "安装模式：nsis 或 portable"
 // @Success 200 {object} ClientUpdatePlan
@@ -148,7 +116,6 @@ func (h *Handler) DownloadServerPackage(c *echo.Context) error {
 func (h *Handler) ClientPlan(c *echo.Context) error {
 	plan, available, err := h.Service.ClientUpdatePlan(ClientUpdatePlanRequest{
 		CurrentVersion: c.QueryParam("current_version"),
-		CurrentSHA256:  c.QueryParam("current_sha256"),
 		Target:         c.QueryParam("target"),
 		InstallMode:    c.QueryParam("install_mode"),
 	})
@@ -181,15 +148,11 @@ func (h *Handler) TauriClientUpdate(c *echo.Context) error {
 	if !available {
 		return c.NoContent(http.StatusNoContent)
 	}
-	// tauri-plugin-updater requires an absolute artifact URL. The service keeps
-	// artifact references origin-relative so the same signed manifest works on
-	// every LAN deployment; bind it to the server address used by this request.
+	// tauri-plugin-updater requires an absolute artifact URL. The client only
+	// accepts HTTP RFC1918/loopback origins and calls this endpoint without a
+	// proxy, so keep the response on the exact LAN request authority.
 	if strings.HasPrefix(update.URL, "/") {
-		scheme := "http"
-		if c.Request().TLS != nil {
-			scheme = "https"
-		}
-		update.URL = scheme + "://" + c.Request().Host + update.URL
+		update.URL = "http://" + c.Request().Host + update.URL
 	}
 	return c.JSON(http.StatusOK, update)
 }
@@ -224,7 +187,7 @@ func (h *Handler) DownloadClientArtifact(c *echo.Context) error {
 	return nil
 }
 
-// CheckRemoteUpdates 由管理员触发服务端检查 GitHub、Gitee 或内网 manifest。
+// CheckRemoteUpdates 由管理员触发服务端检查当前配置的更新 manifest。
 // @Summary 立即执行完整更新检查
 // @Tags system-updates
 // @Produce json

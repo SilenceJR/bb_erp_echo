@@ -145,7 +145,7 @@
 
 <script setup lang="ts">
 import {computed, nextTick, type DirectiveBinding, type ObjectDirective} from 'vue'
-import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {useWorkorderContext} from '../../composables/workorderContext'
 import StatusTag from '../ui/StatusTag.vue'
 import WorkorderStockCard from './WorkorderStockCard.vue'
 import OperatorSelect from '../ui/OperatorSelect.vue'
@@ -173,10 +173,9 @@ const {
   handleWorkorderProductSelect,
   loadWorkorderProductStock,
   openTemporaryProductDialog,
-  closeTemporaryProductDialog,
   closeTemporaryProductWithGuard,
   createTemporaryProduct,
-} = useWorkspaceContext()
+} = useWorkorderContext().product
 
 const canCreateTemporaryProduct = computed(() => (
   hasPermission('warehouse:read')

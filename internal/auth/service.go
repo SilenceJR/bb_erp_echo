@@ -31,7 +31,7 @@ const (
 	// ContextUserKey 是 Echo Context 中保存当前登录用户的键。
 	ContextUserKey = "current_user"
 
-	// InitialPasswordVersion 是新账号和旧数据库记录的起始密码版本。
+	// InitialPasswordVersion 是新账号和新 JWT 的起始密码版本。
 	InitialPasswordVersion = 1
 	// MinPasswordLength 是密码允许的最小字符数。
 	MinPasswordLength = 8
@@ -98,12 +98,15 @@ func NewService(cfg *config.Config, db *gorm.DB) *Service {
 // - time.Time：过期时间。
 // - error：签名失败时返回错误。
 func (s *Service) IssueToken(user model.User) (string, time.Time, error) {
+	if user.PasswordVersion < InitialPasswordVersion {
+		return "", time.Time{}, fmt.Errorf("user password version must be at least %d", InitialPasswordVersion)
+	}
 	expiresAt := time.Now().Add(s.Config.JWT.ExpiresIn)
 	claims := Claims{
 		UserID:          user.ID,
 		Username:        user.Username,
 		AccountType:     user.AccountType,
-		PasswordVersion: NormalizePasswordVersion(user.PasswordVersion),
+		PasswordVersion: user.PasswordVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -213,6 +216,14 @@ func (s *Service) RevokeRefreshToken(raw string) error {
 
 // RevokeRefreshTokensForUser 撤销指定用户的全部 refresh token。
 func (s *Service) RevokeRefreshTokensForUser(db *gorm.DB, userID uint, now time.Time) error {
+	return RevokeRefreshTokensForUser(db, userID, now)
+}
+
+// RevokeRefreshTokensForUser 在调用方事务中撤销指定用户的全部 refresh token。
+//
+// 该函数不依赖认证服务配置，便于用户管理等跨模块事务在更新密码版本时
+// 一并撤销会话，确保旧 refresh token 不能重新签发新版本 JWT。
+func RevokeRefreshTokensForUser(db *gorm.DB, userID uint, now time.Time) error {
 	return db.Model(&model.RefreshSession{}).
 		Where("user_id = ? AND revoked_at IS NULL", userID).
 		Updates(map[string]any{"revoked_at": now, "last_used_at": now}).Error
@@ -244,17 +255,6 @@ func (s *Service) createRefreshSessionWithDB(db *gorm.DB, userID uint, now time.
 func hashRefreshToken(raw string) string {
 	digest := sha256.Sum256([]byte(raw))
 	return fmt.Sprintf("%x", digest[:])
-}
-
-// NormalizePasswordVersion 将旧数据或旧 JWT 中缺失的版本视为初始版本。
-//
-// 旧数据库在自动迁移前没有 password_version，旧 JWT 也没有该声明；将零值
-// 兼容为 1 可以避免升级时无理由注销所有会话，同时密码首次修改仍会递增到 2。
-func NormalizePasswordVersion(version int) int {
-	if version < InitialPasswordVersion {
-		return InitialPasswordVersion
-	}
-	return version
 }
 
 // CurrentUserFromModel 根据用户模型组装请求上下文中的 CurrentUser。

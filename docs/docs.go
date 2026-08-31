@@ -40,7 +40,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.ChangePasswordRequest"
+                            "$ref": "#/definitions/internal_auth.ChangePasswordRequest"
                         }
                     }
                 ],
@@ -51,31 +51,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     }
                 }
@@ -101,7 +101,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginRequest"
+                            "$ref": "#/definitions/internal_auth.LoginRequest"
                         }
                     }
                 ],
@@ -109,31 +109,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginResponse"
+                            "$ref": "#/definitions/internal_auth.LoginResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     }
                 }
@@ -159,7 +159,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RefreshRequest"
+                            "$ref": "#/definitions/internal_auth.RefreshRequest"
                         }
                     }
                 ],
@@ -170,13 +170,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     }
                 }
@@ -201,19 +201,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.CurrentUserDTO"
+                            "$ref": "#/definitions/internal_auth.CurrentUserDTO"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     }
                 }
@@ -239,7 +239,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RefreshRequest"
+                            "$ref": "#/definitions/internal_auth.RefreshRequest"
                         }
                     }
                 ],
@@ -247,31 +247,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginResponse"
+                            "$ref": "#/definitions/internal_auth.LoginResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/auth.ErrorResponse"
+                            "$ref": "#/definitions/internal_auth.ErrorResponse"
                         }
                     }
                 }
@@ -321,7 +321,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.CodePage"
+                            "$ref": "#/definitions/internal_customer.CodePage"
                         }
                     }
                 }
@@ -348,7 +348,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/customer.CodeRequest"
+                            "$ref": "#/definitions/internal_customer.CodeRequest"
                         }
                     }
                 ],
@@ -356,19 +356,19 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/customer.CodeResponse"
+                            "$ref": "#/definitions/internal_customer.CodeResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -428,13 +428,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -469,7 +469,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.CodeRequest"
+                            "$ref": "#/definitions/internal_customer.CodeRequest"
                         }
                     }
                 ],
@@ -477,19 +477,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.CodeResponse"
+                            "$ref": "#/definitions/internal_customer.CodeResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -533,7 +533,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfilePage"
+                            "$ref": "#/definitions/internal_customer.ProfilePage"
                         }
                     }
                 }
@@ -561,7 +561,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileInput"
+                            "$ref": "#/definitions/internal_customer.ProfileInput"
                         }
                     }
                 ],
@@ -569,7 +569,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileResponse"
+                            "$ref": "#/definitions/internal_customer.ProfileResponse"
                         }
                     }
                 }
@@ -620,7 +620,7 @@ const docTemplate = `{
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -677,7 +677,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/spreadsheet.SpreadsheetDocument"
+                            "$ref": "#/definitions/bb_erp_echo_internal_spreadsheet.SpreadsheetDocument"
                         }
                     }
                 }
@@ -744,13 +744,13 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/customer.ImportResult"
+                            "$ref": "#/definitions/internal_customer.ImportResult"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -786,13 +786,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ImportPreview"
+                            "$ref": "#/definitions/internal_customer.ImportPreview"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -826,7 +826,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/customer.OptionResponse"
+                                "$ref": "#/definitions/internal_customer.OptionResponse"
                             }
                         }
                     }
@@ -860,13 +860,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileResponse"
+                            "$ref": "#/definitions/internal_customer.ProfileResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -904,13 +904,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -945,7 +945,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileUpdate"
+                            "$ref": "#/definitions/internal_customer.ProfileUpdate"
                         }
                     }
                 ],
@@ -953,13 +953,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileResponse"
+                            "$ref": "#/definitions/internal_customer.ProfileResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
                         }
                     }
                 }
@@ -992,13 +992,39 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/customer.ProfileResponse"
+                            "$ref": "#/definitions/internal_customer.ProfileResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/customer.ErrorResponse"
+                            "$ref": "#/definitions/internal_customer.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/discovery/identity": {
+            "get": {
+                "description": "返回客户端验证连接所需的最小服务身份，不需要登录，不包含组织、账号、业务数据、更新地址或凭据。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "局域网发现"
+                ],
+                "summary": "查询服务身份",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_discovery.IdentityResponse"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            }
                         }
                     }
                 }
@@ -1046,38 +1072,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/file.ImageResponse"
+                                "$ref": "#/definitions/internal_file.ImageResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     }
                 }
@@ -1135,38 +1161,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/file.ImageResponse"
+                                "$ref": "#/definitions/internal_file.ImageResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     }
                 }
@@ -1199,31 +1225,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     }
                 }
@@ -1265,31 +1291,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     }
                 }
@@ -1336,176 +1362,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/file.ImageResponse"
+                            "$ref": "#/definitions/internal_file.ImageResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/file.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/inventory": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询库存余额",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "仓库 ID",
-                        "name": "warehouse_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.InventoryBalance"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建库存草稿单据；必须选择当前账号部门下的在职员工作为本次操作人。相同 Idempotency-Key 重试会返回首次创建结果。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "创建库存草稿单据",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "幂等键；相同键重试返回首次创建结果",
-                        "name": "Idempotency-Key",
-                        "in": "header"
-                    },
-                    {
-                        "description": "库存单据参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/inventory.documentRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_file.ErrorResponse"
                         }
                     }
                 }
@@ -1539,38 +1426,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.InventoryBalance"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.InventoryBalance"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1605,31 +1492,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1664,7 +1551,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/inventory.documentRequest"
+                            "$ref": "#/definitions/internal_inventory.documentRequest"
                         }
                     }
                 ],
@@ -1679,31 +1566,31 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1741,7 +1628,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/inventory.operatorActionRequest"
+                            "$ref": "#/definitions/internal_inventory.operatorActionRequest"
                         }
                     }
                 ],
@@ -1756,37 +1643,37 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1824,7 +1711,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/inventory.reverseDocumentRequest"
+                            "$ref": "#/definitions/internal_inventory.reverseDocumentRequest"
                         }
                     }
                 ],
@@ -1839,37 +1726,37 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1895,38 +1782,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.InventoryLedger"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.InventoryLedger"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -1960,38 +1847,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.Location"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.Location"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -2020,7 +1907,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.createLocationRequest"
+                            "$ref": "#/definitions/internal_warehouse.createLocationRequest"
                         }
                     }
                 ],
@@ -2028,161 +1915,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/model.Location"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Location"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/material": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "material"
-                ],
-                "summary": "查询物料",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.Material"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建物料主数据；必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "material"
-                ],
-                "summary": "创建物料",
-                "parameters": [
-                    {
-                        "description": "物料参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/material.createMaterialRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/model.Material"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -2208,38 +1971,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.Material"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.Material"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     }
                 }
@@ -2268,7 +2031,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/material.createMaterialRequest"
+                            "$ref": "#/definitions/internal_material.createMaterialRequest"
                         }
                     }
                 ],
@@ -2276,37 +2039,703 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/model.Material"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Material"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/material.ErrorResponse"
+                            "$ref": "#/definitions/internal_material.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "查询模具台账",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "模糊关键字",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "模具状态",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "创建模具档案",
+                "parameters": [
+                    {
+                        "description": "模具档案参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.moldRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "查询模具详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "删除模具档案",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "更新模具档案",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "模具档案参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.moldRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds/{id}/loan": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "登记模具借出",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "借出参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds/{id}/maintenance": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "登记模具保养",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "保养参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds/{id}/repair": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "登记模具维修",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "维修参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/molds/{id}/return": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "登记模具归还",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "模具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "归还参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Mold"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_mold.ErrorResponse"
                         }
                     }
                 }
@@ -2330,143 +2759,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/employee.OperatorEmployeesResponse"
+                            "$ref": "#/definitions/internal_employee.OperatorEmployeesResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/product": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "product"
-                ],
-                "summary": "查询产品",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.Product"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建产品主数据；必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "product"
-                ],
-                "summary": "创建产品",
-                "parameters": [
-                    {
-                        "description": "产品参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/product.createProductRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/model.Product"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     }
                 }
@@ -2492,38 +2797,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.Product"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.Product"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     }
                 }
@@ -2552,7 +2857,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/product.createProductRequest"
+                            "$ref": "#/definitions/internal_product.createProductRequest"
                         }
                     }
                 ],
@@ -2560,37 +2865,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/model.Product"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/internal_product.ErrorResponse"
                         }
                     }
                 }
@@ -2611,25 +2916,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/statistics.DashboardResponse"
+                            "$ref": "#/definitions/internal_statistics.DashboardResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/statistics.ErrorResponse"
+                            "$ref": "#/definitions/internal_statistics.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/statistics.ErrorResponse"
+                            "$ref": "#/definitions/internal_statistics.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/statistics.ErrorResponse"
+                            "$ref": "#/definitions/internal_statistics.ErrorResponse"
                         }
                     }
                 }
@@ -2665,25 +2970,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.Department"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Department"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     }
                 }
@@ -2723,13 +3028,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     }
                 }
@@ -2780,19 +3085,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     }
                 }
@@ -2828,19 +3133,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_department.ErrorResponse"
                         }
                     }
                 }
@@ -2945,7 +3250,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/employee.employeeRequest"
+                            "$ref": "#/definitions/internal_employee.employeeRequest"
                         }
                     }
                 ],
@@ -2953,19 +3258,19 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/employee.EmployeeResponse"
+                            "$ref": "#/definitions/internal_employee.EmployeeResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     }
                 }
@@ -3002,7 +3307,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/employee.employeeRequest"
+                            "$ref": "#/definitions/internal_employee.employeeRequest"
                         }
                     }
                 ],
@@ -3010,25 +3315,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/employee.EmployeeResponse"
+                            "$ref": "#/definitions/internal_employee.EmployeeResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     }
                 }
@@ -3059,13 +3364,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     }
                 }
@@ -3099,7 +3404,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/employee.employeeStatusRequest"
+                            "$ref": "#/definitions/internal_employee.employeeStatusRequest"
                         }
                     }
                 ],
@@ -3110,13 +3415,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_employee.ErrorResponse"
                         }
                     }
                 }
@@ -3140,7 +3445,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/update.SystemUpdateStatus"
+                            "$ref": "#/definitions/internal_update.SystemUpdateStatus"
                         }
                     },
                     "401": {
@@ -3230,7 +3535,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/update.SystemUpdateStatus"
+                            "$ref": "#/definitions/internal_update.SystemUpdateStatus"
                         }
                     },
                     "401": {
@@ -3290,706 +3595,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.User"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.User"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_user.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_user.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
+                            "$ref": "#/definitions/internal_user.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/response.ErrorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "分页查询任务单",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "每页条数",
-                        "name": "page_size",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "模糊关键字",
-                        "name": "q",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "主任务状态",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "任务类型",
-                        "name": "type",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "流转部门 ID",
-                        "name": "department_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "优先级",
-                        "name": "priority",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ListResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。",
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "创建草稿任务单",
-                "parameters": [
-                    {
-                        "description": "任务单创建参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.createRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/department-tasks/{id}/complete": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "部门完成子任务",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "部门子任务 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "操作人和备注参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.remarkRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/department-tasks/{id}/partial-complete": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "部门提交部分完成数量",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "部门子任务 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "部分完成参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.partialCompleteRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/department-tasks/{id}/start": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "部门开始处理子任务",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "部门子任务 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "操作人和备注参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.remarkRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/complete": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "办公室确认完成任务单",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "完成参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.completeRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/dispatch": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "派发任务单",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "操作人参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.operatorActionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/logs": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "查询任务流转日志",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.WorkOrderFlowLog"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/pause": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "暂停任务单",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "暂停原因",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.reasonRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/resume": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "恢复任务单",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "操作人参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.operatorActionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tasks/{id}/urgent": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "设置或取消加急",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "任务单 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "加急参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.urgentRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_user.ErrorResponse"
                         }
                     }
                 }
@@ -4036,32 +3666,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/updates/client/download": {
-            "get": {
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "下载已校验缓存的桌面客户端包",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/updates/client/plan": {
             "get": {
                 "produces": [
@@ -4070,19 +3674,12 @@ const docTemplate = `{
                 "tags": [
                     "updates"
                 ],
-                "summary": "规划 Windows 客户端自动更新",
+                "summary": "查询 Windows 客户端完整更新",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "当前客户端 SemVer",
                         "name": "current_version",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "当前客户端 EXE SHA-256",
-                        "name": "current_sha256",
                         "in": "query",
                         "required": true
                     },
@@ -4105,7 +3702,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/update.ClientUpdatePlan"
+                            "$ref": "#/definitions/internal_update.ClientUpdatePlan"
                         }
                     },
                     "204": {
@@ -4116,33 +3713,6 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/updates/client/status": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "查询桌面客户端更新状态",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Tauri 真实安装版本",
-                        "name": "current_version",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/update.ClientUpdateStatus"
                         }
                     }
                 }
@@ -4184,7 +3754,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/update.TauriUpdateResponse"
+                            "$ref": "#/definitions/internal_update.TauriUpdateResponse"
                         }
                     },
                     "204": {
@@ -4213,131 +3783,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/update.VersionResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/warehouse": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "warehouse"
-                ],
-                "summary": "查询仓库",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.Warehouse"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "更新系统默认仓库名称；仓库编码固定为 MAIN，必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "warehouse"
-                ],
-                "summary": "更新系统默认仓库",
-                "parameters": [
-                    {
-                        "description": "仓库参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.createWarehouseRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Warehouse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_update.VersionResponse"
                         }
                     }
                 }
@@ -4399,37 +3845,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.CatalogItemsResponse"
+                            "$ref": "#/definitions/internal_warehouse.CatalogItemsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -4458,7 +3904,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.createWarehouseItemRequest"
+                            "$ref": "#/definitions/internal_warehouse.createWarehouseItemRequest"
                         }
                     }
                 ],
@@ -4466,37 +3912,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.CatalogItem"
+                            "$ref": "#/definitions/internal_warehouse.CatalogItem"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -4547,37 +3993,37 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -4640,37 +4086,37 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -4723,7 +4169,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/inventory.itemMovementRequest"
+                            "$ref": "#/definitions/internal_inventory.itemMovementRequest"
                         }
                     }
                 ],
@@ -4738,37 +4184,37 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
+                            "$ref": "#/definitions/internal_inventory.ErrorResponse"
                         }
                     }
                 }
@@ -4794,38 +4240,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/warehouse.CatalogTabSpec"
+                                "$ref": "#/definitions/internal_warehouse.CatalogTabSpec"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -4851,38 +4297,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.Warehouse"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.Warehouse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -4911,7 +4357,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.createWarehouseRequest"
+                            "$ref": "#/definitions/internal_warehouse.createWarehouseRequest"
                         }
                     }
                 ],
@@ -4919,37 +4365,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.Warehouse"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Warehouse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/internal_warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -5014,19 +4460,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ListResponse"
+                            "$ref": "#/definitions/internal_workorder.ListResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5049,7 +4495,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.createRequest"
+                            "$ref": "#/definitions/internal_workorder.createRequest"
                         }
                     }
                 ],
@@ -5057,25 +4503,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5106,7 +4552,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.remarkRequest"
+                            "$ref": "#/definitions/internal_workorder.remarkRequest"
                         }
                     }
                 ],
@@ -5114,31 +4560,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5169,7 +4615,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.partialCompleteRequest"
+                            "$ref": "#/definitions/internal_workorder.partialCompleteRequest"
                         }
                     }
                 ],
@@ -5177,31 +4623,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5232,7 +4678,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.remarkRequest"
+                            "$ref": "#/definitions/internal_workorder.remarkRequest"
                         }
                     }
                 ],
@@ -5240,31 +4686,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5295,7 +4741,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.temporaryProductRequest"
+                            "$ref": "#/definitions/internal_workorder.temporaryProductRequest"
                         }
                     }
                 ],
@@ -5303,37 +4749,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/model.Product"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.Product"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5364,7 +4810,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.completeRequest"
+                            "$ref": "#/definitions/internal_workorder.completeRequest"
                         }
                     }
                 ],
@@ -5372,31 +4818,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5427,7 +4873,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.operatorActionRequest"
+                            "$ref": "#/definitions/internal_workorder.operatorActionRequest"
                         }
                     }
                 ],
@@ -5435,31 +4881,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5491,20 +4937,20 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.WorkOrderFlowLog"
+                                "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrderFlowLog"
                             }
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5535,7 +4981,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.reasonRequest"
+                            "$ref": "#/definitions/internal_workorder.reasonRequest"
                         }
                     }
                 ],
@@ -5543,31 +4989,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5598,7 +5044,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.operatorActionRequest"
+                            "$ref": "#/definitions/internal_workorder.operatorActionRequest"
                         }
                     }
                 ],
@@ -5606,31 +5052,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5661,7 +5107,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/workorder.urgentRequest"
+                            "$ref": "#/definitions/internal_workorder.urgentRequest"
                         }
                     }
                 ],
@@ -5669,31 +5115,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.WorkOrder"
+                            "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
+                            "$ref": "#/definitions/internal_workorder.ErrorResponse"
                         }
                     }
                 }
@@ -5713,7 +5159,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/app.HealthResponse"
+                            "$ref": "#/definitions/internal_app.HealthResponse"
                         }
                     }
                 }
@@ -5733,13 +5179,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/app.ReadyResponse"
+                            "$ref": "#/definitions/internal_app.ReadyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/app.ReadyResponse"
+                            "$ref": "#/definitions/internal_app.ReadyResponse"
                         }
                     }
                 }
@@ -5747,875 +5193,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "app.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "description": "Status 是服务存活状态。",
-                    "type": "string",
-                    "example": "ok"
-                },
-                "time": {
-                    "description": "Time 是服务端当前时间。",
-                    "type": "string"
-                }
-            }
-        },
-        "app.ReadyResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "description": "Message 是不可用时的说明。",
-                    "type": "string",
-                    "example": "database ping failed"
-                },
-                "status": {
-                    "description": "Status 是服务就绪状态。",
-                    "type": "string",
-                    "example": "ready"
-                }
-            }
-        },
-        "auth.ChangePasswordRequest": {
-            "type": "object",
-            "required": [
-                "current_password",
-                "new_password"
-            ],
-            "properties": {
-                "current_password": {
-                    "description": "CurrentPassword 是当前密码。",
-                    "type": "string",
-                    "example": "admin123456"
-                },
-                "new_password": {
-                    "description": "NewPassword 是待设置的新密码，至少 8 个字符且不超过 bcrypt 支持的长度。",
-                    "type": "string",
-                    "example": "newAdmin123456"
-                }
-            }
-        },
-        "auth.CurrentUserDTO": {
-            "type": "object",
-            "properties": {
-                "account_type": {
-                    "description": "AccountType 是账号类型。",
-                    "type": "string",
-                    "example": "personal"
-                },
-                "department_id": {
-                    "description": "DepartmentID 是所属部门 ID。",
-                    "type": "integer"
-                },
-                "id": {
-                    "description": "ID 是用户 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "name": {
-                    "description": "Name 是账号显示名称。",
-                    "type": "string",
-                    "example": "系统管理员"
-                },
-                "organization_id": {
-                    "description": "OrganizationID 是所属组织 ID。",
-                    "type": "integer",
-                    "example": 1
-                },
-                "permissions": {
-                    "description": "Permissions 是当前账号拥有的权限编码列表。",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "roles": {
-                    "description": "Roles 是当前账号拥有的角色编码列表。",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "terminal_id": {
-                    "description": "TerminalID 是所属终端 ID。",
-                    "type": "integer"
-                },
-                "username": {
-                    "description": "Username 是登录账号。",
-                    "type": "string",
-                    "example": "admin"
-                }
-            }
-        },
-        "auth.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "auth.LoginRequest": {
-            "type": "object",
-            "required": [
-                "password",
-                "username"
-            ],
-            "properties": {
-                "password": {
-                    "description": "Password 是登录密码。",
-                    "type": "string",
-                    "example": "admin123456"
-                },
-                "username": {
-                    "description": "Username 是登录账号。",
-                    "type": "string",
-                    "example": "admin"
-                }
-            }
-        },
-        "auth.LoginResponse": {
-            "type": "object",
-            "properties": {
-                "access_token": {
-                    "description": "AccessToken 是 JWT 访问令牌。",
-                    "type": "string"
-                },
-                "expires_at": {
-                    "description": "ExpiresAt 是令牌过期时间。",
-                    "type": "string"
-                },
-                "refresh_expires_at": {
-                    "description": "RefreshExpiresAt 是本次 refresh token 的滚动失效时间。",
-                    "type": "string"
-                },
-                "refresh_token": {
-                    "description": "RefreshToken 是用于静默续期的轮换令牌。",
-                    "type": "string"
-                },
-                "user": {
-                    "description": "User 是当前登录身份快照。",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/auth.CurrentUserDTO"
-                        }
-                    ]
-                }
-            }
-        },
-        "auth.RefreshRequest": {
-            "type": "object",
-            "required": [
-                "refresh_token"
-            ],
-            "properties": {
-                "refresh_token": {
-                    "description": "RefreshToken 是登录或上次续期返回的 refresh token。",
-                    "type": "string"
-                }
-            }
-        },
-        "customer.CodePage": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/customer.CodeResponse"
-                    }
-                },
-                "keyword": {
-                    "type": "string"
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "customer.CodeRequest": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.CodeResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "default_profile": {
-                    "$ref": "#/definitions/customer.ProfileResponse"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "profile_count": {
-                    "type": "integer"
-                },
-                "profiles": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.CustomerProfile"
-                    }
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ImportPreview": {
-            "type": "object",
-            "properties": {
-                "errors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/spreadsheet.CellError"
-                    }
-                },
-                "expires_at": {
-                    "type": "string"
-                },
-                "summary": {
-                    "$ref": "#/definitions/customer.ImportSummary"
-                },
-                "token": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ImportResult": {
-            "type": "object",
-            "properties": {
-                "completed_at": {
-                    "type": "string"
-                },
-                "imported_codes": {
-                    "type": "integer"
-                },
-                "imported_profiles": {
-                    "type": "integer"
-                }
-            }
-        },
-        "customer.ImportSummary": {
-            "type": "object",
-            "properties": {
-                "multiple_code_groups": {
-                    "type": "integer"
-                },
-                "new_codes": {
-                    "type": "integer"
-                },
-                "new_profiles": {
-                    "type": "integer"
-                },
-                "total_rows": {
-                    "type": "integer"
-                }
-            }
-        },
-        "customer.OptionResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "is_default": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "short_name": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ProfileInput": {
-            "type": "object",
-            "required": [
-                "customer_code_id"
-            ],
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "contact_name": {
-                    "type": "string"
-                },
-                "contact_phone": {
-                    "type": "string"
-                },
-                "customer_code_id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "salesperson": {
-                    "type": "string"
-                },
-                "short_name": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ProfilePage": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/customer.ProfileResponse"
-                    }
-                },
-                "keyword": {
-                    "type": "string"
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "customer.ProfileResponse": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "contact_name": {
-                    "type": "string"
-                },
-                "contact_phone": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "customer_code_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "is_default": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "salesperson": {
-                    "type": "string"
-                },
-                "short_name": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "customer.ProfileUpdate": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "contact_name": {
-                    "type": "string"
-                },
-                "contact_phone": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "salesperson": {
-                    "type": "string"
-                },
-                "short_name": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.DepartmentSummary": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.EmployeeResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "birth_date": {
-                    "type": "string"
-                },
-                "birthplace": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "departments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/employee.DepartmentSummary"
-                    }
-                },
-                "hire_date": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "organization_id": {
-                    "type": "integer"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "residential_address": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.OperatorDepartment": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.OperatorEmployee": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.OperatorEmployeesResponse": {
-            "type": "object",
-            "properties": {
-                "department": {
-                    "$ref": "#/definitions/employee.OperatorDepartment"
-                },
-                "employees": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/employee.OperatorEmployee"
-                    }
-                }
-            }
-        },
-        "employee.employeeRequest": {
-            "type": "object",
-            "properties": {
-                "birth_date": {
-                    "type": "string"
-                },
-                "birthplace": {
-                    "type": "string"
-                },
-                "hire_date": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "phone": {
-                    "type": "string"
-                },
-                "residential_address": {
-                    "type": "string"
-                }
-            }
-        },
-        "employee.employeeStatusRequest": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "file.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "file.ImageResponse": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "content_url": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "extension": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "mime_type": {
-                    "type": "string"
-                },
-                "original_name": {
-                    "type": "string"
-                },
-                "owner_id": {
-                    "type": "integer"
-                },
-                "owner_type": {
-                    "type": "string"
-                },
-                "replaces_id": {
-                    "type": "integer"
-                },
-                "size": {
-                    "type": "integer"
-                },
-                "uploaded_by": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "inventory.documentRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "lines",
-                "operator_employee_id",
-                "type",
-                "warehouse_id"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "lines": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/inventory.lineRequest"
-                    }
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "to_warehouse_id": {
-                    "type": "integer"
-                },
-                "type": {
-                    "type": "string",
-                    "enum": [
-                        "inbound",
-                        "outbound",
-                        "transfer"
-                    ]
-                },
-                "warehouse_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.itemMovementRequest": {
-            "type": "object",
-            "required": [
-                "business_type",
-                "operator_employee_id",
-                "quantity"
-            ],
-            "properties": {
-                "business_type": {
-                    "type": "string",
-                    "enum": [
-                        "purchase_inbound",
-                        "return_rework_inbound",
-                        "customer_outbound",
-                        "department_outbound"
-                    ]
-                },
-                "customer_id": {
-                    "type": "integer"
-                },
-                "department_id": {
-                    "type": "integer"
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "original_document_id": {
-                    "type": "integer"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "supplier_id": {
-                    "type": "integer"
-                },
-                "unit_cost": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.lineRequest": {
-            "type": "object",
-            "required": [
-                "item_id",
-                "item_type",
-                "quantity"
-            ],
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "item_id": {
-                    "type": "integer"
-                },
-                "item_type": {
-                    "type": "string",
-                    "enum": [
-                        "material",
-                        "product"
-                    ]
-                },
-                "location_id": {
-                    "type": "integer"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "unit_cost": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.operatorActionRequest": {
-            "type": "object",
-            "required": [
-                "operator_employee_id"
-            ],
-            "properties": {
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                }
-            }
-        },
-        "inventory.reverseDocumentRequest": {
-            "type": "object",
-            "required": [
-                "operator_employee_id",
-                "reason"
-            ],
-            "properties": {
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "reason": {
-                    "type": "string"
-                }
-            }
-        },
-        "material.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "material.createMaterialRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "name",
-                "operator_employee_id"
-            ],
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "example": "生产物资"
-                },
-                "code": {
-                    "type": "string",
-                    "example": "M-001"
-                },
-                "default_cost": {
-                    "type": "integer",
-                    "example": 10000
-                },
-                "name": {
-                    "type": "string",
-                    "example": "铝材"
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "safety_stock": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "spec": {
-                    "type": "string",
-                    "example": "标准"
-                },
-                "unit": {
-                    "type": "string",
-                    "example": "个"
-                }
-            }
-        },
-        "model.CustomerProfile": {
+        "bb_erp_echo_internal_model.CustomerProfile": {
             "type": "object",
             "properties": {
                 "address": {
@@ -6656,7 +5234,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Department": {
+        "bb_erp_echo_internal_model.Department": {
             "type": "object",
             "properties": {
                 "code": {
@@ -6685,7 +5263,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.DepartmentTask": {
+        "bb_erp_echo_internal_model.DepartmentTask": {
             "type": "object",
             "properties": {
                 "accepted_at": {
@@ -6735,7 +5313,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.InventoryBalance": {
+        "bb_erp_echo_internal_model.InventoryBalance": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -6771,7 +5349,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.InventoryLedger": {
+        "bb_erp_echo_internal_model.InventoryLedger": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -6821,7 +5399,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Location": {
+        "bb_erp_echo_internal_model.Location": {
             "type": "object",
             "properties": {
                 "code": {
@@ -6868,7 +5446,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Material": {
+        "bb_erp_echo_internal_model.Material": {
             "type": "object",
             "properties": {
                 "category": {
@@ -6927,7 +5505,131 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Product": {
+        "bb_erp_echo_internal_model.Mold": {
+            "type": "object",
+            "properties": {
+                "cavity_count": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_location": {
+                    "type": "string"
+                },
+                "customer_id": {
+                    "type": "integer"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bb_erp_echo_internal_model.MoldEvent"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_maintenance_at": {
+                    "type": "string"
+                },
+                "last_repair_at": {
+                    "type": "string"
+                },
+                "maintenance_cycle_days": {
+                    "type": "integer"
+                },
+                "manufacturer": {
+                    "type": "string"
+                },
+                "mold_material": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "next_maintenance_at": {
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steel": {
+                    "type": "string"
+                },
+                "storage_location": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "weight_gram": {
+                    "type": "integer"
+                }
+            }
+        },
+        "bb_erp_echo_internal_model.MoldEvent": {
+            "type": "object",
+            "properties": {
+                "counterparty": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "handler_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "mold_id": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status_after": {
+                    "type": "string"
+                },
+                "status_before": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "bb_erp_echo_internal_model.Product": {
             "type": "object",
             "properties": {
                 "code": {
@@ -6983,7 +5685,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.User": {
+        "bb_erp_echo_internal_model.User": {
             "type": "object",
             "properties": {
                 "account_type": {
@@ -7021,7 +5723,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Warehouse": {
+        "bb_erp_echo_internal_model.Warehouse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -7065,7 +5767,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.WorkOrder": {
+        "bb_erp_echo_internal_model.WorkOrder": {
             "type": "object",
             "properties": {
                 "cancel_reason": {
@@ -7089,7 +5791,7 @@ const docTemplate = `{
                 "department_tasks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.DepartmentTask"
+                        "$ref": "#/definitions/bb_erp_echo_internal_model.DepartmentTask"
                     }
                 },
                 "description": {
@@ -7133,7 +5835,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.WorkOrderFlowLog": {
+        "bb_erp_echo_internal_model.WorkOrderFlowLog": {
             "type": "object",
             "properties": {
                 "action": {
@@ -7198,7 +5900,185 @@ const docTemplate = `{
                 }
             }
         },
-        "product.ErrorResponse": {
+        "bb_erp_echo_internal_spreadsheet.CellError": {
+            "type": "object",
+            "properties": {
+                "column": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "bb_erp_echo_internal_spreadsheet.Column": {
+            "type": "object",
+            "properties": {
+                "alignment": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            }
+        },
+        "bb_erp_echo_internal_spreadsheet.SpreadsheetDocument": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bb_erp_echo_internal_spreadsheet.Column"
+                    }
+                },
+                "empty": {
+                    "type": "boolean"
+                },
+                "has_more": {
+                    "type": "boolean"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "sheet_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "total_rows": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_app.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "description": "Status 是服务存活状态。",
+                    "type": "string",
+                    "example": "ok"
+                },
+                "time": {
+                    "description": "Time 是服务端当前时间。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_app.ReadyResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message 是不可用时的说明。",
+                    "type": "string",
+                    "example": "database ping failed"
+                },
+                "status": {
+                    "description": "Status 是服务就绪状态。",
+                    "type": "string",
+                    "example": "ready"
+                }
+            }
+        },
+        "internal_auth.ChangePasswordRequest": {
+            "type": "object",
+            "required": [
+                "current_password",
+                "new_password"
+            ],
+            "properties": {
+                "current_password": {
+                    "description": "CurrentPassword 是当前密码。",
+                    "type": "string",
+                    "example": "admin123456"
+                },
+                "new_password": {
+                    "description": "NewPassword 是待设置的新密码，至少 8 个字符且不超过 bcrypt 支持的长度。",
+                    "type": "string",
+                    "example": "newAdmin123456"
+                }
+            }
+        },
+        "internal_auth.CurrentUserDTO": {
+            "type": "object",
+            "properties": {
+                "account_type": {
+                    "description": "AccountType 是账号类型。",
+                    "type": "string",
+                    "example": "personal"
+                },
+                "department_id": {
+                    "description": "DepartmentID 是所属部门 ID。",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "ID 是用户 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "description": "Name 是账号显示名称。",
+                    "type": "string",
+                    "example": "系统管理员"
+                },
+                "organization_id": {
+                    "description": "OrganizationID 是所属组织 ID。",
+                    "type": "integer",
+                    "example": 1
+                },
+                "permissions": {
+                    "description": "Permissions 是当前账号拥有的权限编码列表。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "roles": {
+                    "description": "Roles 是当前账号拥有的角色编码列表。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "terminal_id": {
+                    "description": "TerminalID 是所属终端 ID。",
+                    "type": "integer"
+                },
+                "username": {
+                    "description": "Username 是登录账号。",
+                    "type": "string",
+                    "example": "admin"
+                }
+            }
+        },
+        "internal_auth.ErrorResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -7215,7 +6095,910 @@ const docTemplate = `{
                 }
             }
         },
-        "product.createProductRequest": {
+        "internal_auth.LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "description": "Password 是登录密码。",
+                    "type": "string",
+                    "example": "admin123456"
+                },
+                "username": {
+                    "description": "Username 是登录账号。",
+                    "type": "string",
+                    "example": "admin"
+                }
+            }
+        },
+        "internal_auth.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "description": "AccessToken 是 JWT 访问令牌。",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "description": "ExpiresAt 是令牌过期时间。",
+                    "type": "string"
+                },
+                "refresh_expires_at": {
+                    "description": "RefreshExpiresAt 是本次 refresh token 的滚动失效时间。",
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "description": "RefreshToken 是用于静默续期的轮换令牌。",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "User 是当前登录身份快照。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_auth.CurrentUserDTO"
+                        }
+                    ]
+                }
+            }
+        },
+        "internal_auth.RefreshRequest": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "description": "RefreshToken 是登录或上次续期返回的 refresh token。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.CodePage": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_customer.CodeResponse"
+                    }
+                },
+                "keyword": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_customer.CodeRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.CodeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "default_profile": {
+                    "$ref": "#/definitions/internal_customer.ProfileResponse"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "profile_count": {
+                    "type": "integer"
+                },
+                "profiles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bb_erp_echo_internal_model.CustomerProfile"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ImportPreview": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bb_erp_echo_internal_spreadsheet.CellError"
+                    }
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/internal_customer.ImportSummary"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ImportResult": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "imported_codes": {
+                    "type": "integer"
+                },
+                "imported_profiles": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_customer.ImportSummary": {
+            "type": "object",
+            "properties": {
+                "multiple_code_groups": {
+                    "type": "integer"
+                },
+                "new_codes": {
+                    "type": "integer"
+                },
+                "new_profiles": {
+                    "type": "integer"
+                },
+                "total_rows": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_customer.OptionResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ProfileInput": {
+            "type": "object",
+            "required": [
+                "customer_code_id"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "customer_code_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ProfilePage": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_customer.ProfileResponse"
+                    }
+                },
+                "keyword": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_customer.ProfileResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "customer_code_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_customer.ProfileUpdate": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "contact_name": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "salesperson": {
+                    "type": "string"
+                },
+                "short_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_department.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_discovery.IdentityResponse": {
+            "type": "object",
+            "properties": {
+                "discovery_protocol": {
+                    "type": "integer"
+                },
+                "instance_id": {
+                    "type": "string"
+                },
+                "product": {
+                    "type": "string"
+                },
+                "server_name": {
+                    "type": "string"
+                },
+                "server_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.DepartmentSummary": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.EmployeeResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "birth_date": {
+                    "type": "string"
+                },
+                "birthplace": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "departments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_employee.DepartmentSummary"
+                    }
+                },
+                "hire_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "organization_id": {
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "residential_address": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.OperatorDepartment": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.OperatorEmployee": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.OperatorEmployeesResponse": {
+            "type": "object",
+            "properties": {
+                "department": {
+                    "$ref": "#/definitions/internal_employee.OperatorDepartment"
+                },
+                "employees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_employee.OperatorEmployee"
+                    }
+                }
+            }
+        },
+        "internal_employee.employeeRequest": {
+            "type": "object",
+            "properties": {
+                "birth_date": {
+                    "type": "string"
+                },
+                "birthplace": {
+                    "type": "string"
+                },
+                "hire_date": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "residential_address": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_employee.employeeStatusRequest": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_file.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_file.ImageResponse": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "content_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "extension": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mime_type": {
+                    "type": "string"
+                },
+                "original_name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "owner_type": {
+                    "type": "string"
+                },
+                "replaces_id": {
+                    "type": "integer"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "uploaded_by": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_inventory.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_inventory.documentRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "lines",
+                "operator_employee_id",
+                "type",
+                "warehouse_id"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "lines": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/internal_inventory.lineRequest"
+                    }
+                },
+                "operator_employee_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "to_warehouse_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "inbound",
+                        "outbound",
+                        "transfer"
+                    ]
+                },
+                "warehouse_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_inventory.itemMovementRequest": {
+            "type": "object",
+            "required": [
+                "business_type",
+                "operator_employee_id",
+                "quantity"
+            ],
+            "properties": {
+                "business_type": {
+                    "type": "string",
+                    "enum": [
+                        "purchase_inbound",
+                        "return_rework_inbound",
+                        "customer_outbound",
+                        "department_outbound"
+                    ]
+                },
+                "customer_id": {
+                    "type": "integer"
+                },
+                "department_id": {
+                    "type": "integer"
+                },
+                "operator_employee_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "original_document_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "unit_cost": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_inventory.lineRequest": {
+            "type": "object",
+            "required": [
+                "item_id",
+                "item_type",
+                "quantity"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "item_id": {
+                    "type": "integer"
+                },
+                "item_type": {
+                    "type": "string",
+                    "enum": [
+                        "material",
+                        "product"
+                    ]
+                },
+                "location_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "unit_cost": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_inventory.operatorActionRequest": {
+            "type": "object",
+            "required": [
+                "operator_employee_id"
+            ],
+            "properties": {
+                "operator_employee_id": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "internal_inventory.reverseDocumentRequest": {
+            "type": "object",
+            "required": [
+                "operator_employee_id",
+                "reason"
+            ],
+            "properties": {
+                "operator_employee_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_material.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_material.createMaterialRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name",
+                "operator_employee_id"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "example": "生产物资"
+                },
+                "code": {
+                    "type": "string",
+                    "example": "M-001"
+                },
+                "default_cost": {
+                    "type": "integer",
+                    "example": 10000
+                },
+                "name": {
+                    "type": "string",
+                    "example": "铝材"
+                },
+                "operator_employee_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "safety_stock": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "spec": {
+                    "type": "string",
+                    "example": "标准"
+                },
+                "unit": {
+                    "type": "string",
+                    "example": "个"
+                }
+            }
+        },
+        "internal_mold.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_mold.moldRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "cavity_count": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "current_location": {
+                    "type": "string"
+                },
+                "customer_id": {
+                    "type": "integer"
+                },
+                "maintenance_cycle_days": {
+                    "type": "integer"
+                },
+                "manufacturer": {
+                    "type": "string"
+                },
+                "mold_material": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "in_stock",
+                        "loaned",
+                        "repairing",
+                        "maintenance",
+                        "scrapped"
+                    ]
+                },
+                "steel": {
+                    "type": "string"
+                },
+                "storage_location": {
+                    "type": "string"
+                },
+                "weight_gram": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_product.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_product.createProductRequest": {
             "type": "object",
             "required": [
                 "code",
@@ -7253,137 +7036,42 @@ const docTemplate = `{
                 }
             }
         },
-        "response.ErrorBody": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "spreadsheet.CellError": {
-            "type": "object",
-            "properties": {
-                "column": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "row": {
-                    "type": "integer"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "spreadsheet.Column": {
-            "type": "object",
-            "properties": {
-                "alignment": {
-                    "type": "string"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "width": {
-                    "type": "number"
-                }
-            }
-        },
-        "spreadsheet.SpreadsheetDocument": {
-            "type": "object",
-            "properties": {
-                "columns": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/spreadsheet.Column"
-                    }
-                },
-                "empty": {
-                    "type": "boolean"
-                },
-                "has_more": {
-                    "type": "boolean"
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "rows": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "sheet_name": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "total_rows": {
-                    "type": "integer"
-                }
-            }
-        },
-        "statistics.AuditStatistics": {
+        "internal_statistics.AuditStatistics": {
             "type": "object",
             "properties": {
                 "by_result": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "trend": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.TrendItem"
+                        "$ref": "#/definitions/internal_statistics.TrendItem"
                     }
                 }
             }
         },
-        "statistics.BusinessStatistics": {
+        "internal_statistics.BusinessStatistics": {
             "type": "object",
             "properties": {
                 "by_master_data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 }
             }
         },
-        "statistics.DashboardResponse": {
+        "internal_statistics.DashboardResponse": {
             "type": "object",
             "properties": {
                 "audit": {
-                    "$ref": "#/definitions/statistics.AuditStatistics"
+                    "$ref": "#/definitions/internal_statistics.AuditStatistics"
                 },
                 "business": {
-                    "$ref": "#/definitions/statistics.BusinessStatistics"
+                    "$ref": "#/definitions/internal_statistics.BusinessStatistics"
                 },
                 "can_view_cost": {
                     "type": "boolean"
@@ -7392,26 +7080,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "inventory": {
-                    "$ref": "#/definitions/statistics.InventoryStatistics"
+                    "$ref": "#/definitions/internal_statistics.InventoryStatistics"
                 },
                 "molds": {
-                    "$ref": "#/definitions/statistics.MoldStatistics"
+                    "$ref": "#/definitions/internal_statistics.MoldStatistics"
                 },
                 "recent_workorders": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.WorkOrder"
+                        "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                     }
                 },
                 "summary": {
-                    "$ref": "#/definitions/statistics.Summary"
+                    "$ref": "#/definitions/internal_statistics.Summary"
                 },
                 "workorders": {
-                    "$ref": "#/definitions/statistics.WorkOrderStatistics"
+                    "$ref": "#/definitions/internal_statistics.WorkOrderStatistics"
                 }
             }
         },
-        "statistics.DepartmentStat": {
+        "internal_statistics.DepartmentStat": {
             "type": "object",
             "properties": {
                 "completed": {
@@ -7437,7 +7125,7 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.ErrorResponse": {
+        "internal_statistics.ErrorResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -7454,36 +7142,36 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.InventoryStatistics": {
+        "internal_statistics.InventoryStatistics": {
             "type": "object",
             "properties": {
                 "by_item_type": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "by_material_type": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "low_stock": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.StockItem"
+                        "$ref": "#/definitions/internal_statistics.StockItem"
                     }
                 },
                 "trend": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.TrendItem"
+                        "$ref": "#/definitions/internal_statistics.TrendItem"
                     }
                 }
             }
         },
-        "statistics.MoldItem": {
+        "internal_statistics.MoldItem": {
             "type": "object",
             "properties": {
                 "code": {
@@ -7506,24 +7194,24 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.MoldStatistics": {
+        "internal_statistics.MoldStatistics": {
             "type": "object",
             "properties": {
                 "by_status": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "need_care": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.MoldItem"
+                        "$ref": "#/definitions/internal_statistics.MoldItem"
                     }
                 }
             }
         },
-        "statistics.NameValue": {
+        "internal_statistics.NameValue": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -7537,7 +7225,7 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.StockItem": {
+        "internal_statistics.StockItem": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -7566,7 +7254,7 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.Summary": {
+        "internal_statistics.Summary": {
             "type": "object",
             "properties": {
                 "customers": {
@@ -7604,7 +7292,7 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.TrendItem": {
+        "internal_statistics.TrendItem": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -7624,36 +7312,36 @@ const docTemplate = `{
                 }
             }
         },
-        "statistics.WorkOrderStatistics": {
+        "internal_statistics.WorkOrderStatistics": {
             "type": "object",
             "properties": {
                 "by_department": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.DepartmentStat"
+                        "$ref": "#/definitions/internal_statistics.DepartmentStat"
                     }
                 },
                 "by_status": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "by_type": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.NameValue"
+                        "$ref": "#/definitions/internal_statistics.NameValue"
                     }
                 },
                 "trend": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.TrendItem"
+                        "$ref": "#/definitions/internal_statistics.TrendItem"
                     }
                 }
             }
         },
-        "update.ClientComponentStatus": {
+        "internal_update.ClientComponentStatus": {
             "type": "object",
             "properties": {
                 "available": {
@@ -7678,7 +7366,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "manifest": {
-                    "$ref": "#/definitions/update.PackageManifest"
+                    "$ref": "#/definitions/internal_update.PackageManifest"
                 },
                 "sha256": {
                     "type": "string"
@@ -7688,20 +7376,17 @@ const docTemplate = `{
                 }
             }
         },
-        "update.ClientUpdatePlan": {
+        "internal_update.ClientUpdatePlan": {
             "type": "object",
             "properties": {
                 "artifact": {
-                    "$ref": "#/definitions/update.ClientUpdatePlanArtifact"
+                    "$ref": "#/definitions/internal_update.ClientUpdatePlanArtifact"
                 },
                 "current_version": {
                     "type": "string"
                 },
                 "download_size": {
                     "type": "integer"
-                },
-                "full_fallback": {
-                    "$ref": "#/definitions/update.ClientUpdatePlanArtifact"
                 },
                 "full_size": {
                     "type": "integer"
@@ -7718,9 +7403,6 @@ const docTemplate = `{
                 "protocol_version": {
                     "type": "integer"
                 },
-                "saved_bytes": {
-                    "type": "integer"
-                },
                 "signature": {
                     "type": "string"
                 },
@@ -7735,19 +7417,10 @@ const docTemplate = `{
                 }
             }
         },
-        "update.ClientUpdatePlanArtifact": {
+        "internal_update.ClientUpdatePlanArtifact": {
             "type": "object",
             "properties": {
-                "algorithm": {
-                    "type": "string"
-                },
                 "download_path": {
-                    "type": "string"
-                },
-                "from_sha256": {
-                    "type": "string"
-                },
-                "from_version": {
                     "type": "string"
                 },
                 "kind": {
@@ -7761,45 +7434,10 @@ const docTemplate = `{
                 },
                 "size": {
                     "type": "integer"
-                },
-                "target_sha256": {
-                    "type": "string"
                 }
             }
         },
-        "update.ClientUpdateStatus": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "boolean"
-                },
-                "cached": {
-                    "type": "boolean"
-                },
-                "checked_at": {
-                    "type": "string"
-                },
-                "current_version": {
-                    "type": "string"
-                },
-                "download_path": {
-                    "type": "string"
-                },
-                "file_name": {
-                    "type": "string"
-                },
-                "latest_version": {
-                    "type": "string"
-                },
-                "manifest": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "update.ComponentStatus": {
+        "internal_update.ComponentStatus": {
             "type": "object",
             "properties": {
                 "available": {
@@ -7821,7 +7459,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "manifest": {
-                    "$ref": "#/definitions/update.PackageManifest"
+                    "$ref": "#/definitions/internal_update.PackageManifest"
                 },
                 "sha256": {
                     "type": "string"
@@ -7831,17 +7469,14 @@ const docTemplate = `{
                 }
             }
         },
-        "update.Manifest": {
+        "internal_update.Manifest": {
             "type": "object",
             "properties": {
                 "all_in_one": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "client": {
-                    "$ref": "#/definitions/update.PackageManifest"
+                    "$ref": "#/definitions/internal_update.PackageManifest"
                 },
                 "client_update_v2": {
-                    "$ref": "#/definitions/update.SignedClientUpdateManifest"
+                    "$ref": "#/definitions/internal_update.SignedClientUpdateManifest"
                 },
                 "notes": {
                     "type": "string"
@@ -7850,17 +7485,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "server": {
-                    "$ref": "#/definitions/update.PackageManifest"
+                    "$ref": "#/definitions/internal_update.PackageManifest"
                 },
                 "updater": {
-                    "$ref": "#/definitions/update.PackageManifest"
+                    "$ref": "#/definitions/internal_update.PackageManifest"
                 },
                 "version": {
                     "type": "string"
                 }
             }
         },
-        "update.PackageManifest": {
+        "internal_update.PackageManifest": {
             "type": "object",
             "properties": {
                 "sha256": {
@@ -7880,7 +7515,7 @@ const docTemplate = `{
                 }
             }
         },
-        "update.SignedClientUpdateManifest": {
+        "internal_update.SignedClientUpdateManifest": {
             "type": "object",
             "properties": {
                 "payload": {
@@ -7891,7 +7526,7 @@ const docTemplate = `{
                 }
             }
         },
-        "update.SystemUpdateStatus": {
+        "internal_update.SystemUpdateStatus": {
             "type": "object",
             "properties": {
                 "check_interval": {
@@ -7901,19 +7536,10 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "client": {
-                    "$ref": "#/definitions/update.ClientComponentStatus"
+                    "$ref": "#/definitions/internal_update.ClientComponentStatus"
                 },
                 "client_cache_bytes": {
                     "type": "integer"
-                },
-                "client_delta_cached": {
-                    "type": "boolean"
-                },
-                "client_delta_degraded": {
-                    "type": "string"
-                },
-                "client_delta_from_version": {
-                    "type": "string"
                 },
                 "client_full_cached": {
                     "type": "boolean"
@@ -7937,7 +7563,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "manifest": {
-                    "$ref": "#/definitions/update.Manifest"
+                    "$ref": "#/definitions/internal_update.Manifest"
                 },
                 "manifest_url": {
                     "type": "string"
@@ -7949,11 +7575,11 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "server": {
-                    "$ref": "#/definitions/update.ComponentStatus"
+                    "$ref": "#/definitions/internal_update.ComponentStatus"
                 }
             }
         },
-        "update.TauriUpdateResponse": {
+        "internal_update.TauriUpdateResponse": {
             "type": "object",
             "properties": {
                 "pub_date": {
@@ -7970,14 +7596,11 @@ const docTemplate = `{
                 }
             }
         },
-        "update.VersionResponse": {
+        "internal_update.VersionResponse": {
             "type": "object",
             "properties": {
                 "app_name": {
                     "type": "string"
-                },
-                "client_update": {
-                    "$ref": "#/definitions/update.ClientUpdateStatus"
                 },
                 "client_version": {
                     "type": "string"
@@ -7990,7 +7613,24 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.CatalogItem": {
+        "internal_user.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code 是错误码。",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Message 是前端可展示错误信息。",
+                    "type": "string"
+                },
+                "request_id": {
+                    "description": "RequestID 是请求 ID，用于关联日志。",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_warehouse.CatalogItem": {
             "type": "object",
             "properties": {
                 "amount": {
@@ -8037,13 +7677,13 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.CatalogItemsResponse": {
+        "internal_warehouse.CatalogItemsResponse": {
             "type": "object",
             "properties": {
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/warehouse.CatalogItem"
+                        "$ref": "#/definitions/internal_warehouse.CatalogItem"
                     }
                 },
                 "keyword": {
@@ -8064,7 +7704,7 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.CatalogTabSpec": {
+        "internal_warehouse.CatalogTabSpec": {
             "type": "object",
             "properties": {
                 "category": {
@@ -8081,7 +7721,7 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.ErrorResponse": {
+        "internal_warehouse.ErrorResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -8098,7 +7738,7 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.createLocationRequest": {
+        "internal_warehouse.createLocationRequest": {
             "type": "object",
             "required": [
                 "code",
@@ -8125,7 +7765,7 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.createWarehouseItemRequest": {
+        "internal_warehouse.createWarehouseItemRequest": {
             "type": "object",
             "required": [
                 "code",
@@ -8168,7 +7808,7 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.createWarehouseRequest": {
+        "internal_warehouse.createWarehouseRequest": {
             "type": "object",
             "required": [
                 "name",
@@ -8189,7 +7829,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.ErrorResponse": {
+        "internal_workorder.ErrorResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -8206,13 +7846,13 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.ListResponse": {
+        "internal_workorder.ListResponse": {
             "type": "object",
             "properties": {
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.WorkOrder"
+                        "$ref": "#/definitions/bb_erp_echo_internal_model.WorkOrder"
                     }
                 },
                 "keyword": {
@@ -8233,7 +7873,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.completeRequest": {
+        "internal_workorder.completeRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8250,7 +7890,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.createRequest": {
+        "internal_workorder.createRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8294,7 +7934,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.operatorActionRequest": {
+        "internal_workorder.operatorActionRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8305,7 +7945,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.partialCompleteRequest": {
+        "internal_workorder.partialCompleteRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8322,7 +7962,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.reasonRequest": {
+        "internal_workorder.reasonRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8336,7 +7976,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.remarkRequest": {
+        "internal_workorder.remarkRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"
@@ -8350,7 +7990,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.temporaryProductRequest": {
+        "internal_workorder.temporaryProductRequest": {
             "type": "object",
             "required": [
                 "code",
@@ -8379,7 +8019,7 @@ const docTemplate = `{
                 }
             }
         },
-        "workorder.urgentRequest": {
+        "internal_workorder.urgentRequest": {
             "type": "object",
             "required": [
                 "operator_employee_id"

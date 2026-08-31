@@ -12,6 +12,7 @@ import (
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
+	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -29,6 +30,9 @@ var shanghaiLocation = func() *time.Location {
 type Handler struct {
 	DB *gorm.DB
 }
+
+// ErrorResponse 是统一错误响应的 Swagger 文档别名。
+type ErrorResponse = response.ErrorBody
 
 // NewHandler 创建员工处理器。
 func NewHandler(db *gorm.DB) *Handler { return &Handler{DB: db} }
@@ -173,8 +177,8 @@ func (h *Handler) ListEmployees(c *echo.Context) error {
 // @Produce json
 // @Param body body employeeRequest true "员工档案"
 // @Success 201 {object} EmployeeResponse
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Router /api/v1/system/employees [post]
 func (h *Handler) CreateEmployee(c *echo.Context) error {
 	var req employeeRequest
@@ -211,9 +215,9 @@ func (h *Handler) CreateEmployee(c *echo.Context) error {
 // @Param id path int true "员工 ID"
 // @Param body body employeeRequest true "员工档案"
 // @Success 200 {object} EmployeeResponse
-// @Failure 400 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/employees/{id} [put]
 func (h *Handler) UpdateEmployee(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -259,8 +263,8 @@ func (h *Handler) UpdateEmployee(c *echo.Context) error {
 // @Param id path int true "员工 ID"
 // @Param body body employeeStatusRequest true "状态"
 // @Success 204
-// @Failure 400 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/employees/{id}/status [patch]
 func (h *Handler) UpdateEmployeeStatus(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -290,8 +294,8 @@ func (h *Handler) UpdateEmployeeStatus(c *echo.Context) error {
 // @Security BearerAuth
 // @Param id path int true "员工 ID"
 // @Success 204
-// @Failure 403 {object} response.ErrorBody
-// @Failure 404 {object} response.ErrorBody
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /api/v1/system/employees/{id} [delete]
 func (h *Handler) DeleteEmployee(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -314,8 +318,8 @@ func (h *Handler) DeleteEmployee(c *echo.Context) error {
 // @Security BearerAuth
 // @Produce json
 // @Success 200 {object} OperatorEmployeesResponse
-// @Failure 401 {object} response.ErrorBody
-// @Failure 403 {object} response.ErrorBody
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Router /api/v1/operator-employees [get]
 func (h *Handler) ListOperatorEmployees(c *echo.Context) error {
 	current := auth.GetCurrentUser(c)

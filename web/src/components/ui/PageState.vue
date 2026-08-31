@@ -1,7 +1,7 @@
 <template>
   <section
     class="ui-page-state"
-    :class="`is-${kind}`"
+    :class="[`is-${kind}`, { 'is-compact': compact }]"
     :role="kind === 'error' ? 'alert' : 'status'"
     :aria-live="kind === 'error' ? 'assertive' : 'polite'"
   >
@@ -30,9 +30,11 @@ const props = withDefaults(defineProps<{
   title: string
   description?: string
   actionLabel?: string
+  compact?: boolean
 }>(), {
   description: '',
   actionLabel: '',
+  compact: false,
 })
 
 const emit = defineEmits<{
@@ -67,6 +69,11 @@ const icon = computed(() => ({
   display: block;
   min-height: 220px;
   border-style: solid;
+}
+
+.ui-page-state.is-compact {
+  min-height: 160px;
+  padding: var(--bb-space-5);
 }
 
 .ui-page-state__icon {

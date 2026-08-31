@@ -141,9 +141,10 @@
 </template>
 
 <script setup lang="ts">
-import {nextTick, reactive, ref} from 'vue'
-import type {InputInstance} from 'element-plus'
+import {computed, nextTick, reactive, ref} from 'vue'
+import {type InputInstance} from 'element-plus'
 import {request} from '../../api/http'
+import {useDirtyGuard} from '../../composables/useDirtyGuard'
 
 type ChangePasswordForm = {
   currentPassword: string
@@ -178,6 +179,13 @@ const fieldInputs: Record<PasswordField, typeof currentPasswordInput> = {
   newPassword: newPasswordInput,
   confirmPassword: confirmPasswordInput,
 }
+const dirty = computed(() => props.modelValue && fieldOrder.some((field) => Boolean(form[field])))
+const passwordGuard = useDirtyGuard('change-password-form', {
+  busy: () => submitting.value,
+  dirty: () => dirty.value,
+  busyMessage: '密码正在修改，请等待完成后再离开',
+  dirtyMessage: '密码表单尚未提交，关闭后输入内容将被清除。',
+})
 
 function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).length
@@ -239,16 +247,18 @@ function focusCurrentPassword() {
   focusField('currentPassword')
 }
 
-function close() {
-  if (submitting.value) return
+async function close() {
+  if (!(await passwordGuard.confirmLeave())) return
   resetSensitiveFields()
   emit('update:modelValue', false)
 }
 
 function handleBeforeClose(done: () => void) {
-  if (submitting.value) return
-  resetSensitiveFields()
-  done()
+  void passwordGuard.confirmLeave().then((allowed) => {
+    if (!allowed) return
+    resetSensitiveFields()
+    done()
+  })
 }
 
 function handleRequestError(error: unknown) {
@@ -333,8 +343,4 @@ async function submit() {
 
 .change-password-dialog__footer .el-button { min-height: var(--bb-control-md); }
 
-@media (max-width: 560px) {
-  .change-password-dialog__footer { flex-direction: column-reverse; }
-  .change-password-dialog__footer .el-button { width: 100%; min-height: 44px; margin: 0; }
-}
 </style>
