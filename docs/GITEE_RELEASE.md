@@ -61,6 +61,10 @@ Token、签名私钥和密码不应出现在仓库文件、构建包、manifest 
 
 非法的 `v*` 标签会在 Windows 构建开始前失败。构建会把标签的前导 `v` 去掉后注入 Go 和 Tauri，例如 `v1.2.3-rc.1` 对应应用版本 `1.2.3-rc.1`。预发布版本不会生成正式版签名更新清单，也不会运行 Gitee 发布任务。
 
+### v0.0.10 仅构建例外
+
+`v0.0.10` 按本次发布决定只用于确认 GitHub Actions 完整打包成功。该标签仍生成签名 Windows 包、更新清单和保留 14 天的 GitHub Actions Artifact，但工作流明确跳过 `publish-gitee`：不创建或更新 Gitee Release、不上传成品、不更新稳定版 `update-manifest.json`。这不是新的通用发布规则；后续正式标签仍按下述 Gitee 发布闭环执行，除非另行确认。
+
 正式发布由 `scripts/publish-gitee-release.sh` 执行：
 
 1. 查询 Gitee 源码仓库并确认同名标签提交等于本次构建所对应的 GitHub 标签提交；已有标签手动重试时不会把修复提交误当成标签提交。

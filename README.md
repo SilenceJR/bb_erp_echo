@@ -127,6 +127,8 @@ Gitee 是日常开发和标签发布的主仓库，GitHub 只接收分支与标�
 
 任意分支 push 和 GitHub PR 只执行验证；`main`/`master` 不生成 Windows 正式包；手动触发只生成保留 14 天的临时 Artifact。正式版标签 `vMAJOR.MINOR.PATCH` 经镜像到 GitHub 后，才会构建并发布到独立的公开 Gitee 发布仓库；预发布标签 `vMAJOR.MINOR.PATCH-prerelease` 只生成临时 Windows Artifact。正式标签同时生成签名 NSIS、便携 EXE及满足阈值时的 zstd 差分；发布任务先匿名复验 manifest 声明的全部附件，最后才更新正式版 manifest。
 
+`v0.0.10` 是一次明确的仅构建例外：GitHub Actions 仍执行完整 Windows 打包、签名并保留构建 Artifact，但跳过 `publish-gitee`，不上传任何成品到 Gitee Release，也不更新 Gitee 稳定版 manifest。后续版本恢复既有正式发布规则，除非再次明确调整。
+
 仓库拓扑、remote 切换、Secrets/Variables、最小权限、正式版发布和 RC 便携包测试见 [docs/GITEE_RELEASE.md](docs/GITEE_RELEASE.md)。当前 Gitee 源码主仓库为 `SilenceJR/bb_erp_echo`，公开发布仓库为 `SilenceJR/bb_erp_releases`。
 
 ### 0.0.x 正式版发布顺序
