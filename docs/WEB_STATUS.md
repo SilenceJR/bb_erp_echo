@@ -9,7 +9,7 @@
 
 | 范围 | 状态 | 证据与边界 |
 | --- | --- | --- |
-| 启动状态机 | 已完成 | Booting → Discovering → Validating → AutoConnected/SelectServer/ManualSetup → LoginReady |
+| 启动状态机 | 已完成 | 桌面端先验证保存服务器；失败或未保存时才 Discovering → Validating → AutoConnected/SelectServer/ManualSetup → LoginReady |
 | 局域网发现 | 已完成 | Tauri 按私网 IPv4 网卡向 UDP 39080 广播；严格校验 512 字节、未知字段、nonce、来源、协议、产品和 UUID |
 | 服务验证 | 已完成 | 候选必须通过 `/ready` 与 `/api/v1/discovery/identity`；Vue 以规范化 `{origin, instance_id}` 复合键去重和渲染，同 ID 不同 origin 保留为多候选并禁止自动连接 |
 | 登录入口 | 已完成 | 业务会话只在连接验证后挂载；登录页只显示已验证服务；更换服务回到启动流程 |
@@ -91,7 +91,7 @@ client/src-tauri/src/save.rs           原生安全文件保存
 
 - Windows 10/11 原生安装与启动。
 - 1920×1080 在 100%、125%、150% 缩放下的表格、Drawer、Dialog 和底部操作可达性。
-- 零个、一个、多个 ERP 服务以及 UDP 阻断/TCP 可用场景。
+- 保存服务器可用、保存服务器不可用后发现、零个/一个/多个 ERP 服务，以及 UDP 阻断/TCP 可用场景。
 - 原生保存成功、取消、覆盖、无权限、磁盘不足和网络中断。
 - 标题栏关闭、登出、切服、更新安装时的真实脏表单保护。
 - 管理员、办公室、仓库、部门、只读账号的完整权限矩阵及客户、库存、任务、模具业务闭环。

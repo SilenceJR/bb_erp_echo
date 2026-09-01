@@ -2,6 +2,8 @@ import type {ServerIdentity} from './types'
 
 type IdentityCoordinates = Pick<ServerIdentity, 'origin' | 'instance_id'>
 
+export type DesktopStartupTarget = 'saved-server' | 'discovery'
+
 export const workspaceSessionStorageKeys = [
   'bb_erp_access_token',
   'bb_erp_refresh_token',
@@ -42,6 +44,13 @@ export function uniqueServerIdentities(identities: ServerIdentity[]): ServerIden
 export function automaticServerCandidate(identities: ServerIdentity[]): ServerIdentity | null {
   const candidates = uniqueServerIdentities(identities)
   return candidates.length === 1 ? candidates[0] : null
+}
+
+// 仅保存了可规范化 origin 与实例 ID 的服务才可在启动时优先直连。
+export function desktopStartupTarget(saved: IdentityCoordinates | null): DesktopStartupTarget {
+  return saved && canonicalServerOrigin(saved.origin) && saved.instance_id.trim()
+    ? 'saved-server'
+    : 'discovery'
 }
 
 export function clearStoredWorkspaceSession(storage: Pick<Storage, 'removeItem'>): void {

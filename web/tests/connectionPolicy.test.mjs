@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   automaticServerCandidate,
   clearStoredWorkspaceSession,
+  desktopStartupTarget,
   isSameServerIdentity,
   serverIdentityKey,
   shouldClearWorkspaceSession,
@@ -47,4 +48,15 @@ test('origin 变化时旧认证会话被完整清除', () => {
   assert.equal(values.has('bb_erp_refresh_token'), false)
   assert.equal(values.has('bb_erp_access_token_expires_at'), false)
   assert.equal(values.get('unrelated'), 'keep')
+})
+
+test('启动优先验证保存服务器；无保存服务器时直接发现', () => {
+  const saved = identity('http://192.168.1.10:8080')
+  assert.equal(desktopStartupTarget(saved), 'saved-server')
+  assert.equal(desktopStartupTarget(null), 'discovery')
+})
+
+test('无效的保存服务器信息不阻止局域网发现', () => {
+  assert.equal(desktopStartupTarget(identity('', 'instance')), 'discovery')
+  assert.equal(desktopStartupTarget(identity('http://192.168.1.20:8080', '   ')), 'discovery')
 })

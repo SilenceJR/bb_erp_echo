@@ -13,7 +13,7 @@
       <div v-if="isBusy" class="startup-progress" aria-live="polite" aria-busy="true">
         <el-progress :percentage="100" :show-text="false" :indeterminate="true" :duration="1.6"/>
         <strong>{{ message }}</strong>
-        <p>通常只需几秒，请保持服务器和局域网连接正常。</p>
+          <p>优先连接上次使用的服务器；不可用时再发现局域网服务。</p>
       </div>
 
       <section v-else-if="phase === 'AutoConnected'" class="startup-result startup-connected" aria-live="polite">

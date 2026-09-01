@@ -108,6 +108,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - `v0.0.10` 至 `v0.0.12` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest。
 - `v0.0.11` 标签对应 GitHub Actions `#91`（run `33458004272`）已成功：Go、Web、Tauri 前端、通用/Windows Rust 和完整 Windows 发布包作业全部通过，五组 GitHub Artifact 已生成；Gitee 发布作业为 `skipped`，`bb_erp_releases` 无 `v0.0.11` Release，稳定 manifest 保持 `0.0.9`。
 - `v0.0.12` 待标签推送后由 GitHub Actions 执行完整打包；在获得实际作业结果前，不将 Artifact、Gitee 跳过状态或 Windows 真机验收记为已完成。
+- Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。
 
 ## 5. 待完成
 
