@@ -73,13 +73,13 @@ GitHub 环境 `gitee-release`：
 
 服务端与客户端严格拒绝未知字段；payload 中出现 `deltas` 即拒绝。
 
-### `v0.0.11` GitHub 仅构建例外
+### `v0.0.10` 至 `v0.0.12` GitHub 仅构建例外
 
-`v0.0.11` 只用于确认 GitHub Actions 的完整 Windows 打包和签名链路成功。该标签仍执行 Go/Web/Tauri/Rust 验证，生成服务端 ZIP、all-in-one ZIP、升级器、NSIS、portable EXE、签名清单，并将产物作为 GitHub Actions Artifact 保留 14 天。
+`v0.0.10`、`v0.0.11` 与 `v0.0.12` 只用于确认 GitHub Actions 的完整 Windows 打包和签名链路。标签仍执行 Go/Web/Tauri/Rust 验证，生成服务端 ZIP、all-in-one ZIP、升级器、NSIS、portable EXE、签名清单，并将产物作为 GitHub Actions Artifact 保留 14 天。
 
-工作流对 `v0.0.11` 明确跳过 `publish-gitee`：不创建或修改 Gitee Release、不上传任何成品、不更新 Gitee `update-manifest.json`。因此这次构建不能作为稳定更新源，也不表示 Windows 真机发布验收已完成。历史 `v0.0.10` 保持相同的仅构建保护；其他正式标签仍按下述 Gitee 发布流程执行，除非另行确认。
+工作流对这些标签明确跳过 `publish-gitee`：不创建或修改 Gitee Release、不上传任何成品、不更新 Gitee `update-manifest.json`。因此构建不能作为稳定更新源，也不表示 Windows 真机发布验收已完成。其他正式标签仍按下述 Gitee 发布流程执行，除非另行确认。
 
-验收记录：GitHub Actions `#91`（run `33458004272`）已完成并成功，Windows 服务端、all-in-one、升级器、签名清单/客户端以及 portable 测试包五组 Artifact 均已生成；`Publish verified Gitee release` 结论为 `skipped`。Gitee `bb_erp_releases` 未创建 `v0.0.11` Release，稳定 manifest 仍为 `0.0.9`。
+验收记录：GitHub Actions `#91`（run `33458004272`）已完成并成功，Windows 服务端、all-in-one、升级器、签名清单/客户端以及 portable 测试包五组 Artifact 均已生成；`Publish verified Gitee release` 结论为 `skipped`。Gitee `bb_erp_releases` 未创建 `v0.0.11` Release，稳定 manifest 保持 `0.0.9`。`v0.0.12` 的 GitHub 构建结果需在标签推送后单独记录。
 
 ## 4. 发布流程
 

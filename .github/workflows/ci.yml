@@ -894,14 +894,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     needs: [build-windows]
-    # v0.0.10 and v0.0.11 are GitHub build-only releases. They keep the full
+    # v0.0.10 through v0.0.12 are GitHub build-only releases. They keep the full
     # Windows packaging/signing checks and Actions artifacts, but must never
     # upload products or update the stable manifest in Gitee.
     if: >-
       ((startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) ||
       (github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && !contains(inputs.release_tag, '-'))) &&
       github.ref_name != 'v0.0.10' && inputs.release_tag != 'v0.0.10' &&
-      github.ref_name != 'v0.0.11' && inputs.release_tag != 'v0.0.11'
+      github.ref_name != 'v0.0.11' && inputs.release_tag != 'v0.0.11' &&
+      github.ref_name != 'v0.0.12' && inputs.release_tag != 'v0.0.12'
     environment: gitee-release
     concurrency:
       group: gitee-production-release
