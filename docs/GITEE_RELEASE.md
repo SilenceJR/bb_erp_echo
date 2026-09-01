@@ -79,6 +79,8 @@ GitHub 环境 `gitee-release`：
 
 工作流对 `v0.0.11` 明确跳过 `publish-gitee`：不创建或修改 Gitee Release、不上传任何成品、不更新 Gitee `update-manifest.json`。因此这次构建不能作为稳定更新源，也不表示 Windows 真机发布验收已完成。历史 `v0.0.10` 保持相同的仅构建保护；其他正式标签仍按下述 Gitee 发布流程执行，除非另行确认。
 
+验收记录：GitHub Actions `#91`（run `33458004272`）已完成并成功，Windows 服务端、all-in-one、升级器、签名清单/客户端以及 portable 测试包五组 Artifact 均已生成；`Publish verified Gitee release` 结论为 `skipped`。Gitee `bb_erp_releases` 未创建 `v0.0.11` Release，稳定 manifest 仍为 `0.0.9`。
+
 ## 4. 发布流程
 
 1. 确认分支测试通过并创建正式标签：
