@@ -2,6 +2,9 @@ pub mod discovery;
 pub mod save;
 pub mod update;
 
+#[cfg(test)]
+mod http_scope;
+
 // run 启动 Tauri 桌面壳。
 //
 // 参数说明：无。

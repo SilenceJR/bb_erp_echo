@@ -53,6 +53,7 @@ UDP 协议：
 - 身份响应设置 `Cache-Control: no-store`；客户端严格拒绝未知 DTO 字段，服务名/版本最多 120/64 字节且拒绝控制字符。
 - 预检先收集最多 24 个去重候选，再以最多 4 个并发任务验证；默认 UDP 收集 2.5 秒，整个预检受 3 秒全局截止时间约束。
 - HTTP 验证不使用代理、不跟随重定向，并限制超时和响应体。
+- Tauri HTTP 插件 scope 使用 URL Pattern 正则覆盖 `127/8`、`10/8`、`172.16/12` 与 `192.168/16`，使已验证的内网服务可承接登录及同源业务请求；该配置不授权 HTTPS、公网或任意域名。
 - HTTP 监听进入接收循环后才启动 UDP responder；关闭顺序为 discovery → HTTP → DB → logs。
 - 预检是最佳努力约束。UDP 被阻断或同时启动竞态仍可能漏检，客户端多实例冲突页与端口占用是后续保护。
 
@@ -98,6 +99,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 发布签名使用规范化客户端公钥执行真实文件验签；密钥不匹配与载荷篡改均失败关闭
 - discovery 协议、重复字段、UUID、身份持久化、广播/候选验证、重定向、响应体、限速和生命周期测试
 - discovery 慢候选并发验证、候选上限、身份 DTO 严格字段/文本校验、`no-store` 和并发 Start/Shutdown 竞态回归测试
+- Tauri RFC1918 HTTP scope 回归测试：允许 loopback、`10/8`、`172.16/12`、`192.168/16`，拒绝公网、超出 `172.16/12` 的地址和 HTTPS。
 - Swagger `docs.go`、JSON、YAML 同步
 - 真实 app 集成验证部门终端账号通过 `POST /api/v1/system/users` 创建后可直接登录；`workorder` 读写和 `warehouse` 读取成功，`warehouse` 写入按默认角色返回 `403`，测试未手工调用 `ReloadPolicies`。
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
@@ -109,6 +111,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 ## 5. 待完成
 
 - Windows 10/11 真机防火墙、零/一/多服务、UDP 阻断和同时启动场景。
+- 自动发现或手动验证后，在 Windows 桌面端登录并请求至少一个已认证 API 的真实局域网验收。
 - 完整管理员/办公室/仓库/部门/只读权限矩阵。
 - 客户、库存、任务、模具在断网、并发冲突、重复提交和磁盘异常下的端到端验收。
 - 安装目录、数据库、上传、日志和更新缓存的权限与备份恢复演练。

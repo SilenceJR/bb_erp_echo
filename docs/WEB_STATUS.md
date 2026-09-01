@@ -13,6 +13,7 @@
 | 局域网发现 | 已完成 | Tauri 按私网 IPv4 网卡向 UDP 39080 广播；严格校验 512 字节、未知字段、nonce、来源、协议、产品和 UUID |
 | 服务验证 | 已完成 | 候选必须通过 `/ready` 与 `/api/v1/discovery/identity`；Vue 以规范化 `{origin, instance_id}` 复合键去重和渲染，同 ID 不同 origin 保留为多候选并禁止自动连接 |
 | 登录入口 | 已完成 | 业务会话只在连接验证后挂载；登录页只显示已验证服务；更换服务回到启动流程 |
+| 内网 HTTP 授权 | 已完成 | Tauri HTTP scope 以 URL Pattern 正则覆盖 `127/8`、`10/8`、`172.16/12` 与 `192.168/16`；已验证服务可发起登录及同源 API 请求，不开放 HTTPS、公网或任意域名 |
 | 会话隔离 | 已完成 | 已保存、当前、手动和选择连接统一比较规范化 origin 与实例 ID；任一变化清除 access/refresh token，卸载工作台同步丢弃用户信息和领域缓存 |
 | Web 备用入口 | 已完成 | 不执行 UDP；验证当前同源服务后进入共用登录页 |
 | 原生文件保存 | 已完成 | Tauri 系统对话框、无代理/无重定向、同源受保护下载、临时文件和原子替换；saved/cancelled/error 三态 |
@@ -80,7 +81,7 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - Client `npm run build`
 - `cargo fmt --check`
 - `cargo check --locked`
-- `cargo test --locked`（24 项）
+- `cargo test --locked`（26 项，包含 RFC1918 HTTP scope 回归测试）
 - `git diff --check`
 - 隔离 SQLite + 本地浏览器：同源身份验证后进入登录页，服务器名称/地址/版本正确，账号输入获得焦点，1920×1080 无页面横向溢出
 
@@ -94,5 +95,6 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - 原生保存成功、取消、覆盖、无权限、磁盘不足和网络中断。
 - 标题栏关闭、登出、切服、更新安装时的真实脏表单保护。
 - 管理员、办公室、仓库、部门、只读账号的完整权限矩阵及客户、库存、任务、模具业务闭环。
+- 已发现服务器、选择服务器、登录与至少一个已认证 API 请求的真实局域网桌面端验收。
 
 这些项目不得由静态构建、本地浏览器或非 Windows Rust 测试冒充完成。

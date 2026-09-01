@@ -13,6 +13,7 @@
 - 首次启动显示启动页并向 UDP `39080` 广播发现请求；候选必须通过 `/ready` 与 `/api/v1/discovery/identity`，并以规范化 `{origin, instance_id}` 作为复合唯一键。只有一个复合候选时自动连接；同 ID 不同 IP 保留为多个候选并要求明确选择，零候选进入手动设置。
 - UDP 无响应时同时核对上次保存的 origin 与实例 ID；任一变化或验证失败都不复用旧认证。登录页只展示已经验证的服务。
 - 服务地址只接受不带路径、参数和凭据的 loopback/RFC1918 IPv4 `http://` 源地址；每次实际请求仍只能使用站内 API 路径。
+- Tauri HTTP 插件 scope 使用 URL Pattern 正则匹配 `127/8`、`10/8`、`172.16/12` 和 `192.168/16`；它与服务身份验证共同约束桌面端请求，不授权 HTTPS、公网地址或任意域名。
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
 - 业务 API 只使用当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，库存单据/余额/流水使用各自复数路径，库存浏览/操作使用 `/api/v1/warehouse/items` 和 `/tabs`；客户端不回退旧任务、单数资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根路径。
