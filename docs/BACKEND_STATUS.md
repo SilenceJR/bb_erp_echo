@@ -103,6 +103,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
 - `git diff --check`
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
+- `v0.0.11` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest；历史 `v0.0.10` 的相同保护继续保留。
 
 ## 5. 待完成
 
