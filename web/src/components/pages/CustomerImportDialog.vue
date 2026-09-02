@@ -10,16 +10,7 @@
     destroy-on-close
     @closed="reset"
   >
-    <AnimatePresence mode="wait" initial>
-      <motion.div
-        v-if="visible"
-        :key="`import-step-${step}`"
-        class="customer-dialog-motion"
-        :initial="{opacity: 0, y: 10}"
-        :animate="{opacity: 1, y: 0}"
-        :exit="{opacity: 0, y: -8}"
-        :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
-      >
+    <div v-if="visible" :key="`import-step-${step}`" class="customer-dialog-motion">
         <el-steps :active="step" finish-status="success" simple class="excel-steps">
           <el-step title="准备文件" />
           <el-step title="校验预览" />
@@ -80,8 +71,7 @@
       <h3>客户资料导入完成</h3>
       <p>已新增 {{ result?.imported_codes || 0 }} 个客户编码、{{ result?.imported_profiles || 0 }} 条客户资料。</p>
     </section>
-      </motion.div>
-    </AnimatePresence>
+    </div>
 
     <template #footer>
       <div class="dialog-actions">
@@ -98,7 +88,6 @@
 <script setup lang="ts">
 import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
-import {AnimatePresence, motion} from 'motion-v'
 import {downloadApiFile, request} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'

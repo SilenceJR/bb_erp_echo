@@ -9,16 +9,7 @@
     destroy-on-close
     @closed="reset"
   >
-    <AnimatePresence mode="wait" initial>
-      <motion.div
-        v-if="visible"
-        :key="previewReady ? 'export-preview' : 'export-scope'"
-        class="customer-dialog-motion"
-        :initial="{opacity: 0, y: 10}"
-        :animate="{opacity: 1, y: 0}"
-        :exit="{opacity: 0, y: -8}"
-        :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
-      >
+    <div v-if="visible" :key="previewReady ? 'export-preview' : 'export-scope'" class="customer-dialog-motion">
     <section v-if="!previewReady" class="export-scope-step">
       <div class="scope-heading"><h3>选择导出范围</h3><p>确认后先查看与最终 XLSX 一致的九列工作表预览。</p></div>
       <el-radio-group v-model="scope" class="export-scope-options">
@@ -76,8 +67,7 @@
       </template>
       <p class="export-freshness-note">数据如在预览后发生变化，下载文件以下载时数据为准。</p>
     </section>
-      </motion.div>
-    </AnimatePresence>
+    </div>
 
     <template #footer>
       <div class="dialog-actions">
@@ -92,7 +82,6 @@
 <script setup lang="ts">
 import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
-import {AnimatePresence, motion} from 'motion-v'
 import {downloadApiFile, request} from '../../api/http'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import PageState from '../ui/PageState.vue'

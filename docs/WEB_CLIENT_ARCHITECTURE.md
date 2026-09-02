@@ -59,7 +59,7 @@ Web 不执行 UDP 发现，只验证当前同源 Go 服务。Tauri 的发现、�
 - 控制器在组合阶段直接由任务 state、operations 和明确跨域依赖构造四切片 `workorderContext`，根返回不再逐项暴露任务字段或命令。
 - `WorkspaceSession` 直接 provide 该窄对象；任务列表、产品选择、详情、库存卡和动作 Dialog 不依赖全量 `WorkspaceContext`，仓库等非任务组件也不解构任务 facade。
 - 设计令牌只在 `design-system.css`，消费点只使用 `--bb-*`；`styles.css` 仅作为分层样式入口，UI 原语统一页面头、筛选、表格、状态、Drawer 和表单动作。
-- 动效采用 CSS 与 Motion 分层：hover/focus/颜色等高频反馈使用 CSS，状态驱动、布局和 enter/exit 使用 `motion-v`；全局尊重 reduced motion，平板/手机 Web 只做低频布局适配。
+- 动效采用 CSS 与 Motion 分层：hover/focus/颜色等高频反馈使用 CSS，启动、页面切换和非 Teleport 布局使用 `motion-v`；Element Plus Teleport 型 Dialog/Drawer 正文不得嵌套 `AnimatePresence` 或使用 `motion.*` 初始透明度控制可见性，弹层开闭、焦点和滚动由 Element Plus 管理；全局尊重 reduced motion，平板/手机 Web 只做低频布局适配。
 - 未保存状态统一登记到 `DirtyGuardRegistry`，覆盖导航、登出、切服、更新、刷新和标题栏关闭。
 - Web 更新中心只提供服务端升级包的同源受保护下载；桌面客户端更新由 Tauri 面板负责检查、验签、应用和恢复，不提供无有效下载契约的 ZIP 卡片。
 - 手机/平板 Web 不新增业务 API 或平台端口；窄屏使用可收起导航、可滚动表格和单列内容，不能影响 Tauri 的桌面窗口契约。

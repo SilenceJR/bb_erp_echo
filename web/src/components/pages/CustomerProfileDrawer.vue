@@ -10,25 +10,13 @@
     destroy-on-close
     @closed="restoreFocus"
   >
-    <AnimatePresence mode="wait" initial>
-      <motion.div
-        v-if="visible"
-        :key="`${mode}-${profile?.id || 'new'}`"
-        class="customer-profile-motion"
-        :initial="{opacity: 0, x: 16}"
-        :animate="{opacity: 1, x: 0}"
-        :exit="{opacity: 0, x: 10}"
-        :transition="{duration: 0.2, ease: [0.2, 0, 0, 1]}"
-      >
+    <div v-if="visible" :key="`${mode}-${profile?.id || 'new'}`" class="customer-profile-motion">
         <section v-if="mode === 'view' && profile" class="customer-drawer-content" aria-label="客户资料详情">
           <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
           <div class="customer-drawer-heading">
             <div>
               <span class="customer-code-chip">{{ code?.code || profile.code }}</span>
-              <motion.h2
-                :layout-id="`customer-profile-title-${profile.id}`"
-                :transition="{duration: 0.28, ease: [0.2, 0, 0, 1]}"
-              >{{ profile.short_name || profile.name || '未填写客户名称' }}</motion.h2>
+              <h2>{{ profile.short_name || profile.name || '未填写客户名称' }}</h2>
               <p v-if="profile.name && profile.short_name">{{ profile.name }}</p>
             </div>
             <el-tag v-if="profile.is_default" type="success" effect="plain">默认资料</el-tag>
@@ -124,14 +112,12 @@
         <el-button type="primary" native-type="submit" :loading="saving">保存客户资料</el-button>
       </div>
         </el-form>
-      </motion.div>
-    </AnimatePresence>
+    </div>
   </el-drawer>
 </template>
 
 <script setup lang="ts">
 import {computed, nextTick, reactive, ref, watch} from 'vue'
-import {AnimatePresence, motion} from 'motion-v'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import type {CustomerCodeItem, CustomerProfile} from '../../types'

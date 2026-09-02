@@ -215,9 +215,11 @@ design-system.css
 
 - 首次启动最大化，后续恢复上次窗口位置；最小窗口 `1024×680`。
 - 桌面端使用固定顶部栏、左侧导航和独立滚动内容区；Web 窄屏使用可收起导航和单一可横向滚动表格，不维护桌面/移动双份列表模板。
-- 动效采用 CSS 与 Motion 分层：高频 hover/focus/颜色变化使用 CSS；状态驱动、布局和 enter/exit 使用 `motion-v`；reduced motion 下移除位移、缩放和布局动画。
+- 动效采用 CSS 与 Motion 分层：高频 hover/focus/颜色变化使用 CSS；启动、页面切换和非 Teleport 布局使用 `motion-v`；Element Plus Dialog/Drawer 正文禁止嵌套 `AnimatePresence`、`motion.*` 初始透明度和依赖动画完成的可见性控制，弹层由 Element Plus 负责开闭、焦点与滚动；reduced motion 下移除位移、缩放和布局动画。
 - 简单详情 Drawer 为 640px；仓库、任务和模具复杂 Drawer 为 760px，最大不超过视口 70%。
 - Dialog 使用 480/560/680px；只滚动正文，footer 始终可达。
+- 客户资料 Drawer 当前为 720px；客户导入 Dialog 为 760px，导出预览在需要横向查看九列表格时扩展至 1120px，均限制在视口内并只滚动正文；这些是客户资料场景的明确尺寸特例。
+- Dialog/Drawer 正文必须在首帧可读，不以 `opacity: 0` 或 Teleport 内部动画作为显示前置条件；复杂预览、Skeleton 和导入完成态可保留稳定高度，但不得制造整块不可见占位。
 - 标准业务表格 48px 行高，纯文本目录可用 40px；表头固定、数字右对齐、操作列固定右侧。
 - 1024px 紧凑桌面允许表格内部横向滚动，不允许应用壳产生横向滚动。
 

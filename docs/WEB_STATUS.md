@@ -28,7 +28,7 @@
 | 任务窄域接口 | 已完成 | 控制器内部直接由任务 state/operations 构造四切片 `workorderContext`，根只返回该单一对象；任务组件不再注入全量 `WorkspaceContext` |
 | 样式治理 | 已完成 | `styles.css` 仅为分层入口；共享消费点全部使用 `--bb-*`，旧 `--brand/--muted/--line/--ink` 等兼容别名已删除 |
 | 桌面单模板 | 已完成 | 固定侧栏、桌面表格和 1024×680 最小窗口使用单一实现，不保留并行页面模板 |
-| CSS/Motion 分层 | 已完成 | 高频 hover/focus/颜色反馈使用 CSS；启动/工作台、首页/业务页、模块页、客户资料 Drawer/Dialog、任务操作 Dialog 及客户列表→详情共享标题使用 `motion-v`，全局尊重 reduced motion |
+| CSS/Motion 分层 | 已整改，待运行态复验 | 高频 hover/focus/颜色反馈使用 CSS；启动/工作台、首页/业务页和模块页保留 `motion-v`；Element Plus Dialog/Drawer（客户导入/导出、客户资料、客户编码、替代默认资料、任务操作）正文移除嵌套 Motion，首帧由 Element Plus 保证可见；全局尊重 reduced motion |
 | 平板/手机 Web | 低频适配已完成，待验收 | Web 窄屏使用可收起导航、单列内容和表格横向滚动；Tauri 仍为桌面优先 |
 | Terra UX 设计包 | 已完成 | `gpt-5.6-terra/high` 只读审查启动、首页、客户资料和设置；UI 最终验收由用户执行 |
 | Windows 真机 | 待完成 | 需在 Windows 10/11、1920×1080、100%/125%/150% 缩放验收 |
@@ -93,6 +93,8 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - 本轮 `client/npm run build`：通过；Tauri 前端类型检查、Vite 生产构建通过；仅有既有 `@vueuse/core` Rollup 注释警告。
 - 本轮 `web/npm test`：通过，4 项启动连接/身份隔离回归测试通过。
 - 本轮 `git diff --check`：通过。
+- 本轮弹层显示整改：移除 Element Plus Dialog/Drawer 内的 `AnimatePresence`、`motion.*` 初始透明度包装，覆盖客户导入/导出、客户资料 Drawer、客户编码、替代默认资料和任务操作 Dialog；Web/Tauri 构建需重新验证，Windows 真机首帧与焦点仍待验收。
+- 启动重复排查：开发模式出现的 `optimized dependencies changed. reloading` 属于 Vite 依赖发现重载，不纳入生产问题；`npx tauri build --bundles app` 已成功生成内置静态资源的 macOS `.app`，生产包不运行 Vite `devUrl`。完整 DMG 打包仅在当前 macOS 的 `bundle_dmg.sh` 挂载步骤失败，应用编译与 `.app` 产物成功。
 - 隔离 SQLite + 本地浏览器：同源身份验证后进入登录页，服务器名称/地址/版本正确，账号输入获得焦点，1920×1080 无页面横向溢出
 
 模块页与业务详情已按异步入口拆包；本轮 Web 构建最大脚本约 150.99 kB（gzip 55.53 kB），未出现 500 KiB chunk 警告。任务组件已形成独立 `workorderContext` 异步块。

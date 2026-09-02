@@ -10,6 +10,8 @@
 - 桌面端通过 Rust 发送 HTTP 请求，不依赖 WebView 跨域行为或系统代理。
 - 共用请求层通过 `HttpTransport` 接口选择浏览器或桌面传输，业务 API 不感知运行平台。
 - `npm run desktop:dev` 和生产安装包都通过同一套 Rust HTTP 传输访问 Go 后端。
+- 开发模式的 Vite 依赖发现可能触发页面 reload，但不进入生产包；生产 Tauri 使用 `frontendDist` 内嵌静态资源，不访问 `devUrl`，启动状态机不会因 Vite 依赖优化重复执行。
+- Element Plus Dialog/Drawer 通过 Teleport 挂载时，正文使用稳定的普通 Vue 容器，不嵌套 `motion-v` 的初始透明度或 `AnimatePresence`；这样 Web 与 Tauri 首帧均可读，弹层开闭、焦点和滚动由 Element Plus 管理。
 - 桌面端启动时优先核对上次保存的 origin 与实例 ID；通过 `/ready` 与 `/api/v1/discovery/identity` 后直接进入登录页，不发送 UDP 广播。保存地址不可达、服务未就绪、身份接口失败或实例变化时不复用旧认证，才向 UDP `39080` 发送发现请求。
 - 发现候选以规范化 `{origin, instance_id}` 作为复合唯一键。只有一个复合候选时自动连接；同 ID 不同 IP 保留为多个候选并要求明确选择，零候选进入手动设置。登录页只展示已经验证的服务。
 - 服务地址只接受不带路径、参数和凭据的 loopback/RFC1918 IPv4 `http://` 源地址；每次实际请求仍只能使用站内 API 路径。
