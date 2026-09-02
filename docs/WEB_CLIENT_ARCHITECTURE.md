@@ -7,7 +7,7 @@
 
 - Windows 10/11 Tauri 是正式产品，1920×1080 为主验收分辨率，最小窗口 `1024×680`。
 - Web 是桌面浏览器备用入口，复用同一套 Vue 页面、领域状态、权限、API 和错误语义。
-- 当前按全新内网部署设计，不维护公网、代理、macOS、移动端、旧 API 或旧客户端双轨。
+- 当前按全新内网部署设计，不维护公网、代理、macOS、移动端原生客户端、旧 API 或旧客户端双轨；平板/手机仅提供低频 Web 访问适配。
 
 ## 分层
 
@@ -53,13 +53,16 @@ Web 不执行 UDP 发现，只验证当前同源 Go 服务。Tauri 的发现、�
 ## 共享前端
 
 - 模块、菜单和权限由注册表集中声明；不引入 Vue Router。
+- 导航采用“首页 → 业务办理/基础资料/数据与报表 → 系统设置”分组；`AppNavigation` 只按已授权模块渲染分组，不复制模块定义或权限判断。
 - 页面状态按客户、部门、员工、仓库、任务、模具、统计和系统目录拆分。
 - `useWorkspaceController` 只组合会话、导航和领域 facade；通用目录列表/分页/表单由 `useDirectoryOperations` 负责，任务产品、库存、日志和状态动作由 `useWorkorderOperations` 负责。
 - 控制器在组合阶段直接由任务 state、operations 和明确跨域依赖构造四切片 `workorderContext`，根返回不再逐项暴露任务字段或命令。
 - `WorkspaceSession` 直接 provide 该窄对象；任务列表、产品选择、详情、库存卡和动作 Dialog 不依赖全量 `WorkspaceContext`，仓库等非任务组件也不解构任务 facade。
 - 设计令牌只在 `design-system.css`，消费点只使用 `--bb-*`；`styles.css` 仅作为分层样式入口，UI 原语统一页面头、筛选、表格、状态、Drawer 和表单动作。
+- 动效采用 CSS 与 Motion 分层：hover/focus/颜色等高频反馈使用 CSS，状态驱动、布局和 enter/exit 使用 `motion-v`；全局尊重 reduced motion，平板/手机 Web 只做低频布局适配。
 - 未保存状态统一登记到 `DirtyGuardRegistry`，覆盖导航、登出、切服、更新、刷新和标题栏关闭。
 - Web 更新中心只提供服务端升级包的同源受保护下载；桌面客户端更新由 Tauri 面板负责检查、验签、应用和恢复，不提供无有效下载契约的 ZIP 卡片。
+- 手机/平板 Web 不新增业务 API 或平台端口；窄屏使用可收起导航、可滚动表格和单列内容，不能影响 Tauri 的桌面窗口契约。
 
 ## 验收边界
 

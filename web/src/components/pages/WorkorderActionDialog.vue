@@ -1,5 +1,15 @@
 <template>
   <el-dialog v-model="actionDialogVisible" :title="title" width="min(560px, calc(100vw - 28px))" append-to-body :close-on-click-modal="!actionSubmitting" :close-on-press-escape="!actionSubmitting" :show-close="!actionSubmitting" :before-close="beforeClose">
+    <AnimatePresence mode="wait" initial>
+      <motion.div
+        v-if="actionDialogVisible"
+        key="workorder-action-content"
+        class="workorder-dialog-motion"
+        :initial="{opacity: 0, y: 10, scale: 0.985}"
+        :animate="{opacity: 1, y: 0, scale: 1}"
+        :exit="{opacity: 0, y: -8, scale: 0.99}"
+        :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+      >
     <el-form id="workorder-action-form" label-position="top" :disabled="actionSubmitting" @submit.prevent="submitWorkOrderAction">
       <el-alert v-if="impactMessage" :title="impactMessage" :type="dangerous ? 'warning' : 'info'" :closable="false" show-icon />
       <el-alert v-if="actionError" :title="actionError" type="error" :closable="false" show-icon />
@@ -9,13 +19,17 @@
       <el-form-item v-if="needsRemark" label="本次备注"><el-input v-model.trim="actionForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="选填" /></el-form-item>
       <OperatorSelect id="workorder-action-operator" v-model="actionForm.operator_employee_id" :department="operatorDirectory.department.value" :employees="operatorDirectory.employees.value" :loading="operatorDirectory.loading.value" :unavailable-reason="operatorDirectory.unavailableReason.value" :retryable="operatorDirectory.retryable.value" :invalid="Boolean(actionFieldErrors.operator)" :validation-error="actionFieldErrors.operator" @update:model-value="clearOperatorError" @load="operatorDirectory.load" @retry="operatorDirectory.load(true)" />
     </el-form>
+      </motion.div>
+    </AnimatePresence>
     <template #footer><div class="form-actions"><el-button :disabled="actionSubmitting" @click="closeWorkOrderAction()">取消</el-button><el-button native-type="submit" form="workorder-action-form" :type="confirmType" :loading="actionSubmitting" :disabled="confirmDisabled">{{ confirmText }}</el-button></div></template>
   </el-dialog>
 </template>
 <script setup lang="ts">
 import {computed, watch} from 'vue'
+import {AnimatePresence, motion} from 'motion-v'
 import {useWorkorderContext} from '../../composables/workorderContext'
 import OperatorSelect from '../ui/OperatorSelect.vue'
+
 const {operatorDirectory, selectedWorkOrder, actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError, actionFieldErrors, actionForm, closeWorkOrderAction, submitWorkOrderAction, departmentName, formatQuantity} = useWorkorderContext().action
 const titles: Record<string, string> = {dispatch: '派发任务', pause: '暂停任务', resume: '恢复任务', urgent: '调整加急状态', complete_normal: '确认正常完成', complete_forced: '强制完成任务', department_start: '开始处理部门任务', department_partial_complete: '提交部分完成', department_complete: '完成部门任务'}
 const title = computed(() => titles[actionKind.value] || '任务操作确认')

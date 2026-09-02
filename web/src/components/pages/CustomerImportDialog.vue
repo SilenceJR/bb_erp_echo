@@ -10,11 +10,21 @@
     destroy-on-close
     @closed="reset"
   >
-    <el-steps :active="step" finish-status="success" simple class="excel-steps">
-      <el-step title="准备文件" />
-      <el-step title="校验预览" />
-      <el-step title="导入完成" />
-    </el-steps>
+    <AnimatePresence mode="wait" initial>
+      <motion.div
+        v-if="visible"
+        :key="`import-step-${step}`"
+        class="customer-dialog-motion"
+        :initial="{opacity: 0, y: 10}"
+        :animate="{opacity: 1, y: 0}"
+        :exit="{opacity: 0, y: -8}"
+        :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+      >
+        <el-steps :active="step" finish-status="success" simple class="excel-steps">
+          <el-step title="准备文件" />
+          <el-step title="校验预览" />
+          <el-step title="导入完成" />
+        </el-steps>
 
     <section v-if="step === 0" class="import-step">
       <div class="import-guide">
@@ -33,7 +43,7 @@
         <el-button link type="danger" @click="clearFile">移除</el-button>
       </div>
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    </section>
+        </section>
 
     <section v-else-if="step === 1" class="import-step" aria-live="polite">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -70,6 +80,8 @@
       <h3>客户资料导入完成</h3>
       <p>已新增 {{ result?.imported_codes || 0 }} 个客户编码、{{ result?.imported_profiles || 0 }} 条客户资料。</p>
     </section>
+      </motion.div>
+    </AnimatePresence>
 
     <template #footer>
       <div class="dialog-actions">
@@ -86,6 +98,7 @@
 <script setup lang="ts">
 import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
+import {AnimatePresence, motion} from 'motion-v'
 import {downloadApiFile, request} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
@@ -173,6 +186,7 @@ async function beforeClose(done: () => void) {
 
 <style scoped>
 .excel-steps { margin-bottom: var(--bb-space-6); }
+.customer-dialog-motion { min-height: 320px; }
 .import-step { display: grid; gap: var(--bb-space-4); min-height: 300px; }
 .import-guide { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-lg); padding: var(--bb-space-4); }
 .import-guide h3,

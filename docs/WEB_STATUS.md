@@ -1,6 +1,6 @@
 # Windows Client / Web 状态
 
-> 基准日期：2026-09-01
+> 基准日期：2026-09-02
 > 范围：`web/` 共用 Vue 业务、`client/` Windows Tauri 壳与平台能力
 
 当前按全新内网部署实现。Windows 10/11 Tauri 是正式产品，桌面 Web 是共用代码的备用入口；不维护公网、系统代理、macOS、旧页面、旧 API 或旧客户端双轨。
@@ -15,7 +15,7 @@
 | 登录入口 | 已完成 | 业务会话只在连接验证后挂载；登录页只显示已验证服务；更换服务回到启动流程 |
 | 内网 HTTP 授权 | 已完成 | Tauri HTTP scope 以 URL Pattern 正则覆盖 `127/8`、`10/8`、`172.16/12` 与 `192.168/16`；已验证服务可发起登录及同源 API 请求，不开放 HTTPS、公网或任意域名 |
 | 会话隔离 | 已完成 | 已保存、当前、手动和选择连接统一比较规范化 origin 与实例 ID；任一变化清除 access/refresh token，卸载工作台同步丢弃用户信息和领域缓存 |
-| Web 备用入口 | 已完成 | 不执行 UDP；验证当前同源服务后进入共用登录页 |
+| Web 备用入口 | 已完成 | 不执行 UDP；验证当前同源服务后进入共用登录页；平板/手机提供低频 Web 访问适配 |
 | 原生文件保存 | 已完成 | Tauri 系统对话框、无代理/无重定向、同源受保护下载、临时文件和原子替换；saved/cancelled/error 三态 |
 | 统一离开守卫 | 已完成 | 模块切换、登出、切服、安装更新、浏览器刷新与 Tauri 标题栏关闭共用 DirtyGuardRegistry；权限分配、改密、员工/部门状态和客户编码删除已纳入提交硬锁 |
 | 窗口配置 | 已完成 | 首次最大化、最小 1024×680、后续恢复窗口状态 |
@@ -23,10 +23,14 @@
 | API canonical 收敛 | 已完成 | 共用客户端仅使用 `/api/v1/workorder`、`/api/v1/materials`、`/api/v1/products`、`/api/v1/molds` 与 inventory-documents/balances/ledgers；不依赖旧任务、单数资料或旧 inventory 别名 |
 | 模块页拆分 | 已完成 | `ModulePage.vue` 只做注册表分发；统计、仓库、任务、模具、供应商和通用目录使用独立内容组件 |
 | 应用壳拆分 | 已完成 | `AppWorkspace.vue` 只消费导航、账号、连接和更新等壳层字段 |
+| 推荐导航架构 | 已完成 | 首页独立一级入口；业务按业务办理、基础资料、数据与报表分组；系统能力收进系统设置；仍由模块注册表按权限过滤 |
 | 工作台控制器 | 已完成 | 配置、展示、DirtyGuard、模具、仓库、任务和通用目录均已下沉，3314 行降至 1516 行；根层负责会话、导航和领域组合 |
 | 任务窄域接口 | 已完成 | 控制器内部直接由任务 state/operations 构造四切片 `workorderContext`，根只返回该单一对象；任务组件不再注入全量 `WorkspaceContext` |
 | 样式治理 | 已完成 | `styles.css` 仅为分层入口；共享消费点全部使用 `--bb-*`，旧 `--brand/--muted/--line/--ink` 等兼容别名已删除 |
 | 桌面单模板 | 已完成 | 固定侧栏、桌面表格和 1024×680 最小窗口使用单一实现，不保留并行页面模板 |
+| CSS/Motion 分层 | 已完成 | 高频 hover/focus/颜色反馈使用 CSS；启动/工作台、首页/业务页、模块页、客户资料 Drawer/Dialog、任务操作 Dialog 及客户列表→详情共享标题使用 `motion-v`，全局尊重 reduced motion |
+| 平板/手机 Web | 低频适配已完成，待验收 | Web 窄屏使用可收起导航、单列内容和表格横向滚动；Tauri 仍为桌面优先 |
+| Terra UX 设计包 | 已完成 | `gpt-5.6-terra/high` 只读审查启动、首页、客户资料和设置；UI 最终验收由用户执行 |
 | Windows 真机 | 待完成 | 需在 Windows 10/11、1920×1080、100%/125%/150% 缩放验收 |
 
 ## 2. 目录职责
@@ -69,7 +73,9 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - Tauri 文件保存只有 `saved` 可提示成功；`cancelled` 不提示成功，`error` 显示具体原因。
 - Web 与 Tauri API、权限和错误语义保持一致，Go 服务端始终是最终裁决者。
 
-## 4. 本轮验证
+## 4. 历史基线验证与本轮验证
+
+上一轮基线与本轮验证如下：
 
 已通过：
 
@@ -83,6 +89,10 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - `cargo check --locked`
 - `cargo test --locked`（26 项，包含 RFC1918 HTTP scope 回归测试）
 - `git diff --check`
+- 本轮 `web/npm run build`：通过；Vue 类型检查、Vite 生产构建通过，最大入口约 176.73 kB。
+- 本轮 `client/npm run build`：通过；Tauri 前端类型检查、Vite 生产构建通过；仅有既有 `@vueuse/core` Rollup 注释警告。
+- 本轮 `web/npm test`：通过，4 项启动连接/身份隔离回归测试通过。
+- 本轮 `git diff --check`：通过。
 - 隔离 SQLite + 本地浏览器：同源身份验证后进入登录页，服务器名称/地址/版本正确，账号输入获得焦点，1920×1080 无页面横向溢出
 
 模块页与业务详情已按异步入口拆包；本轮 Web 构建最大脚本约 150.99 kB（gzip 55.53 kB），未出现 500 KiB chunk 警告。任务组件已形成独立 `workorderContext` 异步块。
@@ -97,4 +107,4 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - 管理员、办公室、仓库、部门、只读账号的完整权限矩阵及客户、库存、任务、模具业务闭环。
 - 已发现服务器、选择服务器、登录与至少一个已认证 API 请求的真实局域网桌面端验收。
 
-这些项目不得由静态构建、本地浏览器或非 Windows Rust 测试冒充完成。
+这些项目不得由静态构建、本地浏览器或非 Windows Rust 测试冒充完成。平板/手机 Web 与 Windows 视觉、键盘、缩放和真实业务闭环仍待项目负责人亲自验收。

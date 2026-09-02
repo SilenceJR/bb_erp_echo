@@ -12,6 +12,50 @@
             <DesktopUpdatePanel v-if="desktopClient" compact />
           </div>
 
+          <AnimatePresence :initial="false">
+            <motion.section
+              v-if="dashboardFocusItems.length"
+              key="dashboard-focus"
+              layout
+              class="home-section"
+              aria-labelledby="dashboard-focus-title"
+              :initial="{opacity: 0, y: 6}"
+              :animate="{opacity: 1, y: 0}"
+              :exit="{opacity: 0, y: -6}"
+              :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+            >
+              <div class="home-section-title">
+                <div>
+                  <h2 id="dashboard-focus-title">今日关注</h2>
+                  <p>按高频 ERP 场景快速核对异常、进度和保养事项</p>
+                </div>
+              </div>
+              <motion.div layout class="dashboard-focus-grid">
+                <AnimatePresence :initial="false">
+                  <motion.button
+                    v-for="item in dashboardFocusItems"
+                    :key="item.key"
+                    layout="position"
+                    class="dashboard-focus-card"
+                    type="button"
+                    :initial="{opacity: 0, y: 6}"
+                    :animate="{opacity: 1, y: 0}"
+                    :exit="{opacity: 0, scale: 0.98}"
+                    :transition="{duration: 0.16, ease: [0.2, 0, 0, 1], layout: {duration: 0.2, ease: [0.2, 0, 0, 1]}}"
+                    @click="switchModule(item.key)"
+                  >
+                    <span class="dashboard-focus-card__heading">
+                      <StatusTag :label="item.label" :tone="item.tone" />
+                      <span aria-hidden="true">→</span>
+                    </span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.description }}</small>
+                  </motion.button>
+                </AnimatePresence>
+              </motion.div>
+            </motion.section>
+          </AnimatePresence>
+
           <section class="home-section dashboard-overview" aria-labelledby="dashboard-overview-title">
             <div class="home-section-title">
               <div>
@@ -33,31 +77,6 @@
             </div>
           </section>
 
-          <section v-if="dashboardFocusItems.length" class="home-section" aria-labelledby="dashboard-focus-title">
-            <div class="home-section-title">
-              <div>
-                <h2 id="dashboard-focus-title">今日关注</h2>
-                <p>按高频 ERP 场景快速核对异常、进度和保养事项</p>
-              </div>
-            </div>
-            <div class="dashboard-focus-grid">
-              <button
-                v-for="item in dashboardFocusItems"
-                :key="item.key"
-                class="dashboard-focus-card"
-                type="button"
-                @click="switchModule(item.key)"
-              >
-                <span class="dashboard-focus-card__heading">
-                  <StatusTag :label="item.label" :tone="item.tone" />
-                  <span aria-hidden="true">→</span>
-                </span>
-                <strong>{{ item.title }}</strong>
-                <small>{{ item.description }}</small>
-              </button>
-            </div>
-          </section>
-
           <section v-if="quickActions.length" class="home-section">
             <div class="home-section-title">
               <div>
@@ -66,17 +85,13 @@
               </div>
             </div>
             <div class="quick-grid">
-              <el-card
+              <button
                   v-for="item in quickActions"
                   :key="item.key"
                   class="quick-card"
-                  shadow="hover"
-                  role="button"
-                  tabindex="0"
+                  type="button"
                   :aria-label="`打开${item.title}：${item.description}`"
                   @click="switchModule(item.key)"
-                  @keyup.enter="switchModule(item.key)"
-                  @keyup.space.prevent="switchModule(item.key)"
               >
                 <span class="quick-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="quick-copy">
@@ -84,7 +99,7 @@
                   <small>{{ item.description }}</small>
                 </span>
                 <span class="quick-arrow" aria-hidden="true">→</span>
-              </el-card>
+              </button>
             </div>
           </section>
 
@@ -126,6 +141,7 @@
 </template>
 
 <script setup lang="ts">
+import {AnimatePresence, motion} from 'motion-v'
 import DesktopUpdatePanel from '../DesktopUpdatePanel.vue'
 import MetricCard from '../ui/MetricCard.vue'
 import PageState from '../ui/PageState.vue'

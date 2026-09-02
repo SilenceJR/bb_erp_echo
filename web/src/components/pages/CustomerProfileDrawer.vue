@@ -10,16 +10,29 @@
     destroy-on-close
     @closed="restoreFocus"
   >
-    <section v-if="mode === 'view' && profile" class="customer-drawer-content" aria-label="客户资料详情">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-      <div class="customer-drawer-heading">
-        <div>
-          <span class="customer-code-chip">{{ code?.code || profile.code }}</span>
-          <h2>{{ profile.short_name || profile.name || '未填写客户名称' }}</h2>
-          <p v-if="profile.name && profile.short_name">{{ profile.name }}</p>
-        </div>
-        <el-tag v-if="profile.is_default" type="success" effect="plain">默认资料</el-tag>
-      </div>
+    <AnimatePresence mode="wait" initial>
+      <motion.div
+        v-if="visible"
+        :key="`${mode}-${profile?.id || 'new'}`"
+        class="customer-profile-motion"
+        :initial="{opacity: 0, x: 16}"
+        :animate="{opacity: 1, x: 0}"
+        :exit="{opacity: 0, x: 10}"
+        :transition="{duration: 0.2, ease: [0.2, 0, 0, 1]}"
+      >
+        <section v-if="mode === 'view' && profile" class="customer-drawer-content" aria-label="客户资料详情">
+          <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+          <div class="customer-drawer-heading">
+            <div>
+              <span class="customer-code-chip">{{ code?.code || profile.code }}</span>
+              <motion.h2
+                :layout-id="`customer-profile-title-${profile.id}`"
+                :transition="{duration: 0.28, ease: [0.2, 0, 0, 1]}"
+              >{{ profile.short_name || profile.name || '未填写客户名称' }}</motion.h2>
+              <p v-if="profile.name && profile.short_name">{{ profile.name }}</p>
+            </div>
+            <el-tag v-if="profile.is_default" type="success" effect="plain">默认资料</el-tag>
+          </div>
 
       <el-descriptions :column="1" border>
         <el-descriptions-item label="客户简称">{{ display(profile.short_name) }}</el-descriptions-item>
@@ -58,9 +71,9 @@
           <el-button type="primary" :disabled="saving" @click="emit('edit', profile, code)">编辑资料</el-button>
         </template>
       </div>
-    </section>
+        </section>
 
-    <el-form v-else label-position="top" :disabled="saving" class="customer-profile-form" @submit.prevent="submit">
+        <el-form v-else label-position="top" :disabled="saving" class="customer-profile-form" @submit.prevent="submit">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
       <section v-if="mode === 'create' && code" class="form-code-summary">
         <span>客户编码</span><strong>{{ code.code }}</strong>
@@ -110,12 +123,15 @@
         <el-button :disabled="saving" @click="requestClose()">取消</el-button>
         <el-button type="primary" native-type="submit" :loading="saving">保存客户资料</el-button>
       </div>
-    </el-form>
+        </el-form>
+      </motion.div>
+    </AnimatePresence>
   </el-drawer>
 </template>
 
 <script setup lang="ts">
 import {computed, nextTick, reactive, ref, watch} from 'vue'
+import {AnimatePresence, motion} from 'motion-v'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import type {CustomerCodeItem, CustomerProfile} from '../../types'
@@ -257,6 +273,7 @@ defineExpose({dirty, requestClose})
 <style scoped>
 .customer-drawer-content,
 .customer-profile-form { display: grid; gap: var(--bb-space-5); padding-bottom: 76px; }
+.customer-profile-motion { min-height: 100%; }
 .customer-drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-4); }
 .customer-drawer-heading h2 { margin: var(--bb-space-2) 0 0; font-size: var(--bb-font-size-24); }
 .customer-drawer-heading p { margin: var(--bb-space-1) 0 0; color: var(--bb-text-secondary); }

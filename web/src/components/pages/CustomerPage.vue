@@ -1,5 +1,6 @@
 <template>
   <div class="data-page customer-page">
+    <LayoutGroup id="customer-profile-transition">
     <PageHeader
       title="客户资料"
       description="客户编码是后续业务的稳定关联；每个编码可维护一条或多条具体资料。"
@@ -58,7 +59,7 @@
       <section class="customer-desktop-table" aria-label="按客户编码分组的客户资料">
         <el-table :data="codes" row-key="id" stripe>
           <el-table-column label="客户编码" width="132"><template #default="{row}"><span class="customer-code">{{ row.code }}</span></template></el-table-column>
-          <el-table-column label="客户资料" min-width="210"><template #default="{row}"><div class="primary-profile"><strong>{{ profileTitle(row.default_profile) }}</strong><small>{{ row.default_profile?.name || (row.profile_count ? '未填写客户名称' : '尚未建立资料') }}</small></div></template></el-table-column>
+          <el-table-column label="客户资料" min-width="210"><template #default="{row}"><div class="primary-profile"><motion.strong v-if="row.default_profile && !(drawerVisible && selectedProfile?.id === row.default_profile.id)" :layout-id="`customer-profile-title-${row.default_profile.id}`" :transition="{duration: 0.28, ease: [0.2, 0, 0, 1]}">{{ profileTitle(row.default_profile) }}</motion.strong><strong v-else>{{ profileTitle(row.default_profile) }}</strong><small>{{ row.default_profile?.name || (row.profile_count ? '未填写客户名称' : '尚未建立资料') }}</small></div></template></el-table-column>
           <el-table-column label="联系人" min-width="140"><template #default="{row}">{{ row.default_profile?.contact_name || '—' }}</template></el-table-column>
           <el-table-column label="联系电话" min-width="150"><template #default="{row}"><span class="text-cell">{{ row.default_profile?.contact_phone || '—' }}</span></template></el-table-column>
           <el-table-column label="业务员" min-width="120"><template #default="{row}">{{ row.default_profile?.salesperson || '—' }}</template></el-table-column>
@@ -105,30 +106,40 @@
     />
 
     <el-dialog v-model="codeDialogVisible" :title="codeDialogMode === 'create' ? '新增客户编码' : '修改客户编码'" width="min(460px, 92vw)" :close-on-click-modal="!codeSaving" :close-on-press-escape="!codeSaving" :before-close="beforeCloseCodeDialog" @closed="codeError = ''">
-      <el-form label-position="top" :disabled="codeSaving" @submit.prevent="saveCode">
-        <el-alert v-if="codeError" :title="codeError" type="error" :closable="false" show-icon />
-        <el-form-item label="客户编码" required :error="codeFieldError"><el-input v-model.trim="codeInput" maxlength="40" autofocus placeholder="BB-001" @blur="normalizeCodeInput" /><small class="field-help">1、BB-1、bb-001 均会规范为 BB-001。数字必须大于 0。</small></el-form-item>
-        <el-alert v-if="codeDialogMode === 'edit'" title="修改后所有关联资料和选择项将显示新编码。" type="warning" :closable="false" show-icon />
-      </el-form>
+      <AnimatePresence mode="wait" initial>
+        <motion.div v-if="codeDialogVisible" key="customer-code-dialog-content" class="customer-dialog-motion" :initial="{opacity: 0, y: 10, scale: 0.985}" :animate="{opacity: 1, y: 0, scale: 1}" :exit="{opacity: 0, y: -8, scale: 0.99}" :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}">
+          <el-form label-position="top" :disabled="codeSaving" @submit.prevent="saveCode">
+            <el-alert v-if="codeError" :title="codeError" type="error" :closable="false" show-icon />
+            <el-form-item label="客户编码" required :error="codeFieldError"><el-input v-model.trim="codeInput" maxlength="40" autofocus placeholder="BB-001" @blur="normalizeCodeInput" /><small class="field-help">1、BB-1、bb-001 均会规范为 BB-001。数字必须大于 0。</small></el-form-item>
+            <el-alert v-if="codeDialogMode === 'edit'" title="修改后所有关联资料和选择项将显示新编码。" type="warning" :closable="false" show-icon />
+          </el-form>
+        </motion.div>
+      </AnimatePresence>
       <template #footer><div class="dialog-actions"><el-button :disabled="codeSaving" @click="closeCodeDialog">取消</el-button><el-button type="primary" :loading="codeSaving" @click="saveCode">保存编码</el-button></div></template>
     </el-dialog>
 
     <el-dialog v-model="replacementVisible" title="选择替代默认资料" width="min(520px, 92vw)" :close-on-click-modal="!deleting" :close-on-press-escape="!deleting">
-      <p class="replacement-tip">当前删除的是默认资料。请先从同一客户编码中选择新默认，切换与删除会在同一事务中完成。</p>
-      <el-alert v-if="deleteError" :title="deleteError" type="error" :closable="false" show-icon />
-      <el-radio-group v-model="replacementID" class="replacement-list">
-        <el-radio v-for="profile in replacementOptions" :key="profile.id" :value="profile.id" border><span><strong>{{ profile.short_name || profile.name || `资料 #${profile.id}` }}</strong><small>{{ profile.name || '未填写客户名称' }} · {{ profile.contact_name || '未填写联系人' }}</small></span></el-radio>
-      </el-radio-group>
+      <AnimatePresence mode="wait" initial>
+        <motion.div v-if="replacementVisible" key="replacement-dialog-content" class="customer-dialog-motion" :initial="{opacity: 0, y: 10, scale: 0.985}" :animate="{opacity: 1, y: 0, scale: 1}" :exit="{opacity: 0, y: -8, scale: 0.99}" :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}">
+          <p class="replacement-tip">当前删除的是默认资料。请先从同一客户编码中选择新默认，切换与删除会在同一事务中完成。</p>
+          <el-alert v-if="deleteError" :title="deleteError" type="error" :closable="false" show-icon />
+          <el-radio-group v-model="replacementID" class="replacement-list">
+            <el-radio v-for="profile in replacementOptions" :key="profile.id" :value="profile.id" border><span><strong>{{ profile.short_name || profile.name || `资料 #${profile.id}` }}</strong><small>{{ profile.name || '未填写客户名称' }} · {{ profile.contact_name || '未填写联系人' }}</small></span></el-radio>
+          </el-radio-group>
+        </motion.div>
+      </AnimatePresence>
       <template #footer><div class="dialog-actions"><el-button :disabled="deleting" @click="replacementVisible = false">取消</el-button><el-button type="danger" :loading="deleting" :disabled="!replacementID" @click="confirmDeleteWithReplacement">切换默认并删除</el-button></div></template>
     </el-dialog>
 
     <CustomerImportDialog v-if="canImport" v-model="importVisible" :token="token" @completed="handleImportCompleted" />
     <CustomerExportDialog v-model="exportVisible" :token="token" :keyword="keyword" :filter="filter" />
+    </LayoutGroup>
   </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {AnimatePresence, LayoutGroup, motion} from 'motion-v'
 import {ElMessage} from 'element-plus'
 import {request} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
@@ -422,7 +433,7 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .customer-filter-actions span { color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
 .customer-summary { display: flex; min-height: 40px; align-items: center; margin-bottom: var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-surface); padding: var(--bb-space-2) var(--bb-space-3); color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
 .customer-summary strong { color: var(--bb-text-primary); font-size: var(--bb-font-size-14); font-variant-numeric: tabular-nums; }
-.customer-desktop-table { overflow: hidden; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-xl); background: var(--bb-bg-surface); box-shadow: var(--bb-shadow-xs); }
+.customer-desktop-table { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-xl); background: var(--bb-bg-surface); box-shadow: var(--bb-shadow-xs); }
 .customer-code { color: var(--bb-brand-700); font-family: var(--bb-font-mono); font-weight: var(--bb-font-weight-bold); white-space: nowrap; }
 .primary-profile { display: grid; gap: var(--bb-space-1); }
 .primary-profile small { overflow: hidden; color: var(--bb-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
@@ -439,4 +450,17 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .replacement-list :deep(.el-radio__label) { min-width: 0; white-space: normal; }
 .replacement-list span { display: grid; gap: var(--bb-space-1); }
 .replacement-list small { color: var(--bb-text-secondary); }
+
+@media (max-width: 900px) {
+  .customer-filter-bar { align-items: stretch; flex-direction: column; }
+  .customer-filter-controls,
+  .customer-filter-actions { align-items: stretch; flex-wrap: wrap; }
+  .customer-filter-controls .el-input,
+  .customer-filter-controls .el-select { width: 100%; }
+  .customer-filter-actions { justify-content: space-between; }
+  .customer-desktop-table { overflow-x: auto; }
+  .customer-pagination { justify-content: center; }
+  .code-toolbar { align-items: stretch; flex-direction: column; }
+  .code-toolbar .el-button { width: 100%; margin: 0; }
+}
 </style>

@@ -6,6 +6,14 @@
         <span class="brand-mark" aria-label="博邦光电">BB</span>
         <div><strong>博邦光电</strong><span>业务工作台</span></div>
       </div>
+      <el-button
+        class="mobile-nav-toggle"
+        :aria-expanded="mobileNavOpen"
+        aria-controls="app-navigation"
+        @click="mobileNavOpen = !mobileNavOpen"
+      >
+        {{ mobileNavOpen ? '关闭菜单' : '打开菜单' }}
+      </el-button>
       <div class="server-indicator" aria-live="polite">
         <span class="server-indicator__dot" :class="`is-${healthStatus}`" aria-hidden="true"></span>
         <div>
@@ -29,9 +37,10 @@
       </div>
     </header>
 
-    <aside class="sidebar" aria-label="系统导航">
-      <AppNavigation :active-key="activeKey" :business-items="businessItems" :system-items="systemItems" @select="switchModule" />
+    <aside id="app-navigation" class="sidebar" :class="{ 'is-mobile-open': mobileNavOpen }" aria-label="系统导航">
+      <AppNavigation :active-key="activeKey" :business-items="businessItems" :system-items="systemItems" @select="handleModuleSelect" />
     </aside>
+    <button v-if="mobileNavOpen" class="mobile-nav-backdrop" type="button" aria-label="关闭导航菜单" @click="mobileNavOpen = false"></button>
 
     <ChangePasswordDialog v-model="passwordDialogVisible" :token="token" @changed="handlePasswordChanged" />
     <section class="content"><slot name="page" /></section>
@@ -49,6 +58,12 @@ import ChangePasswordDialog from './ChangePasswordDialog.vue'
 const {token, currentUser, activeKey, businessItems, systemItems, userInitial, accountTypeText, healthStatus, healthStatusLabel, switchModule, logout, loginForm} = useWorkspaceContext()
 const {canChangeServer, changeServer, currentServer} = useStartupConnectionContext()
 const passwordDialogVisible = ref(false)
+const mobileNavOpen = ref(false)
+
+function handleModuleSelect(key: string) {
+  mobileNavOpen.value = false
+  switchModule(key)
+}
 
 function handleUserCommand(command: string) {
   if (command === 'change-server') return void changeServer()

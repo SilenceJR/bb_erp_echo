@@ -1,15 +1,40 @@
 <template>
   <el-config-provider :locale="zhCn">
-    <main class="app-shell" :class="{ 'is-startup': !startup.isReady.value }">
-      <StartupScreen v-if="!startup.isReady.value" />
-      <WorkspaceSession v-else />
-    </main>
+    <MotionConfig reduced-motion="user">
+      <main class="app-shell" :class="{ 'is-startup': !startup.isReady.value }">
+        <AnimatePresence mode="wait" initial>
+          <motion.div
+            v-if="!startup.isReady.value"
+            key="startup"
+            class="app-stage"
+            :initial="{ opacity: 0, y: 8 }"
+            :animate="{ opacity: 1, y: 0 }"
+            :exit="{ opacity: 0, y: -8 }"
+            :transition="{ duration: 0.24, ease: [0.2, 0, 0, 1] }"
+          >
+            <StartupScreen />
+          </motion.div>
+          <motion.div
+            v-else
+            key="workspace"
+            class="app-stage"
+            :initial="{ opacity: 0, y: 8 }"
+            :animate="{ opacity: 1, y: 0 }"
+            :exit="{ opacity: 0, y: -8 }"
+            :transition="{ duration: 0.24, ease: [0.2, 0, 0, 1] }"
+          >
+            <WorkspaceSession />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+    </MotionConfig>
   </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import {defineAsyncComponent, onBeforeUnmount, onMounted, provide} from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import {AnimatePresence, MotionConfig, motion} from 'motion-v'
 import StartupScreen from './components/app/StartupScreen.vue'
 import {useStartupConnection} from './composables/useStartupConnection'
 import {startupConnectionKey} from './composables/workspaceContext'

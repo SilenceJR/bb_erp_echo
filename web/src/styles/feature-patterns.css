@@ -26,14 +26,22 @@
 .operational-summary-grid { margin-bottom: var(--bb-space-4); }
 .quick-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
 .quick-card {
+  display: grid;
+  width: 100%;
   min-height: 112px;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--bb-border-default);
   border-radius: 16px;
+  background: var(--bb-bg-surface);
   color: var(--bb-text-primary);
+  padding: 17px;
   text-align: left;
-  transition: transform 160ms ease,border-color 160ms ease,box-shadow 160ms ease;
+  transition: transform var(--bb-duration-base) var(--bb-ease-standard), border-color var(--bb-duration-base) var(--bb-ease-standard), box-shadow var(--bb-duration-base) var(--bb-ease-standard);
 }
-.quick-card .el-card__body { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 17px; }
 .quick-card:hover { transform: translateY(-2px); border-color: var(--bb-brand-300); box-shadow: var(--bb-shadow-sm); }
+.quick-card:focus-visible { outline: none; box-shadow: var(--bb-focus-ring); }
 .quick-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: var(--bb-brand-50); color: var(--bb-brand-700); font-size: 21px; font-weight: 800; }
 .quick-copy { display: grid; gap: 5px; }
 .quick-copy small { color: var(--bb-text-secondary); line-height: 1.45; }
@@ -478,4 +486,19 @@
   .quick-grid, .dashboard-metrics, .dashboard-focus-grid, .operational-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .stats-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .report-grid, .report-grid.lower { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 760px) {
+  .dashboard-metrics,
+  .dashboard-focus-grid,
+  .operational-summary-grid,
+  .quick-grid,
+  .business-grid,
+  .update-package-grid,
+  .update-meta-grid,
+  .update-version-list,
+  .desktop-update-facts,
+  .desktop-update-confirmation dl { grid-template-columns: 1fr; }
+  .update-actions, .card-actions { align-items: stretch; flex-direction: column; }
+  .update-actions small { margin-right: 0; }
 }

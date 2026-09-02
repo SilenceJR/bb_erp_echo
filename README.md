@@ -2,7 +2,7 @@
 
 博邦 ERP 是面向工厂局域网的单组织、单仓库系统。Go/Echo/SQLite 负责业务、权限和数据；Vue/Element Plus 提供共用业务界面；Windows 10/11 Tauri 客户端是正式入口，桌面 Web 是备用入口。
 
-当前按全新部署设计，不迁移或兼容旧数据库、旧 API、旧客户端和旧页面；不支持公网、系统代理、macOS 或移动端。主要验收环境为 1920×1080，窗口最小尺寸为 1024×680。
+当前按全新部署设计，不迁移或兼容旧数据库、旧 API、旧客户端和旧页面；不支持公网、系统代理、macOS 或移动端原生客户端。Windows/Tauri 与桌面 Web 是主入口，平板和手机仅支持低频 Web 访问适配。主要验收环境为 1920×1080，Tauri 窗口最小尺寸为 1024×680。
 
 后端只提供当前 canonical API：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`，库存使用 `/api/v1/inventory-documents`、`/api/v1/inventory-balances` 和 `/api/v1/inventory-ledgers`；旧任务、单数基础资料和 `/api/v1/inventory` 路径不再注册。
 

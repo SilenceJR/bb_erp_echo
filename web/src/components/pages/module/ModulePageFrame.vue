@@ -51,12 +51,24 @@
     <PageState v-if="skeletonResult" kind="readonly" :title="skeletonResult.name" :description="skeletonResult.message" />
     <UpdateCenter v-else-if="activeKey === 'updates'" :token="token" :can-check="hasPermission('system:updates:write')" />
     <PageState v-else-if="listError && !hasRenderableData" kind="error" title="数据加载失败" :description="listError" action-label="重新加载" @action="loadActiveModule" />
-    <component :is="content" v-else />
+    <AnimatePresence v-else mode="wait" :initial="false">
+      <motion.div
+        :key="activeKey"
+        class="module-page-motion"
+        :initial="{ opacity: 0, y: 6 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :exit="{ opacity: 0, y: -6 }"
+        :transition="{ duration: 0.16, ease: [0.2, 0, 0, 1] }"
+      >
+        <component :is="content" />
+      </motion.div>
+    </AnimatePresence>
   </div>
 </template>
 
 <script setup lang="ts">
 import type {Component} from 'vue'
+import {AnimatePresence, motion} from 'motion-v'
 import UpdateCenter from '../../UpdateCenter.vue'
 import FilterBar from '../../ui/FilterBar.vue'
 import MetricCard from '../../ui/MetricCard.vue'
@@ -82,3 +94,7 @@ const {
   workorderStatusOptions, workorderTypeOptions, workorderPriorityOptions,
 } = useWorkorderContext().list
 </script>
+
+<style scoped>
+.module-page-motion { min-width: 0; }
+</style>

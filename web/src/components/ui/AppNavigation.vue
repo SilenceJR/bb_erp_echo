@@ -2,10 +2,14 @@
   <nav class="ui-app-navigation" :aria-label="ariaLabel">
     <el-menu class="ui-app-navigation__menu" :default-active="activeKey" @select="handleSelect">
       <el-menu-item index="dashboard">首页</el-menu-item>
-      <el-menu-item-group v-if="businessItems.length" title="日常业务">
-        <el-menu-item v-for="item in businessItems" :key="item.key" :index="item.key">
-          {{ item.title }}
-        </el-menu-item>
+      <el-menu-item-group v-if="operationItems.length" title="业务办理">
+        <el-menu-item v-for="item in operationItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
+      </el-menu-item-group>
+      <el-menu-item-group v-if="masterDataItems.length" title="基础资料">
+        <el-menu-item v-for="item in masterDataItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
+      </el-menu-item-group>
+      <el-menu-item-group v-if="reportItems.length" title="数据与报表">
+        <el-menu-item v-for="item in reportItems" :key="item.key" :index="item.key">{{ item.title }}</el-menu-item>
       </el-menu-item-group>
       <el-sub-menu v-if="systemItems.length" index="system">
         <template #title>系统设置</template>
@@ -23,12 +27,14 @@
 </template>
 
 <script setup lang="ts">
+import {computed, toRefs} from 'vue'
+
 type NavigationItem = {
   key: string
   title: string
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   activeKey: string
   businessItems: NavigationItem[]
   systemItems: NavigationItem[]
@@ -36,6 +42,13 @@ withDefaults(defineProps<{
 }>(), {
   ariaLabel: '系统导航',
 })
+const {activeKey, systemItems, ariaLabel} = toRefs(props)
+
+const operationKeys = ['workorder', 'warehouses', 'molds']
+const masterDataKeys = ['customers', 'suppliers']
+const operationItems = computed(() => operationKeys.map((key) => props.businessItems.find((item) => item.key === key)).filter((item): item is NavigationItem => Boolean(item)))
+const masterDataItems = computed(() => masterDataKeys.map((key) => props.businessItems.find((item) => item.key === key)).filter((item): item is NavigationItem => Boolean(item)))
+const reportItems = computed(() => props.businessItems.filter((item) => item.key === 'statistics'))
 
 const emit = defineEmits<{
   select: [key: string]

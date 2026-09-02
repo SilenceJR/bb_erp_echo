@@ -10,79 +10,121 @@
         </div>
       </header>
 
-      <div v-if="isBusy" class="startup-progress" aria-live="polite" aria-busy="true">
-        <el-progress :percentage="100" :show-text="false" :indeterminate="true" :duration="1.6"/>
-        <strong>{{ message }}</strong>
+      <AnimatePresence mode="wait" :initial="false">
+        <motion.div
+          v-if="isBusy"
+          :key="phase"
+          class="startup-progress"
+          aria-live="polite"
+          aria-busy="true"
+          :initial="{opacity: 0, y: 6}"
+          :animate="{opacity: 1, y: 0}"
+          :exit="{opacity: 0, y: -6}"
+          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+        >
+          <el-progress :percentage="100" :show-text="false" :indeterminate="true" :duration="1.6"/>
+          <strong>{{ message }}</strong>
           <p>优先连接上次使用的服务器；不可用时再发现局域网服务。</p>
-      </div>
+        </motion.div>
 
-      <section v-else-if="phase === 'AutoConnected'" class="startup-result startup-connected" aria-live="polite">
-        <StatusTag label="连接成功" tone="success"/>
-        <strong>{{ message }}</strong>
-      </section>
+        <motion.section
+          v-else-if="phase === 'AutoConnected'"
+          :key="phase"
+          class="startup-result startup-connected"
+          aria-live="polite"
+          :initial="{opacity: 0, y: 6}"
+          :animate="{opacity: 1, y: 0}"
+          :exit="{opacity: 0, y: -6}"
+          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+        >
+          <StatusTag label="连接成功" tone="success"/>
+          <strong>{{ message }}</strong>
+        </motion.section>
 
-      <section v-else-if="phase === 'SelectServer'" ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="server-result-title">
-        <div class="startup-result__heading">
-          <div>
-            <span>发现服务冲突</span>
-            <h2 id="server-result-title">请选择本次连接的服务器</h2>
-          </div>
-          <StatusTag :label="`${candidates.length} 个服务`" tone="warning"/>
-        </div>
-        <el-alert title="局域网内存在多个已验证候选（可能包含克隆身份），客户端不会静默选择或覆盖上次连接。" type="warning" :closable="false" show-icon/>
-        <div class="server-list">
-          <article v-for="server in candidates" :key="serverIdentityKey(server)" class="server-card">
-            <div class="server-card__copy">
+        <motion.div
+          v-else-if="phase === 'SelectServer'"
+          :key="phase"
+          :initial="{opacity: 0, y: 6}"
+          :animate="{opacity: 1, y: 0}"
+          :exit="{opacity: 0, y: -6}"
+          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+          :on-animation-complete="focusResult"
+        >
+          <section ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="server-result-title">
+            <div class="startup-result__heading">
               <div>
-                <strong>{{ server.server_name }}</strong>
-                <StatusTag v-if="serverIdentityKey(server) === savedServerKey" label="上次使用" tone="info"/>
+                <span>发现服务冲突</span>
+                <h2 id="server-result-title">请选择本次连接的服务器</h2>
               </div>
-              <span>{{ server.origin }}</span>
-              <small>服务端版本 {{ server.server_version || '未提供' }}</small>
+              <StatusTag :label="`${candidates.length} 个服务`" tone="warning"/>
             </div>
-            <el-button type="primary" @click="selectServer(server)">连接此服务器</el-button>
-          </article>
-        </div>
-        <div class="startup-actions">
-          <el-button @click="rediscover">重新发现</el-button>
-        </div>
-      </section>
-
-      <section v-else ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="manual-result-title">
-        <div class="startup-result__heading">
-          <div>
-            <span>{{ failureLabel }}</span>
-            <h2 id="manual-result-title">{{ message }}</h2>
-          </div>
-          <StatusTag label="未连接" tone="danger"/>
-        </div>
-        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon role="alert"/>
-
-        <template v-if="platformKind === 'tauri'">
-          <p class="startup-help">确认服务端已启动，并允许 Windows 专用网络访问 ERP TCP 端口和 UDP 39080。UDP 不可用时仍可手动连接。</p>
-          <el-form class="manual-server-form" label-position="top" @submit.prevent="connectManually">
-            <el-form-item label="服务器 IPv4 地址">
-              <el-input v-model.trim="manualAddress" :disabled="manualTesting" placeholder="例如 192.168.1.20:8080" clearable/>
-            </el-form-item>
+            <el-alert title="局域网内存在多个已验证候选（可能包含克隆身份），客户端不会静默选择或覆盖上次连接。" type="warning" :closable="false" show-icon/>
+            <div class="server-list">
+              <article v-for="server in candidates" :key="serverIdentityKey(server)" class="server-card">
+                <div class="server-card__copy">
+                  <div>
+                    <strong>{{ server.server_name }}</strong>
+                    <StatusTag v-if="serverIdentityKey(server) === savedServerKey" label="上次使用" tone="info"/>
+                  </div>
+                  <span>{{ server.origin }}</span>
+                  <small>服务端版本 {{ server.server_version || '未提供' }}</small>
+                </div>
+                <el-button type="primary" @click="selectServer(server)">连接此服务器</el-button>
+              </article>
+            </div>
             <div class="startup-actions">
-              <el-button :disabled="manualTesting" @click="rediscover">重新发现</el-button>
-              <el-button type="primary" native-type="submit" :loading="manualTesting" :disabled="manualTesting || !manualAddress.trim()">验证并连接</el-button>
+              <el-button @click="rediscover">重新发现</el-button>
             </div>
-          </el-form>
-        </template>
-        <template v-else>
-          <p class="startup-help">Web 版只连接当前站点配置的服务。请重试；若仍失败，请联系系统管理员检查服务状态。</p>
-          <div class="startup-actions">
-            <el-button type="primary" @click="start">重试连接</el-button>
-          </div>
-        </template>
-      </section>
+          </section>
+        </motion.div>
+
+        <motion.div
+          v-else
+          :key="phase"
+          :initial="{opacity: 0, y: 6}"
+          :animate="{opacity: 1, y: 0}"
+          :exit="{opacity: 0, y: -6}"
+          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
+          :on-animation-complete="focusResult"
+        >
+          <section ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="manual-result-title">
+            <div class="startup-result__heading">
+              <div>
+                <span>{{ failureLabel }}</span>
+                <h2 id="manual-result-title">{{ message }}</h2>
+              </div>
+              <StatusTag label="未连接" tone="danger"/>
+            </div>
+            <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon role="alert"/>
+
+            <template v-if="platformKind === 'tauri'">
+              <p class="startup-help">确认服务端已启动，并允许 Windows 专用网络访问 ERP TCP 端口和 UDP 39080。UDP 不可用时仍可手动连接。</p>
+              <el-form class="manual-server-form" label-position="top" @submit.prevent="connectManually">
+                <el-form-item label="服务器 IPv4 地址">
+                  <el-input v-model.trim="manualAddress" :disabled="manualTesting" placeholder="例如 192.168.1.20:8080" clearable/>
+                </el-form-item>
+                <div class="startup-actions">
+                  <el-button :disabled="manualTesting" @click="rediscover">重新发现</el-button>
+                  <el-button type="primary" native-type="submit" :loading="manualTesting" :disabled="manualTesting || !manualAddress.trim()">验证并连接</el-button>
+                </div>
+              </el-form>
+            </template>
+            <template v-else>
+              <p class="startup-help">Web 版只连接当前站点配置的服务。请重试；若仍失败，请联系系统管理员检查服务状态。</p>
+              <div class="startup-actions">
+                <el-button type="primary" @click="start">重试连接</el-button>
+              </div>
+            </template>
+          </section>
+        </motion.div>
+      </AnimatePresence>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import {computed, nextTick, ref, watch} from 'vue'
+import {AnimatePresence, motion} from 'motion-v'
 import {useStartupConnectionContext} from '../../composables/workspaceContext'
 import StatusTag from '../ui/StatusTag.vue'
 import {serverIdentityKey} from '../../platform/connectionPolicy'
@@ -114,11 +156,13 @@ const failureLabel = computed(() => ({
   none: '连接未完成',
 })[failure.value])
 
-watch(focusRevision, async () => {
+async function focusResult() {
   if (isBusy.value) return
   await nextTick()
   resultHeading.value?.focus()
-})
+}
+
+watch(focusRevision, focusResult)
 
 </script>
 
