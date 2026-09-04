@@ -34,7 +34,7 @@ test('停靠面板从同轨道零宽平滑展开且首帧保持可读', () => {
   const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8')
   const component = readFileSync(new URL('../src/components/ui/ResponsiveDetailCarrier.vue', import.meta.url), 'utf8')
   assert.match(shell, /grid-template-columns: var\(--bb-shell-sidebar-width\) minmax\(0, 1fr\) 0/)
-  assert.match(shell, /transition: grid-template-columns var\(--bb-duration-base\)/)
+  assert.match(shell, /transition: grid-template-columns var\(--bb-duration-slow\)/)
   assert.match(component, /workspace-detail-panel-enter-from \{ opacity: \.92; transform: translateX\(8px\); \}/)
   assert.doesNotMatch(component, /workspace-detail-panel-enter-from \{ opacity: 0/)
 })
