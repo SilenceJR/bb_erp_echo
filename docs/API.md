@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-09-01
+更新时间：2026-09-04
 
 ## 文档入口
 
@@ -110,7 +110,7 @@ q=关键字
 }
 ```
 
-当前已支持分页和模糊查询的主要接口包括系统用户、部门、终端、角色、权限、审计、客户资料、供应商、仓库物品、模具台账和任务单。
+当前已支持分页和模糊查询的主要接口包括系统用户、部门、终端、角色、权限、审计、客户资料、供应商、仓库物品、模具和任务单。
 
 ## 登录认证
 
@@ -181,7 +181,7 @@ q=关键字
 
 ## 客户接口
 
-客户模块采用 `CustomerCode 1:N CustomerProfile`：客户编码是稳定业务锚点，客户资料保存简称、名称、地址、电话、联系人、联系人电话和业务员。除编码关联外其余字段均可空，联系人不再有独立接口或子表。新库存单、任务单和模具的 `customer_id` 均表示具体客户资料 ID。
+客户模块采用 `CustomerCode 1:N CustomerProfile`：客户编码是稳定业务锚点，客户资料保存简称、名称、地址、电话、联系人、联系人电话和业务员。除编码关联外其余字段均可空，联系人不再有独立接口或子表。新库存单和任务单的 `customer_id` 表示具体客户资料 ID；模具不再关联客户或产品主数据。
 
 编码规范为 `BB-` 加至少三位正整数；`1`、`BB-1`、`bb-001` 均规范化为 `BB-001`。自动编号使用现有最大数字加一，不回填缺号。
 
@@ -201,7 +201,7 @@ q=关键字
 - `POST /api/v1/customers`：创建资料；`customer_code_id` 必填，其余业务字段可空。
 - `PATCH /api/v1/customers/:id`：更新资料，不能更换所属编码。
 - `PUT /api/v1/customers/:id/default`：把同编码资料切换为默认。
-- `DELETE /api/v1/customers/:id?replacement_id=2`：物理删除资料。删除仍有同码资料的默认资料时必须传同编码替代资料；被库存单、任务单或模具引用时返回 `409`。
+- `DELETE /api/v1/customers/:id?replacement_id=2`：物理删除资料。删除仍有同码资料的默认资料时必须传同编码替代资料；被库存单或任务单引用时返回 `409`。
 
 只要编码下存在资料，就恰好一条默认资料：首条自动默认，追加资料不改变原默认；删除默认资料必须在同一事务指定替代项，删除后只剩一条时该资料保持默认。
 
@@ -450,6 +450,8 @@ category    可选，图片分类
 
 权限规则：产品图片使用仓库权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
 
+模具导入需要额外的 `mold:import` 权限；导出、位置字典读取使用 `mold:read`，模具和位置写入、图片/DWG 删除使用 `mold:write`。
+
 ## 任务单接口
 
 任务单支持生产单和通用任务。主任务由办公室控制，部门只更新各自的子任务状态。
@@ -538,10 +540,10 @@ GET  /api/v1/statistics
 
 `GET /api/v1/statistics` 返回 Web/Tauri 统计首页聚合数据，包含：
 
-- 顶部汇总：客户编码、供应商、仓库物品、库存总量、低库存、进行中任务、加急任务、待办公室确认任务、模具总数、需关注模具。
+- 顶部汇总：客户编码、供应商、仓库物品、库存总量、低库存、进行中任务、加急任务、待办公室确认任务和模具总数。
 - 库存统计：按物品类型汇总、按物料分类汇总、低库存明细、近 14 天库存流水趋势。
 - 任务统计：按主任务状态、任务类型、部门子任务处理情况、近 14 天任务创建趋势。
-- 模具统计：按状态汇总、借出/维修/保养到期等需关注模具。
+- 模具统计：按单模/共模和固定位置汇总。
 - 业务数据：客户编码、供应商、产品、物料、模具、任务单数量。
 - 审计统计：按结果汇总和近 14 天趋势。
 
@@ -572,17 +574,9 @@ GET  /api/v1/statistics
 
 ## 模具接口
 
-常用模具档案字段包括：模具编号、名称、客户 ID、产品 ID、穴数、成型材料、钢材、尺寸、重量、制造商、所有权、存放位置、当前位置、状态、保养周期、最近维修时间、最近/下次保养时间和备注。
+模具是一条产品/型号档案，字段为：`id`、`mold_number`（手工填写且全局唯一）、`model`、`mold_type`（`single` 单模或 `common` 共模）、`location_id`、`common_group_no`、`remark`。共模必须填写共模组号，单模不得填写。
 
-状态约定：
-
-```text
-in_stock      在库
-loaned        已借出
-repairing     维修中
-maintenance   保养中
-scrapped      报废
-```
+固定位置由位置字典维护，初始包含 `A1-1`、`B1-1`。正在使用的位置不能停用；停用位置不能分配给新模具。
 
 ```text
 GET    /api/v1/molds
@@ -590,47 +584,56 @@ GET    /api/v1/molds/:id
 POST   /api/v1/molds
 PATCH  /api/v1/molds/:id
 DELETE /api/v1/molds/:id
-POST   /api/v1/molds/:id/loan
-POST   /api/v1/molds/:id/return
-POST   /api/v1/molds/:id/repair
-POST   /api/v1/molds/:id/maintenance
+POST   /api/v1/molds/bulk-location
+GET    /api/v1/mold-locations
+POST   /api/v1/mold-locations
+PATCH  /api/v1/mold-locations/:id
+GET    /api/v1/molds/:id/drawings
+POST   /api/v1/molds/:id/drawings
+GET    /api/v1/molds/:id/drawings/:drawing_id/content
+DELETE /api/v1/molds/:id/drawings/:drawing_id
+GET    /api/v1/molds/export
+GET    /api/v1/molds/import-template
+POST   /api/v1/molds/import/preview
+POST   /api/v1/molds/import/commit
 ```
 
-`GET /api/v1/molds` 支持 `page`、`page_size`、`q`，并可继续使用 `status` 精确筛选状态。
+`GET /api/v1/molds` 支持 `page`、`page_size`、`q`、`mold_type`、`location_id`、`common_group_no`，返回 `image_count` 和 `drawing_count`。图片分为 `product_material`、`supplement` 两组，补充图数量不限且总数自动统计。图纸只允许 `.dwg`、`.fdwg`，本期提供上传、下载、删除，暂不预览。
 
-创建模具示例：
+创建示例：
 
 ```json
 {
-  "code": "MOLD-001",
-  "name": "白壳前模",
-  "customer_id": 1,
-  "product_id": 1,
-  "cavity_count": 8,
-  "mold_material": "ABS",
-  "steel": "P20",
-  "size": "450x350x280",
-  "weight_gram": 180000,
-  "manufacturer": "深圳模具厂",
-  "owner": "客户A",
-  "storage_location": "工模架 A1",
-  "maintenance_cycle_days": 30,
-  "remark": "白壳产品常用模具"
+  "mold_number": "CYF1809-2-1",
+  "model": "CYF1809-2",
+  "mold_type": "common",
+  "location_id": 1,
+  "common_group_no": "G-001",
+  "remark": "前后模一组"
 }
 ```
 
-借出示例：
+### 模具资料包
 
-```json
-{
-  "location": "注塑车间 1 号机",
-  "counterparty": "注塑部",
-  "handler_name": "王工",
-  "reason": "生产试模"
-}
+导出与导入使用 ZIP 全量资料包，模板如下：
+
+```text
+博邦模具资料包.zip
+├── molds.xlsx
+├── locations.json
+├── images/
+│   └── <模具编号>/
+│       ├── product_material/
+│       └── supplement/
+└── drawings/
+    └── <模具编号>/
 ```
 
-维修和保养都会写入 `mold_events` 履历；完成保养时会按保养周期自动计算 `next_maintenance_at`。
+`molds.xlsx` 列为：序号、模具编号、模具型号、模具类型、模具位置、共模组号、图片总数、备注。导入忽略序号和图片总数，重新生成 ID 并计算图片数量；标准目录优先，扁平目录按文件名兜底。文件名中的 `+` 表示共模图片需要复制到多个编号，例如 `A+B+C-1.jpg`；`产品材料`、`产品图`、`材质`归入产品材料，`前模`、`后模`、`开模`、`尺寸`、`局部`归入补充图。无法识别的图片会在预览阶段列出，可人工指定图片组和一个或多个模具编号；未修正、未匹配、重复或扩展名/MIME 不一致的文件不能提交。
+
+导入采用“预览—修正—确认—提交”，提交会全量替换模具、模具图片、DWG 和位置字典，不影响客户、用户、库存和工单。Excel 单独导出不包含图片；`.xls` 内嵌图片不在本期自动提取范围内。
+
+本期未单独开放“图片文件夹只追加”接口；如需增量图片导入，当前应将图片放入上述 ZIP 的 `images/` 目录后预览导入。
 
 ## 错误响应
 

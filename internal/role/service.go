@@ -499,6 +499,7 @@ func DefaultPermissions() []model.Permission {
 		{"产品维护", "product:write", "/api/v1/products", "write"},
 		{"模具查看", "mold:read", "/api/v1/molds", "read"},
 		{"模具维护", "mold:write", "/api/v1/molds", "write"},
+		{"模具资料导入", "mold:import", "/api/v1/molds/import", "import"},
 		{"任务查看", "workorder:read", "/api/v1/workorder", "read"},
 		{"任务维护", "workorder:write", "/api/v1/workorder", "write"},
 		{"生产单临时产品建档", TemporaryProductWriteCode, "/api/v1/workorder/products", "write"},

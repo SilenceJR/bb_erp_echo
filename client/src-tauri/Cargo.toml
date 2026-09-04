@@ -21,7 +21,7 @@ base64 = "0.22.1"
 getrandom = "0.3.4"
 if-addrs = "0.13.4"
 minisign-verify = "0.2.5"
-reqwest = { version = "0.12.28", features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12.28", features = ["rustls-tls", "json", "multipart", "stream"] }
 reqwest_updater = { package = "reqwest", version = "=0.13.4", default-features = false }
 semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }

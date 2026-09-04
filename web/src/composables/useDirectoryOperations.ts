@@ -10,7 +10,7 @@ type Dependencies = Record<string, any>
 /** Owns generic directory listing, paging and configurable create/edit forms. */
 export function useDirectoryOperations(d: Dependencies) {
   let confirmedWarehouseTab = 'product'
-  const numericKeys = new Set(['quantity', 'unit_cost', 'default_cost', 'safety_stock', 'customer_id', 'product_id', 'cavity_count', 'weight_gram', 'maintenance_cycle_days'])
+  const numericKeys = new Set(['quantity', 'unit_cost', 'default_cost', 'safety_stock', 'customer_id', 'product_id'])
 
   function inferColumns(data: BasicItem[], item: ModuleItem): string[] {
     const preferred: Record<string, string[]> = {

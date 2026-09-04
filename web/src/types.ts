@@ -18,6 +18,15 @@ export interface ApiErrorBody {
   request_id: string
 }
 
+export type NativeFileDragPhase = 'enter' | 'over' | 'leave' | 'drop'
+
+export interface NativeFileDragDetail {
+  phase: NativeFileDragPhase
+  paths: string[]
+  files: File[]
+  error?: string
+}
+
 // 更新中心状态字段保持可选，以容忍服务端停用更新或尚未完成首次检查。
 export interface UpdatePackageStatus {
   current_version?: string

@@ -41,7 +41,7 @@ func TestListOwnerCategoryAndOrder(t *testing.T) {
 	if err := json.Unmarshal(c.Get("test_recorder").(*httptest.ResponseRecorder).Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 2 || listed[0].ID <= listed[1].ID || listed[0].Category != "main" || listed[1].Category != "main" {
+	if len(listed) != 2 || listed[0].ID >= listed[1].ID || listed[0].Category != "main" || listed[1].Category != "main" {
 		t.Fatalf("unexpected filtered list: %+v", listed)
 	}
 	missing := contextFor(t, http.MethodGet, "/api/v1/files", nil)
@@ -54,7 +54,7 @@ func TestListOwnerCategoryAndOrder(t *testing.T) {
 func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 	h, db := testHandler(t)
 	product := model.Product{Name: "P", Code: "P-2"}
-	mold := model.Mold{Name: "M", Code: "M-2"}
+	mold := model.Mold{MoldNumber: "M-2", Model: "M", MoldType: model.MoldTypeSingle, LocationID: 1}
 	if err := db.Create(&product).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -84,6 +84,29 @@ export async function request<T>(
   return data as T
 }
 
+// uploadNativeFiles 让 Tauri 直接从本地路径流式上传文件，避免大资料包进入 WebView 内存。
+export async function uploadNativeFiles<T>(
+  path: string,
+  paths: string[],
+  fields: Record<string, string> = {},
+  token = '',
+): Promise<T> {
+  const desktop = desktopBridge()
+  if (!desktop) throw new Error('当前环境不支持原生文件拖放上传')
+  const response = await desktop.uploadFiles(paths, path, fields, token)
+  let data: unknown = null
+  try { data = response.body ? JSON.parse(response.body) : null } catch { data = response.body }
+  if (response.status < 200 || response.status >= 300) {
+    const body = data && typeof data === 'object' ? data as Partial<ApiErrorBody> : null
+    throw new ApiError(response.status, {
+      code: body?.code || `HTTP_${response.status}`,
+      message: typeof data === 'string' ? data : body?.message || '请求失败',
+      request_id: body?.request_id || '',
+    })
+  }
+  return data as T
+}
+
 // requestBlob 用于受保护的二进制资源，沿用 request 的 Bearer 认证和 ApiError 体验。
 export async function requestBlob(
   path: string,

@@ -20,6 +20,7 @@
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
 - 业务 API 只使用当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，库存单据/余额/流水使用各自复数路径，库存浏览/操作使用 `/api/v1/warehouse/items` 和 `/tabs`；客户端不回退旧任务、单数资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根路径。
 - 图片创建接口 `POST /api/v1/files/images` 支持重复 `file` 字段一次上传多张图片，单图和多图均返回图片数组；替换接口仍使用单图 `PUT /api/v1/files/:id/content`。
+- 模具使用 `/api/v1/molds`；位置字典使用 `/api/v1/mold-locations`，批量移位使用 `/api/v1/molds/bulk-location`。资料包通过 `/api/v1/molds/import/preview`、`/api/v1/molds/import/commit` 预览确认导入，通过 `/api/v1/molds/export` 导出 ZIP；模具图片沿用受保护图片接口，DWG 使用 `/api/v1/molds/:id/drawings` 上传、下载和删除。Web 与 Tauri 共用同一套页面和 DTO，ZIP、图片、DWG 和客户 Excel 支持 HTML5 拖入及点击选择；Tauri Windows 原生拖放直接由 Rust 按文件流上传，避免大文件进入 WebView 内存。
 - 登录响应同时返回 `access_token`、`refresh_token`、`expires_at` 和 `refresh_expires_at`；共用请求层会在 access token 临近/已经过期时调用 `/api/v1/auth/refresh`，轮换令牌后重试一次原请求。Web 与 Tauri 均持久化当前会话，连续 30 天未成功续期后回到登录页。
 - 退出登录调用 `/api/v1/auth/logout` 撤销 refresh token；服务端撤销失败不阻止客户端清理本地会话。修改密码会撤销该账号全部 refresh token。
 - 管理员重置其他账号密码会递增其密码版本，并在同一事务撤销该账号全部 refresh token；旧 access token 和 refresh token 均不可继续使用，账号必须用新密码重新登录。

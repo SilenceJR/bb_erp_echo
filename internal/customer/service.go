@@ -344,7 +344,7 @@ func (s *Service) DeleteProfile(id uint, replacementID uint) error {
 }
 
 func profileReferenced(db *gorm.DB, id uint) (bool, error) {
-	checks := []any{&model.InventoryDocument{}, &model.WorkOrder{}, &model.Mold{}}
+	checks := []any{&model.InventoryDocument{}, &model.WorkOrder{}}
 	for _, table := range checks {
 		// 客户模块单元测试可以只迁移本模块表；完整应用中新业务表存在时
 		// 才执行引用检查。

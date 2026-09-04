@@ -8,6 +8,7 @@ type ImageFile struct {
 	OwnerID      uint   `json:"owner_id" gorm:"not null;index:idx_image_owner"`
 	UploadedBy   uint   `json:"uploaded_by" gorm:"not null;index"`
 	Category     string `json:"category,omitempty" gorm:"size:60;index"`
+	SortOrder    int    `json:"sort_order" gorm:"not null;default:0;index"`
 	OriginalName string `json:"original_name" gorm:"size:255;not null"`
 	Size         int64  `json:"size" gorm:"not null"`
 	MimeType     string `json:"mime_type" gorm:"size:80;not null"`

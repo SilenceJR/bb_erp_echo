@@ -200,6 +200,9 @@ func New() (*App, error) {
 	if err := roleService.SeedSystemData(cfg); err != nil {
 		return nil, err
 	}
+	if err := mold.SeedLocations(db); err != nil {
+		return nil, fmt.Errorf("seed mold locations: %w", err)
+	}
 	if err := roleService.ReloadPolicies(); err != nil {
 		return nil, err
 	}
@@ -222,7 +225,8 @@ func (a *App) configureEcho() {
 	a.Echo.Use(echomiddleware.RequestID())
 	a.Echo.Use(echomiddleware.Recover())
 	a.Echo.Use(echomiddleware.Secure())
-	a.Echo.Use(echomiddleware.BodyLimit(25 * 1024 * 1024))
+	// 模具资料包允许上传不超过 2 GiB 的 ZIP；处理过程使用临时文件，不会按包大小占用内存。
+	a.Echo.Use(echomiddleware.BodyLimit(mold.MaxPackageSize + 32<<20))
 	a.Echo.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 		AllowOrigins: a.Config.HTTP.AllowedOrigins,
 		AllowMethods: []string{
@@ -281,12 +285,12 @@ func (a *App) registerRoutes() error {
 	inventory.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	material.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	product.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	mold.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	workorder.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 	imageService := filemodule.NewService(a.Config.Files.RootDir, a.DB)
 	if err := imageService.EnsureRoot(); err != nil {
 		return fmt.Errorf("create image upload root: %w", err)
 	}
+	mold.NewHandlerWithStorage(a.DB, a.Config.Files.RootDir).RegisterRoutes(protected, require, auditMiddleware)
 	filemodule.NewHandler(imageService, a.DB, a.Authorizer).RegisterRoutes(protected, auditMiddleware)
 	statistics.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 

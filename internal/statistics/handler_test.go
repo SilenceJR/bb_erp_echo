@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
@@ -61,7 +60,7 @@ func openStatisticsTestDB(t *testing.T) *gorm.DB {
 		&model.Department{}, &model.Product{}, &model.Material{},
 		&model.InventoryBalance{}, &model.InventoryLedger{},
 		&model.WorkOrder{}, &model.DepartmentTask{},
-		&model.Mold{}, &model.AuditLog{},
+		&model.Mold{}, &model.MoldLocation{}, &model.AuditLog{},
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
@@ -83,8 +82,11 @@ func seedStatisticsData(t *testing.T, db *gorm.DB) {
 	if err := db.Create(&model.CustomerProfile{CustomerCodeID: customerCode.ID, Name: "客户", ContactName: "联系人", IsDefault: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	next := time.Now().AddDate(0, 0, 3)
-	if err := db.Create(&model.Mold{Code: "MOLD-001", Name: "白壳模具", Status: "loaned", CurrentLocation: "注塑部", NextMaintenanceAt: &next}).Error; err != nil {
+	location := model.MoldLocation{Code: "A1-1", Status: model.MoldLocationActive}
+	if err := db.Create(&location).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Mold{MoldNumber: "MOLD-001", Model: "白壳", MoldType: model.MoldTypeSingle, LocationID: location.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.InventoryBalance{WarehouseID: 1, ItemType: "product", ItemID: product.ID, Quantity: 50000, AvgCost: 200, Amount: 1000}).Error; err != nil {

@@ -1,6 +1,6 @@
 # Go 后端状态
 
-> 基准日期：2026-09-01
+> 基准日期：2026-09-04
 
 Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当前按全新内网部署实现，不为旧数据库、旧 API 或旧客户端保留迁移/兼容分支。
 
@@ -16,7 +16,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 基础资料 | 已完成 | 供应商、物料、产品、仓库与库位 |
 | 库存 | 已完成 | 定点数量、单据、过账、冲销、禁止负库存、幂等、移动加权平均成本 |
 | 任务单 | 已完成 | 生产/通用任务、部门任务、部分完成、待结案、暂停/恢复、加急和强制完成 |
-| 模具 | 已完成 | 借出、归还、维修、保养、履历和状态约束 |
+| 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 已完成 | 统计聚合、成本权限与审计查询 |
 | 文件图片 | 已完成 | 受保护上传、批量图片、替换和删除 |
 | 客户端更新 | 已完成 | Windows full-only 更新、内网同源代理、签名、哈希、临时文件与失败恢复 |
@@ -79,6 +79,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 库存幂等键绑定接口范围、账号、组织、规范化请求和操作员工；不匹配返回 `409`。
 - 数量使用四位定点整数，金额/单价使用分；禁止把前端浮点值直接作为库存或金额事实。
 - 图片权限继承业务对象权限；身份发现接口不得返回组织、账号、业务数据、更新地址或凭据。
+- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、DWG 与位置字典；导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
@@ -104,10 +105,11 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 真实 app 集成验证部门终端账号通过 `POST /api/v1/system/users` 创建后可直接登录；`workorder` 读写和 `warehouse` 读取成功，`warehouse` 写入按默认角色返回 `403`，测试未手工调用 `ReloadPolicies`。
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
 - `git diff --check`
+- 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
 - `v0.0.10` 至 `v0.0.12` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest。
 - `v0.0.11` 标签对应 GitHub Actions `#91`（run `33458004272`）已成功：Go、Web、Tauri 前端、通用/Windows Rust 和完整 Windows 发布包作业全部通过，五组 GitHub Artifact 已生成；Gitee 发布作业为 `skipped`，`bb_erp_releases` 无 `v0.0.11` Release，稳定 manifest 保持 `0.0.9`。
-- `v0.0.12` 待标签推送后由 GitHub Actions 执行完整打包；在获得实际作业结果前，不将 Artifact、Gitee 跳过状态或 Windows 真机验收记为已完成。
+- `v0.0.13` 待标签推送后由 GitHub Actions 执行完整打包；在获得实际作业结果前，不将 Artifact、Gitee Release 或 Windows 真机验收记为已完成。
 - Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。
 - 本轮前端弹层显示整改不改变 API、权限或数据契约；客户导入/导出、客户资料和任务操作弹层已移除 Teleport 内不可靠的 Motion 正文包装，待 Web/Tauri 与 Windows 真机完成首帧可见性复验。
 - 启动重复排查确认属于开发 Vite 依赖发现重载现象，不涉及 Go 服务或认证续期；Tauri `--bundles app` 生产 `.app` 构建成功，完整 DMG 仅受当前 macOS 挂载脚本环境限制。
@@ -117,6 +119,8 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - Windows 10/11 真机防火墙、零/一/多服务、UDP 阻断和同时启动场景。
 - 自动发现或手动验证后，在 Windows 桌面端登录并请求至少一个已认证 API 的真实局域网验收。
 - 完整管理员/办公室/仓库/部门/只读权限矩阵。
+- 模具 ZIP 导入失败回滚、真实大包上传、Windows/Tauri 视觉与受保护文件下载仍需运行态验收。
+- 模具独立图片文件夹的“只追加图片”导入端点尚未开放；当前可用路径是 ZIP 全量资料包导入，补充该端点时复用同一命名识别和预览校验。
 - 客户、库存、任务、模具在断网、并发冲突、重复提交和磁盘异常下的端到端验收。
 - 安装目录、数据库、上传、日志和更新缓存的权限与备份恢复演练。
 

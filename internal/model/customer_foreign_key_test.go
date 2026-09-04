@@ -20,12 +20,11 @@ func TestCustomerProfileReferencesAreRestrictForeignKeys(t *testing.T) {
 		&CustomerCode{}, &CustomerProfile{},
 		&InventoryDocument{}, &InventoryDocumentLine{},
 		&WorkOrder{}, &DepartmentTask{}, &WorkOrderFlowLog{},
-		&Mold{}, &MoldEvent{},
 	); err != nil {
 		t.Fatalf("auto migrate customer references: %v", err)
 	}
 
-	for _, table := range []string{"inventory_documents", "work_orders", "molds"} {
+	for _, table := range []string{"inventory_documents", "work_orders"} {
 		assertCustomerProfileForeignKey(t, db, table)
 	}
 
@@ -48,20 +47,20 @@ func TestCustomerProfileReferencesAreRestrictForeignKeys(t *testing.T) {
 	if err := db.Create(&WorkOrder{Code: "WO-CUSTOMER-FK", Title: "客户外键", CustomerID: &profiles[1].ID}).Error; err != nil {
 		t.Fatalf("create work order reference: %v", err)
 	}
-	if err := db.Create(&Mold{Code: "MOLD-CUSTOMER-FK", Name: "客户外键模具", CustomerID: &profiles[2].ID}).Error; err != nil {
-		t.Fatalf("create mold reference: %v", err)
-	}
-
-	for _, profile := range profiles {
-		if err := db.Delete(&profile).Error; err == nil || !strings.Contains(strings.ToLower(err.Error()), "foreign key") {
+	for index, profile := range profiles {
+		err := db.Delete(&profile).Error
+		if index < 2 && (err == nil || !strings.Contains(strings.ToLower(err.Error()), "foreign key")) {
 			t.Fatalf("delete referenced profile %d error = %v, want foreign-key restriction", profile.ID, err)
 		}
 		var count int64
 		if err := db.Model(&CustomerProfile{}).Where("id = ?", profile.ID).Count(&count).Error; err != nil {
 			t.Fatalf("verify referenced profile %d: %v", profile.ID, err)
 		}
-		if count != 1 {
+		if index < 2 && count != 1 {
 			t.Fatalf("referenced profile %d disappeared after failed delete", profile.ID)
+		}
+		if index == 2 && count != 0 {
+			t.Fatalf("unreferenced profile %d remains", profile.ID)
 		}
 	}
 }

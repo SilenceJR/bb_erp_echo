@@ -82,12 +82,7 @@ export function useModuleConfiguration(deps: ConfigurationDependencies) {
         ...(deps.hasPermission('cost:view') ? [{key: 'default_cost', label: '默认成本（元）'}] : []),
         {key: 'operator_employee_id', label: '本次操作人', kind: 'operator', required: true},
       ]
-      case 'molds': return [
-        {key: 'code', label: '模具编号'}, {key: 'name', label: '模具名称'}, {key: 'customer_id', label: '客户ID'},
-        {key: 'product_id', label: '产品ID'}, {key: 'cavity_count', label: '穴数'}, {key: 'mold_material', label: '成型材料'},
-        {key: 'steel', label: '钢材'}, {key: 'size', label: '尺寸'}, {key: 'weight_gram', label: '重量g'},
-        {key: 'manufacturer', label: '制造商'}, {key: 'storage_location', label: '存放位置'}, {key: 'maintenance_cycle_days', label: '保养周期天'},
-      ]
+      case 'molds': return []
       case 'workorder': return [
         {key: 'type', label: '任务类型', kind: 'select', options: [{label: '生产单', value: 'production'}, {label: '通用任务', value: 'general'}], required: true},
         {key: 'code', label: '任务编号'}, {key: 'title', label: '标题', required: deps.formState.type === 'general'},

@@ -2,7 +2,6 @@ import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {appMessageBox} from './useAppMessageBox'
 import {useAssignment} from './useAssignment'
 import {useAuth} from './useAuth'
-import {useMold} from './useMold'
 import {useModuleData} from './useModuleData'
 import {useOperatorEmployees} from './useOperatorEmployees'
 import {useWarehouse} from './useWarehouse'
@@ -40,9 +39,6 @@ import {
   genericStatusTone,
   inventoryItemTypeLabel,
   isGenericStatusColumn,
-  moldMaintenanceState,
-  moldStatusLabel,
-  moldStatusTone,
   permissionDomainKey,
   permissionDomainLabel,
   stockState,
@@ -74,14 +70,13 @@ type MetricCardItem = {label: string; value: string; caption: string; tone: Metr
 type StatisticTrendItem = { date: string; name?: string; value: number; quantity?: number; amount?: number }
 type DepartmentStatistic = { department_id: number; name: string; total: number; completed: number; processing: number; partial: number; received: number }
 type StockStatisticItem = { item_type: string; item_id: number; name: string; code: string; category: string; quantity: number; safety_stock: number; amount?: number }
-type MoldStatisticItem = { id: number; code: string; name: string; status: string; current_location?: string; next_maintenance_at?: string }
 type StatisticsDashboard = {
   generated_at: string
   can_view_cost: boolean
   summary: Record<string, number>
   inventory: { by_item_type: StatisticNameValue[]; by_material_type: StatisticNameValue[]; low_stock: StockStatisticItem[]; trend: StatisticTrendItem[] }
   workorders: { by_status: StatisticNameValue[]; by_type: StatisticNameValue[]; by_department: DepartmentStatistic[]; trend: StatisticTrendItem[] }
-  molds: { by_status: StatisticNameValue[]; need_care: MoldStatisticItem[] }
+  molds: { by_type: StatisticNameValue[]; by_location: StatisticNameValue[] }
   business: { by_master_data: StatisticNameValue[] }
   audit: { by_result: StatisticNameValue[]; trend: StatisticTrendItem[] }
   recent_workorders: BasicItem[]
@@ -166,25 +161,6 @@ const {
   movementForm,
   quickSupplier,
 } = warehouseState
-
-const {
-  moldDetailDrawerVisible,
-  selectedMoldDetail,
-  selectedMoldID,
-  moldDetailLoading,
-  moldDetailError,
-  moldActionSubmitting,
-  moldActionError,
-  openMold,
-  loadMoldDetail,
-  closeMold,
-  handleMoldBeforeClose,
-  resetMold,
-  loanMold,
-  returnMold,
-  repairMold,
-  maintainMold,
-} = useMold({token, currentUser, hasPermission, reloadList: loadActiveModule, promptText, promptTextWithDefault, promptPositiveInteger})
 
 const {
   selectedWorkOrder,
@@ -284,11 +260,6 @@ watch(activeKey, (key) => {
     resetWorkorderProductSelection()
     closeTemporaryProductDialog()
   }
-})
-const selectedMoldMaintenanceState = computed(() => moldMaintenanceState(selectedMoldDetail.value || {}))
-const selectedMoldAlertType = computed<'success' | 'warning' | 'error' | 'info'>(() => {
-  if (selectedMoldMaintenanceState.value.tone === 'danger') return 'error'
-  return selectedMoldMaintenanceState.value.tone
 })
 let confirmedWarehouseTab = 'product'
 const navItems = computed(() => modules.filter(canReadModule))
@@ -391,7 +362,7 @@ const quickActionDefinitions = [
   {key: 'warehouses', title: '仓库', description: '查询库存并办理物品出入库', icon: '▦'},
   {key: 'customers', title: '客户档案', description: '查找或新增客户资料', icon: '◎'},
   {key: 'suppliers', title: '供应商', description: '维护采购供应商资料', icon: '↙'},
-  {key: 'molds', title: '模具台账', description: '查询模具位置与保养状态', icon: '◇'},
+  {key: 'molds', title: '模具', description: '查询模具位置与图片资料', icon: '◇'},
 ]
 const quickActions = computed(() => quickActionDefinitions.filter((item) => {
   const moduleItem = modules.find((candidate) => candidate.key === item.key)
@@ -464,7 +435,7 @@ const dashboardMetricCards = computed<MetricCardItem[]>(() => [
 const dashboardFocusItems = computed(() => [
   {key: 'warehouses', label: '库存核对', title: '核对安全库存', description: '查看缺货与低于安全库存的物品。', tone: 'info' as StatusTone},
   {key: 'workorder', label: '任务进度', title: '跟进交期与部门进度', description: '优先处理加急、暂停和待确认任务。', tone: 'info' as StatusTone},
-  {key: 'molds', label: '模具台账', title: '检查位置与保养日期', description: '关注维修、保养中与即将到期的模具。', tone: 'info' as StatusTone},
+  {key: 'molds', label: '模具', title: '检查位置与图片资料', description: '关注模具位置、图片资料和图纸。', tone: 'info' as StatusTone},
   {key: 'statistics', label: '经营概览', title: '查看汇总与趋势', description: '从统计报表复核异常和近期变化。', tone: 'info' as StatusTone},
 ].filter((focus) => {
   const item = modules.find((candidate) => candidate.key === focus.key)
@@ -606,14 +577,11 @@ const workorderSummaryCards = computed<MetricCardItem[]>(() => {
   ]
 })
 const moldSummaryCards = computed<MetricCardItem[]>(() => {
-  const maintenanceStates = rows.value.map(moldMaintenanceState)
-  const needsFollowUp = rows.value.filter((row, index) => maintenanceStates[index]?.tone === 'warning' || ['repairing', 'maintenance'].includes(String(row.status))).length
-  const needsAttention = rows.value.filter((row, index) => maintenanceStates[index]?.tone === 'danger' || row.status === 'scrapped').length
   return [
     {label: '当前页模具', value: String(rows.value.length), caption: `共 ${pageTotal.value} 条记录`, tone: 'neutral'},
-    {label: '在库', value: String(rows.value.filter((row) => row.status === 'in_stock').length), caption: '当前可用台账状态', tone: 'success'},
-    {label: '待跟进', value: String(needsFollowUp), caption: '7 天内到期、维修或保养中', tone: needsFollowUp ? 'warning' : 'success'},
-    {label: '需立即关注', value: String(needsAttention), caption: '保养已逾期或模具已报废', tone: needsAttention ? 'danger' : 'success'},
+    {label: '共模', value: String(rows.value.filter((row) => row.mold_type === 'common').length), caption: '当前页共模产品', tone: 'info'},
+    {label: '单模', value: String(rows.value.filter((row) => row.mold_type === 'single').length), caption: '当前页单模产品', tone: 'success'},
+    {label: '图片', value: String(rows.value.reduce((sum, row) => sum + Number(row.image_count || 0), 0)), caption: '当前页图片总数', tone: 'neutral'},
   ]
 })
 const operationalSummaryCards = computed<MetricCardItem[]>(() => {
@@ -627,12 +595,11 @@ const statisticsCards = computed<MetricCardItem[]>(() => {
   const lowStock = Number(summary.low_stock_items || 0)
   const urgent = Number(summary.urgent_workorders || 0)
   const pendingClose = Number(summary.pending_close_orders || 0)
-  const moldsNeedCare = Number(summary.molds_need_care || 0)
   return [
     {label: '库存总量', value: formatQuantity(summary.inventory_quantity), caption: statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏', tone: 'info'},
     {label: '低库存', value: String(lowStock), caption: '低于或等于安全库存', tone: lowStock ? 'danger' : 'success', statusLabel: lowStock ? '需处理' : '正常', statusTone: lowStock ? 'danger' : 'success'},
     {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${urgent} · 待确认 ${pendingClose}`, tone: urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
-    {label: '模具关注', value: String(moldsNeedCare), caption: `模具总数 ${summary.molds || 0}`, tone: moldsNeedCare ? 'warning' : 'success'},
+    {label: '模具档案', value: String(summary.molds || 0), caption: '模具产品记录总数', tone: 'info'},
     {label: '客户编码', value: String(summary.customers || 0), caption: '稳定关联编码总数', tone: 'neutral'},
     {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
   ]
@@ -728,7 +695,6 @@ async function switchModule(key: string) {
   skeletonResult.value = null
   listError.value = ''
   closeWorkOrder()
-  closeMold()
   closeAssignment()
   showCreateForm.value = false
   editingSupplier.value = null
@@ -1089,53 +1055,6 @@ function genericRowSubtitle(row: BasicItem): string {
   return value === '-' ? `编号 ${row.id}` : `${columnLabel(column)}：${value}`
 }
 
-async function promptText(title: string, message: string, required = true): Promise<string> {
-  try {
-    const result = await appMessageBox.prompt(message, title, {
-      inputType: 'textarea',
-      inputValidator: (value) => !required || !!String(value || '').trim(),
-      inputErrorMessage: '请填写内容',
-    })
-    return String(result.value || '').trim()
-  } catch {
-    return ''
-  }
-}
-
-async function promptTextWithDefault(title: string, message: string, inputValue: string): Promise<string> {
-  try {
-    const result = await appMessageBox.prompt(message, title, {
-      inputValue,
-      inputValidator: (value) => Boolean(String(value || '').trim()),
-      inputErrorMessage: '请填写具体位置',
-      confirmButtonText: '继续',
-      cancelButtonText: '取消',
-    })
-    return String(result.value || '').trim()
-  } catch {
-    return ''
-  }
-}
-
-async function promptPositiveInteger(title: string, message: string): Promise<number | null> {
-  try {
-    const result = await appMessageBox.prompt(message, title, {
-      inputType: 'number',
-      inputValidator: (value) => {
-        const number = Number(String(value || '').trim())
-        return Number.isInteger(number) && number > 0
-      },
-      inputErrorMessage: '请输入大于 0 的整数天数',
-      confirmButtonText: '继续',
-      cancelButtonText: '取消',
-    })
-    const number = Number(String(result.value || '').trim())
-    return Number.isInteger(number) && number > 0 ? number : null
-  } catch {
-    return null
-  }
-}
-
 function departmentName(id: unknown): string {
   const item = rowsFor('departments').find((department) => Number(department.id) === Number(id))
   return String(item?.name || `部门#${id}`)
@@ -1181,7 +1100,6 @@ function workspaceSubmitInProgress(): boolean {
     || affiliationSaving.value
     || movementSubmitting.value
     || quickSupplierSubmitting.value
-    || moldActionSubmitting.value
     || temporaryProductSubmitting.value
     || actionSubmitting.value,
   )
@@ -1342,13 +1260,6 @@ const workorderContext = {
     movementForm,
     quickSupplier,
     activeWarehouseTab,
-    moldDetailDrawerVisible,
-    selectedMoldDetail,
-    selectedMoldID,
-    moldDetailLoading,
-    moldDetailError,
-    moldActionSubmitting,
-    moldActionError,
     statisticsData,
     affiliationTarget,
     affiliationDepartmentID,
@@ -1356,8 +1267,6 @@ const workorderContext = {
     affiliationTerminalOptions,
     affiliationSaving,
     affiliationError,
-    selectedMoldMaintenanceState,
-    selectedMoldAlertType,
     warehouseTabs,
     warehouseTabOptions,
     movementDefinitions,
@@ -1476,15 +1385,6 @@ const workorderContext = {
     performWarehouseClose,
     handleWarehouseBeforeClose,
     resetWarehouseItem,
-    openMold,
-    loadMoldDetail,
-    closeMold,
-    handleMoldBeforeClose,
-    resetMold,
-    loanMold,
-    returnMold,
-    repairMold,
-    maintainMold,
     loadWarehouseItemDetail,
     loadItemMovements,
     loadAllItemMovements,
@@ -1501,14 +1401,8 @@ const workorderContext = {
     formatDate,
     businessTypeLabel,
     movementQuantity,
-    promptText,
-    promptTextWithDefault,
-    promptPositiveInteger,
     departmentName,
     inventoryItemTypeLabel,
-    moldStatusLabel,
-    moldStatusTone,
-    moldMaintenanceState,
     departmentCompletionRate,
     trendNameLabel,
     trendBarPercentage,
