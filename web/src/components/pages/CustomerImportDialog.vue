@@ -23,10 +23,10 @@
         <div><h3>下载标准模板</h3><p>支持 .xls 和 .xlsx，首个工作表、最多 10,000 条、文件不超过 10 MiB。</p></div>
         <el-button :loading="templateLoading" @click="downloadTemplate">下载导入模板</el-button>
       </div>
-      <div class="import-guide">
+      <div class="import-guide import-file-guide">
         <span class="step-number">2</span>
-        <div><h3>选择 Excel 文件</h3><p>重复编码会形成多条客户资料；任一行错误都不会写入数据库。</p></div>
-        <el-button type="primary" plain @click="openFilePicker">选择文件</el-button>
+        <div><h3>拖放或选择 Excel 文件</h3><p>重复编码会形成多条客户资料；任一行错误都不会写入数据库。</p></div>
+        <div class="customer-import-dropzone" data-file-drop-target :class="{'is-dragging': dragging}" role="button" tabindex="0" @click="openFilePicker" @keydown.enter.prevent="openFilePicker" @keydown.space.prevent="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop" @bb-native-file-drag="handleNativeFileDrag"><strong>{{ dragging ? '松开以选择文件' : '拖入 Excel 文件' }}</strong><el-button type="primary" plain @click.stop="openFilePicker">选择文件</el-button></div>
         <input ref="fileInput" class="bb-sr-only" type="file" accept=".xls,.xlsx" @change="selectFile" />
       </div>
       <div v-if="file" class="selected-file">
@@ -88,16 +88,17 @@
 <script setup lang="ts">
 import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
-import {downloadApiFile, request} from '../../api/http'
+import {downloadApiFile, request, uploadNativeFiles} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
-import type {CustomerImportPreview} from '../../types'
+import type {CustomerImportPreview, NativeFileDragDetail} from '../../types'
 
 const props = defineProps<{modelValue: boolean; token: string}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void; (event: 'completed'): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
 const step = ref(0)
 const file = ref<File | null>(null)
+const nativeFilePath = ref<string | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const preview = ref<CustomerImportPreview | null>(null)
 const result = ref<{imported_codes: number; imported_profiles: number; completed_at: string} | null>(null)
@@ -105,6 +106,8 @@ const previewLoading = ref(false)
 const commitLoading = ref(false)
 const templateLoading = ref(false)
 const error = ref('')
+const dragging = ref(false)
+let dragDepth = 0
 const busy = computed(() => previewLoading.value || commitLoading.value || templateLoading.value)
 const expiryText = computed(() => preview.value?.expires_at ? `预览令牌将于 ${new Date(preview.value.expires_at).toLocaleString('zh-CN', {hour12: false})} 过期，提交时会重新校验同一文件。` : '')
 
@@ -115,16 +118,27 @@ useDirtyGuard('customer-import', {
   dirtyMessage: '当前客户导入文件或校验结果尚未完成，离开后不会保留。',
 })
 
-function openFilePicker() { fileInput.value?.click() }
+function openFilePicker() { if (!busy.value) fileInput.value?.click() }
+function hasDraggedFiles(event: DragEvent): boolean { return Array.from(event.dataTransfer?.types || []).includes('Files') }
+function handleDragEnter(event: DragEvent) { if (!hasDraggedFiles(event)) return; dragDepth++; dragging.value = true }
+function handleDragOver(event: DragEvent) { if (hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy' }
+function handleDragLeave() { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dragging.value = false }
+function handleDrop(event: DragEvent) { dragDepth = 0; dragging.value = false; const files = Array.from(event.dataTransfer?.files || []); if (files.length !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; acceptFile(files[0]) }
+function handleNativeFileDrag(event: Event) { const detail = (event as CustomEvent<NativeFileDragDetail>).detail; if (!detail) return; if (detail.phase === 'enter' || detail.phase === 'over') { if (!busy.value) dragging.value = true; return }; dragging.value = false; if (detail.phase !== 'drop' || busy.value) return; if (detail.error) { error.value = detail.error; return }; if (detail.paths.length !== 1 && detail.files.length !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; if (detail.paths.length === 1) { const path = detail.paths[0]; acceptFile(new File([], path.split(/[\\/]/).pop() || '拖入文件')); nativeFilePath.value = path; return }; acceptFile(detail.files[0]) }
 function selectFile(event: Event) {
-  const selected = (event.target as HTMLInputElement).files?.[0] || null
+  const input = event.target as HTMLInputElement
+  const selected = input.files?.[0] || null
+  input.value = ''
+  if (selected) acceptFile(selected)
+}
+function acceptFile(selected: File) {
+  nativeFilePath.value = null
   error.value = ''
-  if (!selected) return
   if (!/\.(xls|xlsx)$/i.test(selected.name)) { error.value = '仅支持 .xls 或 .xlsx 文件'; clearFile(); return }
   if (selected.size > 10 * 1024 * 1024) { error.value = '文件不能超过 10 MiB'; clearFile(); return }
   file.value = selected
 }
-function clearFile() { file.value = null; if (fileInput.value) fileInput.value.value = '' }
+function clearFile() { file.value = null; nativeFilePath.value = null; if (fileInput.value) fileInput.value.value = '' }
 function formatBytes(size: number) { return size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / 1024 / 1024).toFixed(1)} MiB` }
 
 async function downloadTemplate() {
@@ -143,8 +157,8 @@ async function loadPreview() {
   previewLoading.value = true
   error.value = ''
   try {
-    const form = new FormData(); form.append('file', file.value)
-    preview.value = await request<CustomerImportPreview>('/api/v1/customers/import/preview', {method: 'POST', body: form}, props.token)
+    if (nativeFilePath.value) preview.value = await uploadNativeFiles<CustomerImportPreview>('/api/v1/customers/import/preview', [nativeFilePath.value], {}, props.token)
+    else { const form = new FormData(); form.append('file', file.value); preview.value = await request<CustomerImportPreview>('/api/v1/customers/import/preview', {method: 'POST', body: form}, props.token) }
     step.value = 1
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '导入预览失败' }
   finally { previewLoading.value = false }
@@ -154,8 +168,8 @@ async function commit() {
   commitLoading.value = true
   error.value = ''
   try {
-    const form = new FormData(); form.append('file', file.value); form.append('token', preview.value.token)
-    result.value = await request('/api/v1/customers/import/commit', {method: 'POST', body: form}, props.token)
+    if (nativeFilePath.value) result.value = await uploadNativeFiles('/api/v1/customers/import/commit', [nativeFilePath.value], {token: preview.value.token}, props.token)
+    else { const form = new FormData(); form.append('file', file.value); form.append('token', preview.value.token); result.value = await request('/api/v1/customers/import/commit', {method: 'POST', body: form}, props.token) }
     step.value = 2
     emit('completed')
     ElMessage.success('客户资料导入成功')
@@ -163,7 +177,7 @@ async function commit() {
   finally { commitLoading.value = false }
 }
 function backToFile() { preview.value = null; error.value = ''; step.value = 0 }
-function reset() { step.value = 0; preview.value = null; result.value = null; error.value = ''; clearFile() }
+function reset() { step.value = 0; preview.value = null; result.value = null; error.value = ''; dragging.value = false; dragDepth = 0; clearFile() }
 async function beforeClose(done: () => void) {
   if (busy.value) return
   if (step.value === 1 && preview.value?.token) {
@@ -183,6 +197,11 @@ async function beforeClose(done: () => void) {
 .import-guide p,
 .import-result p { margin: var(--bb-space-1) 0 0; color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
 .step-number { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--bb-brand-50); color: var(--bb-brand-700); font-weight: var(--bb-font-weight-bold); }
+.customer-import-dropzone { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); border: 1px dashed var(--bb-border-strong); border-radius: var(--bb-radius-lg); background: var(--bb-bg-subtle); padding: var(--bb-space-3) var(--bb-space-4); color: var(--bb-text-secondary); cursor: pointer; }
+.customer-import-dropzone:hover,
+.customer-import-dropzone:focus-visible,
+.customer-import-dropzone.is-dragging { border-color: var(--bb-brand-500); background: var(--bb-brand-50); color: var(--bb-brand-700); outline: none; }
+.customer-import-dropzone strong { color: inherit; }
 .selected-file { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); border-radius: var(--bb-radius-lg); background: var(--bb-bg-subtle); padding: var(--bb-space-3) var(--bb-space-4); }
 .selected-file div { display: grid; gap: var(--bb-space-1); }
 .selected-file small { color: var(--bb-text-secondary); }
@@ -200,4 +219,9 @@ async function beforeClose(done: () => void) {
 .import-result { display: grid; min-height: 320px; place-items: center; align-content: center; text-align: center; }
 .import-result > span { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 50%; background: var(--bb-success-bg); color: var(--bb-success); font-size: var(--bb-font-size-30); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
+@media (max-width: 760px) {
+  .import-file-guide { grid-template-columns: 36px minmax(0, 1fr); }
+  .import-file-guide .customer-import-dropzone { grid-column: 2; }
+  .customer-import-dropzone { align-items: stretch; flex-direction: column; }
+}
 </style>

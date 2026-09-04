@@ -1,8 +1,8 @@
 <template>
-  <section class="image-gallery" aria-label="业务图片">
+  <section class="image-gallery" :aria-label="`${title}图片`">
     <div class="image-gallery-heading">
       <div>
-        <h3>图片资料</h3>
+        <h3>{{ title }}</h3>
         <small>可一次选择多张；支持 JPG、PNG、WebP、GIF，单张不超过 20 MiB</small>
       </div>
       <div class="image-gallery-actions">
@@ -67,40 +67,58 @@
     </p>
 
     <div
-      v-loading="loading"
-      class="image-gallery-grid"
-      :aria-busy="loading || saving"
+      class="image-gallery-dropzone"
+      data-file-drop-target
+      :class="{'is-dragging': isDragging}"
+      @dragenter.prevent="handleDragEnter"
+      @dragover.prevent="handleDragOver"
+      @dragleave.prevent="handleDragLeave"
+      @drop.prevent="handleDrop"
+      @bb-native-file-drag="handleNativeFileDrag"
     >
-      <article v-for="item in images" :key="item.id" class="image-gallery-item">
-        <div class="image-gallery-preview">
-          <el-image
-            v-if="previewUrls[item.id]"
-            :src="previewUrls[item.id]"
-            :alt="item.original_name"
-            :aria-label="`预览图片：${item.original_name}`"
-            tabindex="0"
-            role="button"
-            :preview-src-list="previewSources"
-            :initial-index="previewIndex(item.id)"
-            fit="cover"
-            preview-teleported
-            @keydown.enter.prevent="openPreviewFromKeyboard"
-            @keydown.space.prevent="openPreviewFromKeyboard"
-          >
-            <template #error><span class="image-gallery-error">图片加载失败</span></template>
-          </el-image>
-          <span v-else class="image-gallery-error">图片加载失败</span>
-        </div>
-        <div class="image-gallery-meta">
-          <span :title="item.original_name">{{ item.original_name }}</span>
-          <small>{{ formatSize(item.size) }} · {{ formatDate(item.created_at) }}</small>
-        </div>
-        <div v-if="canWrite" class="image-gallery-item-actions">
-          <el-button link type="primary" :disabled="loading || saving" @click="openReplace(item)">替换</el-button>
-          <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(item)">删除</el-button>
-        </div>
-      </article>
-      <p v-if="!loading && !images.length" class="image-gallery-empty">暂无图片资料</p>
+      <div v-loading="loading" class="image-gallery-grid" :aria-busy="loading || saving">
+        <article v-for="item in images" :key="item.id" class="image-gallery-item">
+          <div class="image-gallery-preview">
+            <el-image
+              v-if="previewUrls[item.id]"
+              :src="previewUrls[item.id]"
+              :alt="item.original_name"
+              :aria-label="`预览图片：${item.original_name}`"
+              tabindex="0"
+              role="button"
+              :preview-src-list="previewSources"
+              :initial-index="previewIndex(item.id)"
+              fit="cover"
+              preview-teleported
+              @keydown.enter.prevent="openPreviewFromKeyboard"
+              @keydown.space.prevent="openPreviewFromKeyboard"
+            >
+              <template #error><span class="image-gallery-error">图片加载失败</span></template>
+            </el-image>
+            <span v-else class="image-gallery-error">图片加载失败</span>
+          </div>
+          <div class="image-gallery-meta">
+            <span :title="item.original_name">{{ item.original_name }}</span>
+            <small>{{ formatSize(item.size) }} · {{ formatDate(item.created_at) }}</small>
+          </div>
+          <div v-if="canWrite" class="image-gallery-item-actions">
+            <el-button link type="primary" :disabled="loading || saving" @click="openReplace(item)">替换</el-button>
+            <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(item)">删除</el-button>
+          </div>
+        </article>
+        <p v-if="!loading && !images.length && !errorMessage" class="image-gallery-empty">暂无图片资料</p>
+      </div>
+      <button
+        v-if="canWrite"
+        type="button"
+        class="image-gallery-drop-hint"
+        :class="{'is-dragging': isDragging}"
+        :disabled="loading || saving"
+        @click="openUpload"
+      >
+        <strong>{{ isDragging ? '松开以上传图片' : '拖入图片到此处' }}</strong>
+        <span>或点击选择多张图片</span>
+      </button>
     </div>
   </section>
 </template>
@@ -108,10 +126,10 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
-import {request, requestBlob} from '../api/http'
+import {request, requestBlob, uploadNativeFiles} from '../api/http'
 import {appMessageBox} from '../composables/useAppMessageBox'
 import {useDirtyGuard} from '../composables/useDirtyGuard'
-import type {ImageFile} from '../types'
+import type {ImageFile, NativeFileDragDetail} from '../types'
 
 const props = defineProps<{
   ownerType: 'product' | 'mold' | 'workorder' | 'department_task'
@@ -119,7 +137,10 @@ const props = defineProps<{
   token: string
   canWrite: boolean
   category?: string
+  title?: string
 }>()
+
+const title = props.title || '图片资料'
 
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const allowedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
@@ -135,6 +156,8 @@ const uploadInput = ref<HTMLInputElement | null>(null)
 const replaceInput = ref<HTMLInputElement | null>(null)
 const replaceTarget = ref<ImageFile | null>(null)
 const operation = ref<'upload' | 'replace' | 'delete' | null>(null)
+const isDragging = ref(false)
+let dragDepth = 0
 let loadSequence = 0
 
 const saving = computed(() => operation.value !== null)
@@ -189,10 +212,7 @@ async function loadImages(allowDuringSave = false): Promise<boolean> {
     return true
   } catch (error) {
     if (sequence !== loadSequence) return false
-    if (!allowDuringSave) {
-      releasePreviewUrls()
-      images.value = []
-    }
+    // 刷新失败保留已渲染图片，避免临时网络错误误显示为空图库。
     errorMessage.value = error instanceof Error ? error.message : '图片加载失败'
     return false
   } finally {
@@ -227,12 +247,53 @@ function openReplace(item: ImageFile) {
   }
 }
 
-async function uploadSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = Array.from(input.files || [])
-  input.value = ''
-  if (!files.length || !props.canWrite || saving.value) return
+function hasDraggedFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types || []).includes('Files')
+}
 
+function handleDragEnter(event: DragEvent) {
+  if (!props.canWrite || !hasDraggedFiles(event)) return
+  dragDepth++
+  isDragging.value = true
+}
+
+function handleDragOver(event: DragEvent) {
+  if (props.canWrite && hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy'
+}
+
+function handleDragLeave() {
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (!dragDepth) isDragging.value = false
+}
+
+function handleDrop(event: DragEvent) {
+  dragDepth = 0
+  isDragging.value = false
+  if (!props.canWrite || saving.value) return
+  const files = Array.from(event.dataTransfer?.files || [])
+  if (files.length) void uploadSelectedFiles(files)
+}
+
+function handleNativeFileDrag(event: Event) {
+  const detail = (event as CustomEvent<NativeFileDragDetail>).detail
+  if (!detail) return
+  if (detail.phase === 'enter' || detail.phase === 'over') {
+    if (props.canWrite) isDragging.value = true
+    return
+  }
+  isDragging.value = false
+  if (detail.phase !== 'drop' || !props.canWrite || saving.value) return
+  if (detail.error) {
+    errorMessage.value = detail.error
+    ElMessage.error(detail.error)
+    return
+  }
+  if (detail.paths.length) void uploadNativePaths(detail.paths)
+  if (detail.files.length) void uploadSelectedFiles(detail.files)
+}
+
+async function uploadSelectedFiles(files: File[]) {
+  if (!files.length || !props.canWrite || saving.value) return
   const validationErrors = files
     .map((file) => ({file, message: validateFile(file)}))
     .filter((result) => result.message)
@@ -246,8 +307,14 @@ async function uploadSelected(event: Event) {
     ElMessage.warning('批量上传未开始，请检查文件格式和大小')
     return
   }
-
   await uploadFiles(files)
+}
+
+async function uploadSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  await uploadSelectedFiles(files)
 }
 
 async function replaceSelected(event: Event) {
@@ -293,6 +360,32 @@ async function uploadFiles(files: File[]) {
     errorMessage.value = error instanceof Error ? error.message : `批量上传 ${files.length} 张图片失败`
     statusTone.value = 'error'
     statusMessage.value = `本次 ${files.length} 张图片未能完成上传。`
+    ElMessage.error(errorMessage.value)
+  } finally {
+    operation.value = null
+  }
+}
+
+async function uploadNativePaths(paths: string[]) {
+  if (!paths.length || !props.canWrite || saving.value) return
+  operation.value = 'upload'
+  errorMessage.value = ''
+  statusTone.value = 'success'
+  statusMessage.value = `正在上传 ${paths.length} 张图片，完成前无法刷新或修改图片。`
+  try {
+    const fields: Record<string, string> = {owner_type: props.ownerType, owner_id: String(props.ownerId)}
+    if (props.category) fields.category = props.category
+    const uploaded = await uploadNativeFiles<ImageFile[]>('/api/v1/files/images', paths, fields, props.token)
+    statusMessage.value = `已上传 ${uploaded.length} 张图片，正在刷新图片列表。`
+    const refreshed = await loadImages(true)
+    statusTone.value = refreshed ? 'success' : 'error'
+    statusMessage.value = refreshed ? `已成功上传 ${uploaded.length} 张图片，图片列表已刷新。` : `已成功上传 ${uploaded.length} 张图片，但列表刷新失败，请稍后手动刷新。`
+    if (refreshed) ElMessage.success(`已成功上传 ${uploaded.length} 张图片`)
+    else ElMessage.warning(`已上传 ${uploaded.length} 张图片，但列表刷新失败`)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : `批量上传 ${paths.length} 张图片失败`
+    statusTone.value = 'error'
+    statusMessage.value = `本次 ${paths.length} 张图片未能完成上传。`
     ElMessage.error(errorMessage.value)
   } finally {
     operation.value = null

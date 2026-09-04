@@ -2,8 +2,9 @@ package mold
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
-	"time"
 
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
@@ -11,133 +12,185 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	statusInStock     = "in_stock"
-	statusLoaned      = "loaned"
-	statusRepairing   = "repairing"
-	statusMaintenance = "maintenance"
-	statusScrapped    = "scrapped"
-
-	eventCreate      = "create"
-	eventLoan        = "loan"
-	eventReturn      = "return"
-	eventRepair      = "repair"
-	eventMaintenance = "maintenance"
-)
-
 var (
-	ErrMoldNotFound                 = errors.New("mold not found")
-	ErrMoldStatusConflict           = errors.New("mold status conflict")
-	ErrMoldReturnLocationRequired   = errors.New("mold return location required")
-	ErrMoldMaintenanceCycleRequired = errors.New("mold maintenance cycle required")
-	ErrCustomerProfileNotFound      = errors.New("customer profile not found")
+	ErrMoldNotFound          = errors.New("mold not found")
+	ErrMoldNumberConflict    = errors.New("mold number already exists")
+	ErrMoldInvalidType       = errors.New("invalid mold type")
+	ErrMoldGroupRequired     = errors.New("common group number required")
+	ErrMoldGroupForbidden    = errors.New("single mold cannot have common group number")
+	ErrMoldLocationRequired  = errors.New("mold location required")
+	ErrMoldLocationNotFound  = errors.New("mold location not found")
+	ErrMoldLocationDisabled  = errors.New("mold location disabled")
+	ErrMoldLocationInUse     = errors.New("mold location is in use")
+	ErrMoldSelectionRequired = errors.New("mold selection required")
 )
 
-type Transition struct {
-	Status       string
-	EventType    string
-	Location     string
-	Counterparty string
-	HandlerName  string
-	Reason       string
-	Description  string
+type Input struct {
+	MoldNumber    string `json:"mold_number" validate:"required"`
+	Model         string `json:"model" validate:"required"`
+	MoldType      string `json:"mold_type" validate:"required,oneof=single common"`
+	LocationID    uint   `json:"location_id" validate:"required"`
+	LocationCode  string `json:"-"`
+	CommonGroupNo string `json:"common_group_no"`
+	Remark        string `json:"remark"`
 }
 
-type MaintenanceCommand struct {
-	Location             string
-	HandlerName          string
-	Description          string
-	MaintenanceCycleDays int
-	Completed            bool
+type ListFilter struct {
+	Type       string
+	LocationID uint
+	GroupNo    string
 }
 
-// Service 是模具台账与状态流转的应用服务接口。
+type MoldResponse struct {
+	model.Mold
+	ImageCount   int64 `json:"image_count"`
+	DrawingCount int64 `json:"drawing_count"`
+}
+
+// MoldPageResponse 是模具列表分页响应的 Swagger 具体类型。
+type MoldPageResponse struct {
+	Items    []MoldResponse `json:"items"`
+	Total    int64          `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
+	Keyword  string         `json:"keyword,omitempty"`
+}
+
+type LocationInput struct {
+	Code string `json:"code" validate:"required"`
+}
+
+type LocationStatusInput struct {
+	Status string `json:"status" validate:"required,oneof=active disabled"`
+}
+
+type BulkMoveInput struct {
+	MoldIDs    []uint `json:"mold_ids" validate:"required,min=1"`
+	LocationID uint   `json:"location_id" validate:"required"`
+}
+
 type Service interface {
-	List(query pagination.Query, status string) (pagination.Result[model.Mold], error)
-	Get(id uint) (model.Mold, error)
-	Create(req moldRequest) (model.Mold, error)
-	Update(id uint, req moldRequest) (model.Mold, error)
+	List(query pagination.Query, filter ListFilter) (pagination.Result[MoldResponse], error)
+	Get(id uint) (MoldResponse, error)
+	Create(input Input) (model.Mold, error)
+	Update(id uint, input Input) (model.Mold, error)
 	Delete(id uint) error
-	Transition(id uint, command Transition) (model.Mold, error)
-	Maintain(id uint, command MaintenanceCommand) (model.Mold, error)
+	Locations(includeDisabled bool) ([]model.MoldLocation, error)
+	CreateLocation(input LocationInput) (model.MoldLocation, error)
+	UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error)
+	BulkMove(input BulkMoveInput) error
 }
 
 type gormService struct {
-	db  *gorm.DB
-	now func() time.Time
+	db          *gorm.DB
+	storageRoot string
 }
 
 var _ Service = (*gormService)(nil)
 
-func NewService(db *gorm.DB) Service {
-	return &gormService{db: db, now: time.Now}
+func NewService(db *gorm.DB) Service { return &gormService{db: db} }
+
+func NewServiceWithStorage(db *gorm.DB, storageRoot string) Service {
+	return &gormService{db: db, storageRoot: storageRoot}
 }
 
-func (s *gormService) List(query pagination.Query, status string) (pagination.Result[model.Mold], error) {
-	db := s.db.Model(&model.Mold{})
-	if status != "" {
-		db = db.Where("status = ?", status)
-	}
-	db = pagination.ApplyKeyword(db, query.Keyword, "code", "name", "mold_material", "steel", "size", "manufacturer", "owner", "storage_location", "current_location", "status", "remark")
-	return pagination.Page[model.Mold](db, query, "id desc", nil)
-}
-
-func (s *gormService) Get(id uint) (model.Mold, error) {
-	var item model.Mold
-	err := s.db.Preload("Events", func(db *gorm.DB) *gorm.DB {
-		return db.Order("id desc")
-	}).First(&item, id).Error
-	return item, mapMoldError(err)
-}
-
-func (s *gormService) Create(req moldRequest) (model.Mold, error) {
-	item := moldFromRequest(req)
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := validateCustomerProfile(tx, item.CustomerID); err != nil {
+// SeedLocations 保证全新数据库具备最小固定位置字典。
+func SeedLocations(db *gorm.DB) error {
+	for _, code := range []string{"A1-1", "B1-1"} {
+		item := model.MoldLocation{Code: code, Status: model.MoldLocationActive}
+		if err := db.Where("code = ?", code).FirstOrCreate(&item).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&item).Error; err != nil {
-			return err
-		}
-		return s.createEvent(tx, item, eventCreate, "", item.Status, item.CurrentLocation, "", "", "新建模具档案", "")
-	})
-	return item, err
-}
-
-func (s *gormService) Update(id uint, req moldRequest) (model.Mold, error) {
-	var item model.Mold
-	if err := s.db.First(&item, id).Error; err != nil {
-		return item, mapMoldError(err)
-	}
-	beforeStatus := item.Status
-	applyMoldRequest(&item, req)
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := validateCustomerProfile(tx, item.CustomerID); err != nil {
-			return err
-		}
-		if err := tx.Save(&item).Error; err != nil {
-			return err
-		}
-		if beforeStatus != item.Status {
-			return s.createEvent(tx, item, "status_change", beforeStatus, item.Status, item.CurrentLocation, "", "", "更新模具状态", "")
-		}
-		return nil
-	})
-	return item, err
-}
-
-func validateCustomerProfile(db *gorm.DB, id *uint) error {
-	if id == nil {
-		return nil
-	}
-	var profile model.CustomerProfile
-	if err := db.Select("id").First(&profile, *id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrCustomerProfileNotFound
-		}
-		return err
 	}
 	return nil
+}
+
+func (s *gormService) List(query pagination.Query, filter ListFilter) (pagination.Result[MoldResponse], error) {
+	db := s.db.Model(&model.Mold{}).Preload("Location")
+	if filter.Type != "" {
+		db = db.Where("mold_type = ?", filter.Type)
+	}
+	if filter.LocationID != 0 {
+		db = db.Where("location_id = ?", filter.LocationID)
+	}
+	if filter.GroupNo != "" {
+		db = db.Where("common_group_no LIKE ?", "%"+strings.TrimSpace(filter.GroupNo)+"%")
+	}
+	db = pagination.ApplyKeyword(db, query.Keyword, "mold_number", "model", "mold_type", "common_group_no", "remark")
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return pagination.Result[MoldResponse]{}, err
+	}
+	var molds []model.Mold
+	if err := db.Order("id desc").Offset(query.Offset).Limit(query.PageSize).Find(&molds).Error; err != nil {
+		return pagination.Result[MoldResponse]{}, err
+	}
+	items, err := s.withCounts(molds)
+	if err != nil {
+		return pagination.Result[MoldResponse]{}, err
+	}
+	return pagination.Result[MoldResponse]{Items: items, Total: total, Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword}, nil
+}
+
+func (s *gormService) Get(id uint) (MoldResponse, error) {
+	var item model.Mold
+	if err := s.db.Preload("Location").First(&item, id).Error; err != nil {
+		return MoldResponse{}, mapMoldError(err)
+	}
+	items, err := s.withCounts([]model.Mold{item})
+	if err != nil {
+		return MoldResponse{}, err
+	}
+	return items[0], nil
+}
+
+func (s *gormService) withCounts(molds []model.Mold) ([]MoldResponse, error) {
+	items := make([]MoldResponse, len(molds))
+	for i, item := range molds {
+		items[i].Mold = item
+		if err := s.db.Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Count(&items[i].ImageCount).Error; err != nil {
+			return nil, err
+		}
+		if err := s.db.Model(&model.MoldDrawing{}).Where("mold_id = ?", item.ID).Count(&items[i].DrawingCount).Error; err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
+}
+
+func (s *gormService) Create(input Input) (model.Mold, error) {
+	input = normalizeInput(input)
+	if err := validateInput(input); err != nil {
+		return model.Mold{}, err
+	}
+	if err := s.validateLocation(input.LocationID, false); err != nil {
+		return model.Mold{}, err
+	}
+	item := model.Mold{MoldNumber: input.MoldNumber, Model: input.Model, MoldType: input.MoldType, LocationID: input.LocationID, CommonGroupNo: input.CommonGroupNo, Remark: input.Remark}
+	if err := s.db.Create(&item).Error; err != nil {
+		return model.Mold{}, mapMoldError(err)
+	}
+	return item, nil
+}
+
+func (s *gormService) Update(id uint, input Input) (model.Mold, error) {
+	input = normalizeInput(input)
+	if err := validateInput(input); err != nil {
+		return model.Mold{}, err
+	}
+	if err := s.validateLocation(input.LocationID, false); err != nil {
+		return model.Mold{}, err
+	}
+	var item model.Mold
+	if err := s.db.First(&item, id).Error; err != nil {
+		return model.Mold{}, mapMoldError(err)
+	}
+	item.MoldNumber, item.Model, item.MoldType = input.MoldNumber, input.Model, input.MoldType
+	item.LocationID, item.CommonGroupNo, item.Remark = input.LocationID, input.CommonGroupNo, input.Remark
+	if err := s.db.Save(&item).Error; err != nil {
+		return model.Mold{}, mapMoldError(err)
+	}
+	return item, nil
 }
 
 func (s *gormService) Delete(id uint) error {
@@ -145,182 +198,161 @@ func (s *gormService) Delete(id uint) error {
 	if err := s.db.First(&item, id).Error; err != nil {
 		return mapMoldError(err)
 	}
-	return s.db.Delete(&item).Error
+	var images []model.ImageFile
+	var drawings []model.MoldDrawing
+	s.db.Where("owner_type = ? AND owner_id = ?", "mold", id).Find(&images)
+	s.db.Where("mold_id = ?", id).Find(&drawings)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("owner_type = ? AND owner_id = ?", "mold", id).Delete(&model.ImageFile{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("mold_id = ?", id).Delete(&model.MoldDrawing{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Delete(&item).Error; err != nil {
+			return err
+		}
+		for _, asset := range images {
+			_ = s.removeStored(asset.StoragePath)
+		}
+		for _, asset := range drawings {
+			_ = s.removeStored(asset.StoragePath)
+		}
+		return nil
+	})
 }
 
-func (s *gormService) Transition(id uint, command Transition) (model.Mold, error) {
-	if command.EventType == eventReturn {
-		command.Location = strings.TrimSpace(command.Location)
-		if command.Location == "" {
-			return model.Mold{}, ErrMoldReturnLocationRequired
-		}
+func (s *gormService) removeStored(relative string) error {
+	if s.storageRoot == "" {
+		return nil
 	}
-	var item model.Mold
+	clean := filepath.Clean(filepath.FromSlash(relative))
+	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return errors.New("非法文件路径")
+	}
+	err := os.Remove(filepath.Join(s.storageRoot, clean))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (s *gormService) Locations(includeDisabled bool) ([]model.MoldLocation, error) {
+	db := s.db.Model(&model.MoldLocation{})
+	if !includeDisabled {
+		db = db.Where("status = ?", model.MoldLocationActive)
+	}
+	var items []model.MoldLocation
+	return items, db.Order("code asc, id asc").Find(&items).Error
+}
+
+func (s *gormService) CreateLocation(input LocationInput) (model.MoldLocation, error) {
+	item := model.MoldLocation{Code: strings.TrimSpace(input.Code), Status: model.MoldLocationActive}
+	if item.Code == "" {
+		return item, ErrMoldLocationRequired
+	}
+	if err := s.db.Create(&item).Error; err != nil {
+		return item, err
+	}
+	return item, nil
+}
+
+func (s *gormService) UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error) {
+	var item model.MoldLocation
 	if err := s.db.First(&item, id).Error; err != nil {
 		return item, mapMoldError(err)
 	}
-	expectedStatus, ok := transitionSourceStatus(command.EventType, command.Status)
-	if !ok || item.Status != expectedStatus {
-		return item, ErrMoldStatusConflict
-	}
-	beforeStatus := item.Status
-	item.Status = command.Status
-	if command.Location != "" {
-		item.CurrentLocation = command.Location
-	}
-	now := s.now()
-	if command.EventType == eventRepair && command.Status == statusInStock {
-		item.LastRepairAt = &now
-	}
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"status": item.Status}
-		if command.Location != "" {
-			updates["current_location"] = item.CurrentLocation
+	if input.Status == model.MoldLocationDisabled {
+		var count int64
+		if err := s.db.Model(&model.Mold{}).Where("location_id = ?", id).Count(&count).Error; err != nil {
+			return item, err
 		}
-		if item.LastRepairAt != nil {
-			updates["last_repair_at"] = item.LastRepairAt
+		if count > 0 {
+			return item, ErrMoldLocationInUse
 		}
-		result := tx.Model(&model.Mold{}).Where("id = ? AND status = ?", item.ID, beforeStatus).Updates(updates)
+	}
+	item.Status = input.Status
+	return item, s.db.Save(&item).Error
+}
+
+func (s *gormService) BulkMove(input BulkMoveInput) error {
+	if len(input.MoldIDs) == 0 {
+		return ErrMoldSelectionRequired
+	}
+	if err := s.validateLocation(input.LocationID, false); err != nil {
+		return err
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Mold{}).Where("id IN ?", input.MoldIDs).Update("location_id", input.LocationID)
 		if result.Error != nil {
 			return result.Error
 		}
-		if result.RowsAffected == 0 {
-			return ErrMoldStatusConflict
+		if result.RowsAffected != int64(len(uniqueIDs(input.MoldIDs))) {
+			return ErrMoldNotFound
 		}
-		return s.createEvent(tx, item, command.EventType, beforeStatus, item.Status, item.CurrentLocation, command.Counterparty, command.HandlerName, command.Reason, command.Description)
+		return nil
 	})
-	return item, err
 }
 
-func (s *gormService) Maintain(id uint, command MaintenanceCommand) (model.Mold, error) {
-	var item model.Mold
+func (s *gormService) validateLocation(id uint, includeDisabled bool) error {
+	if id == 0 {
+		return ErrMoldLocationRequired
+	}
+	var item model.MoldLocation
 	if err := s.db.First(&item, id).Error; err != nil {
-		return item, mapMoldError(err)
-	}
-	expectedStatus := statusInStock
-	if command.Completed {
-		expectedStatus = statusMaintenance
-	}
-	if item.Status != expectedStatus {
-		return item, ErrMoldStatusConflict
-	}
-	if command.Completed && command.MaintenanceCycleDays <= 0 && item.MaintenanceCycleDays <= 0 {
-		return item, ErrMoldMaintenanceCycleRequired
-	}
-	beforeStatus := item.Status
-	item.Status = statusMaintenance
-	if command.Completed {
-		item.Status = statusInStock
-	}
-	if command.Location != "" {
-		item.CurrentLocation = command.Location
-	}
-	if command.MaintenanceCycleDays > 0 {
-		item.MaintenanceCycleDays = command.MaintenanceCycleDays
-	}
-	if command.Completed {
-		now := s.now()
-		item.LastMaintenanceAt = &now
-		if item.MaintenanceCycleDays > 0 {
-			next := now.AddDate(0, 0, item.MaintenanceCycleDays)
-			item.NextMaintenanceAt = &next
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrMoldLocationNotFound
 		}
+		return err
 	}
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"status": item.Status}
-		if command.Location != "" {
-			updates["current_location"] = item.CurrentLocation
-		}
-		if command.MaintenanceCycleDays > 0 {
-			updates["maintenance_cycle_days"] = item.MaintenanceCycleDays
-		}
-		if item.LastMaintenanceAt != nil {
-			updates["last_maintenance_at"] = item.LastMaintenanceAt
-		}
-		if item.NextMaintenanceAt != nil {
-			updates["next_maintenance_at"] = item.NextMaintenanceAt
-		}
-		result := tx.Model(&model.Mold{}).Where("id = ? AND status = ?", item.ID, beforeStatus).Updates(updates)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrMoldStatusConflict
-		}
-		return s.createEvent(tx, item, eventMaintenance, beforeStatus, item.Status, item.CurrentLocation, "", command.HandlerName, "模具保养", command.Description)
-	})
-	return item, err
+	if !includeDisabled && item.Status != model.MoldLocationActive {
+		return ErrMoldLocationDisabled
+	}
+	return nil
 }
 
-func transitionSourceStatus(eventType, nextStatus string) (string, bool) {
-	switch eventType {
-	case eventLoan:
-		return statusInStock, nextStatus == statusLoaned
-	case eventReturn:
-		return statusLoaned, nextStatus == statusInStock
-	case eventRepair:
-		switch nextStatus {
-		case statusRepairing:
-			return statusInStock, true
-		case statusInStock:
-			return statusRepairing, true
-		}
-	}
-	return "", false
+func normalizeInput(input Input) Input {
+	input.MoldNumber, input.Model, input.MoldType = strings.TrimSpace(input.MoldNumber), strings.TrimSpace(input.Model), strings.ToLower(strings.TrimSpace(input.MoldType))
+	input.CommonGroupNo, input.Remark = strings.TrimSpace(input.CommonGroupNo), strings.TrimSpace(input.Remark)
+	return input
 }
 
-func (s *gormService) createEvent(tx *gorm.DB, item model.Mold, eventType string, before string, after string, location string, counterparty string, handlerName string, reason string, description string) error {
-	now := s.now()
-	event := model.MoldEvent{
-		MoldID: item.ID, Type: eventType, StatusBefore: before, StatusAfter: after,
-		Location: location, Counterparty: counterparty, HandlerName: handlerName,
-		Reason: reason, Description: description, StartedAt: &now,
+func validateInput(input Input) error {
+	if input.MoldNumber == "" || input.Model == "" {
+		return errors.New("模具编号和模具型号不能为空")
 	}
-	if eventType == eventReturn || eventType == eventMaintenance || (eventType == eventRepair && after == statusInStock) {
-		event.FinishedAt = &now
+	if input.MoldType != model.MoldTypeSingle && input.MoldType != model.MoldTypeCommon {
+		return ErrMoldInvalidType
 	}
-	return tx.Create(&event).Error
+	if input.MoldType == model.MoldTypeCommon && input.CommonGroupNo == "" {
+		return ErrMoldGroupRequired
+	}
+	if input.MoldType == model.MoldTypeSingle && input.CommonGroupNo != "" {
+		return ErrMoldGroupForbidden
+	}
+	return nil
+}
+
+func uniqueIDs(ids []uint) []uint {
+	seen := map[uint]struct{}{}
+	result := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			if _, ok := seen[id]; !ok {
+				seen[id] = struct{}{}
+				result = append(result, id)
+			}
+		}
+	}
+	return result
 }
 
 func mapMoldError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrMoldNotFound
 	}
+	if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		return ErrMoldNumberConflict
+	}
 	return err
-}
-
-func moldFromRequest(req moldRequest) model.Mold {
-	item := model.Mold{}
-	applyMoldRequest(&item, req)
-	return item
-}
-
-func applyMoldRequest(item *model.Mold, req moldRequest) {
-	item.Code = req.Code
-	item.Name = req.Name
-	item.CustomerID = req.CustomerID
-	item.ProductID = req.ProductID
-	item.CavityCount = req.CavityCount
-	item.MoldMaterial = req.MoldMaterial
-	item.Steel = req.Steel
-	item.Size = req.Size
-	item.WeightGram = req.WeightGram
-	item.Manufacturer = req.Manufacturer
-	item.Owner = req.Owner
-	item.StorageLocation = req.StorageLocation
-	item.CurrentLocation = req.CurrentLocation
-	item.MaintenanceCycleDays = req.MaintenanceCycleDays
-	item.Remark = req.Remark
-	if req.Status != "" {
-		item.Status = req.Status
-	}
-	if item.Status == "" {
-		item.Status = statusInStock
-	}
-	if item.CavityCount <= 0 {
-		item.CavityCount = 1
-	}
-	if item.CurrentLocation == "" {
-		item.CurrentLocation = item.StorageLocation
-	}
 }

@@ -273,7 +273,7 @@ daily_supply         生活物资
 - 部门出库：需要 `inventory:documents:write` 和 `system:departments:read`。
 - 查看库存流水：需要 `inventory:documents:read`。
 
-### 模具台账
+### 模具
 
 可维护：
 

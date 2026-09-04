@@ -3,7 +3,7 @@ import {getVersion} from '@tauri-apps/api/app'
 import {invoke} from '@tauri-apps/api/core'
 import {listen} from '@tauri-apps/api/event'
 import {getCurrentWindow} from '@tauri-apps/api/window'
-import type {DesktopHttpBridge} from '../../web/src/api/transport'
+import type {DesktopFileUploadResult, DesktopHttpBridge} from '../../web/src/api/transport'
 import type {DesktopUpdateApplyResult, DesktopUpdatePlan, DesktopUpdateProgress} from '../../web/src/types'
 import type {FileSaveResult, ServerIdentity} from '../../web/src/platform/types'
 
@@ -136,6 +136,11 @@ const desktopHttpBridge: DesktopHttpBridge = {
       apiPath: path,
       fileName,
       token,
+    })
+  },
+  async uploadFiles(paths, endpoint, fields, token) {
+    return await invoke<DesktopFileUploadResult>('upload_dropped_files', {
+      request: {serverUrl: currentServerUrl, endpoint, paths, fields, token},
     })
   },
   async onWindowCloseRequested(handler) {

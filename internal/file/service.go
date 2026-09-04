@@ -64,6 +64,7 @@ func (s *Service) SaveImage(header *multipart.FileHeader, ownerType string, owne
 	if err != nil {
 		return nil, err
 	}
+	asset.SortOrder = s.nextSortOrder(ownerType, ownerID, category)
 	if err := s.db.Create(asset).Error; err != nil {
 		_ = s.remove(asset.StoragePath)
 		return nil, fmt.Errorf("保存图片记录失败: %w", err)
@@ -95,11 +96,13 @@ func (s *Service) SaveImages(headers []*multipart.FileHeader, ownerType string, 
 
 	assets := make([]*model.ImageFile, 0, len(uploads))
 	paths := make([]string, 0, len(uploads))
-	for _, upload := range uploads {
+	startOrder := s.nextSortOrder(ownerType, ownerID, category)
+	for index, upload := range uploads {
 		asset, err := s.writeImage(upload, ownerType, ownerID, category, nil, uploadedBy)
 		if err != nil {
 			return nil, withFileCleanup(err, s, paths)
 		}
+		asset.SortOrder = startOrder + index
 		assets = append(assets, asset)
 		paths = append(paths, asset.StoragePath)
 	}
@@ -115,6 +118,12 @@ func (s *Service) SaveImages(headers []*multipart.FileHeader, ownerType string, 
 		return nil, withFileCleanup(fmt.Errorf("批量保存图片记录失败: %w", err), s, paths)
 	}
 	return assets, nil
+}
+
+func (s *Service) nextSortOrder(ownerType string, ownerID uint, category string) int {
+	var max int
+	s.db.Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ? AND category = ?", ownerType, ownerID, category).Select("COALESCE(MAX(sort_order), -1)").Scan(&max)
+	return max + 1
 }
 
 func prepareImageUpload(header *multipart.FileHeader) (imageUpload, error) {

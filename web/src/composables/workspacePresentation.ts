@@ -76,7 +76,7 @@ export function permissionDomainKey(option: BasicItem): string {
 }
 
 export function permissionDomainLabel(value: string): string {
-  const labels: Record<string, string> = {system: '系统管理', warehouse: '仓库', inventory: '库存单据', workorder: '任务单', mold: '模具台账', customers: '客户', suppliers: '供应商', statistics: '统计报表', cost: '成本数据'}
+  const labels: Record<string, string> = {system: '系统管理', warehouse: '仓库', inventory: '库存单据', workorder: '任务单', mold: '模具', customers: '客户', suppliers: '供应商', statistics: '统计报表', cost: '成本数据'}
   if (labels[value]) return labels[value]
   return `其他业务域 · ${value.startsWith('other:') ? value.slice(6) : value}`
 }
@@ -94,7 +94,7 @@ const columnLabels: Record<string, string> = {
   id: '编号', username: '账号', account_type: '账号类型', name: '名称', organization_id: '组织', department_id: '部门', terminal_id: '终端', status: '状态', code: '编码', description: '说明',
   phone: '电话', contact: '联系人', address: '地址', location: '位置', item_type: '对象类型', category: '分类', unit: '单位', spec: '规格', safety_stock: '安全库存', type: '业务类型', warehouse_id: '仓库',
   to_warehouse_id: '目标仓库', reason: '原因', location_id: '库位', item_id: '物品', quantity: '数量', avg_cost: '平均成本', amount: '金额', document_id: '单据', balance_qty: '结存数量',
-  current_location: '当前位置', storage_location: '存放位置', cavity_count: '穴数', mold_material: '成型材料', steel: '钢材', maintenance_cycle_days: '保养周期', next_maintenance_at: '下次保养',
+  mold_number: '模具编号', model: '模具型号', mold_type: '模具类型', common_group_no: '共模组号', image_count: '图片总数', drawing_count: '图纸总数',
   object: '对象', action: '操作', actor_username: '操作账号', actor_account_type: '账号类型', person_name: '操作人', result: '结果', created_at: '操作时间', operator_employee_name: '操作员工', operator_department_name: '操作部门',
 }
 
@@ -131,33 +131,6 @@ export function workorderStatusLabel(value: unknown): string {
 
 export const workorderTypeLabel = (value: unknown) => value === 'general' ? '通用任务' : '生产单'
 export const inventoryItemTypeLabel = (value: unknown) => value === 'product' ? '产品' : '物料'
-
-export function moldStatusLabel(value: unknown): string {
-  const labels: Record<string, string> = {in_stock: '在库', loaned: '已借出', repairing: '维修中', maintenance: '保养中', scrapped: '报废'}
-  return labels[String(value)] || String(value || '-')
-}
-
-export function moldStatusTone(value: unknown): StatusTone {
-  if (value === 'in_stock') return 'success'
-  if (value === 'repairing' || value === 'maintenance') return 'warning'
-  if (value === 'scrapped') return 'danger'
-  return 'info'
-}
-
-export function moldMaintenanceState(row: unknown): {label: string; tone: StatusTone; description: string} {
-  const item = row as Record<string, unknown>
-  if (!item.next_maintenance_at) return {label: '未设置计划', tone: 'info', description: '建议补充下次保养日期'}
-  const rawDate = String(item.next_maintenance_at)
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate)
-  const date = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(rawDate)
-  if (!Number.isFinite(date.getTime())) return {label: '日期异常', tone: 'warning', description: '请核对保养日期'}
-  const now = new Date()
-  const serial = (value: Date) => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()) / 86_400_000
-  const days = serial(date) - serial(now)
-  if (days < 0) return {label: `逾期 ${Math.abs(days)} 天`, tone: 'danger', description: '请尽快安排保养'}
-  if (days <= 7) return {label: days === 0 ? '今天到期' : `${days} 天内到期`, tone: 'warning', description: '请提前安排保养'}
-  return {label: '保养计划正常', tone: 'success', description: `距下次保养 ${days} 天`}
-}
 
 export function departmentCompletionRate(item: {total: number; completed: number}): number {
   return item.total ? Math.round(Number(item.completed || 0) * 100 / Number(item.total)) : 0

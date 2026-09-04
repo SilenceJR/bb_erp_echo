@@ -1,4 +1,5 @@
 pub mod discovery;
+pub mod file_drop;
 pub mod save;
 pub mod update;
 
@@ -18,6 +19,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             discovery::discover_servers,
             discovery::test_server_connection,
+            file_drop::upload_dropped_files,
             save::save_api_file,
             update::client_update_check,
             update::client_update_apply,

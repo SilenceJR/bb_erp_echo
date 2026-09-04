@@ -47,7 +47,6 @@ type Summary struct {
 	UrgentWorkOrders   int64 `json:"urgent_workorders"`
 	PendingCloseOrders int64 `json:"pending_close_orders"`
 	Molds              int64 `json:"molds"`
-	MoldsNeedCare      int64 `json:"molds_need_care"`
 }
 
 // InventoryStatistics 是库存维度统计。
@@ -68,8 +67,8 @@ type WorkOrderStatistics struct {
 
 // MoldStatistics 是模具维度统计。
 type MoldStatistics struct {
-	ByStatus []NameValue `json:"by_status"`
-	NeedCare []MoldItem  `json:"need_care"`
+	ByType     []NameValue `json:"by_type"`
+	ByLocation []NameValue `json:"by_location"`
 }
 
 // BusinessStatistics 是基础资料数量统计。
@@ -111,16 +110,6 @@ type StockItem struct {
 	Quantity    int64  `json:"quantity"`
 	SafetyStock int64  `json:"safety_stock"`
 	Amount      int64  `json:"amount,omitempty"`
-}
-
-// MoldItem 是需要关注的模具明细。
-type MoldItem struct {
-	ID                uint       `json:"id"`
-	Code              string     `json:"code"`
-	Name              string     `json:"name"`
-	Status            string     `json:"status"`
-	CurrentLocation   string     `json:"current_location"`
-	NextMaintenanceAt *time.Time `json:"next_maintenance_at"`
 }
 
 // TrendItem 是按日期聚合的趋势项。
@@ -237,11 +226,6 @@ func (h *Handler) fillSummary(result *DashboardResponse) error {
 		return err
 	}
 	result.Summary.LowStockItems = int64(len(lowStock))
-	if err := h.DB.Model(&model.Mold{}).
-		Where("status IN ? OR (next_maintenance_at IS NOT NULL AND next_maintenance_at <= ?)", []string{"repairing", "maintenance", "loaned"}, time.Now().AddDate(0, 0, 7)).
-		Count(&result.Summary.MoldsNeedCare).Error; err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -296,21 +280,10 @@ func (h *Handler) fillWorkOrders(result *DashboardResponse) error {
 }
 
 func (h *Handler) fillMolds(result *DashboardResponse) error {
-	if err := h.DB.Model(&model.Mold{}).Select("status AS name, COUNT(*) AS value").Group("status").Scan(&result.Molds.ByStatus).Error; err != nil {
+	if err := h.DB.Model(&model.Mold{}).Select("mold_type AS name, COUNT(*) AS value").Group("mold_type").Scan(&result.Molds.ByType).Error; err != nil {
 		return err
 	}
-	var items []model.Mold
-	if err := h.DB.Where("status IN ? OR (next_maintenance_at IS NOT NULL AND next_maintenance_at <= ?)", []string{"repairing", "maintenance", "loaned"}, time.Now().AddDate(0, 0, 7)).
-		Order("next_maintenance_at asc, id desc").Limit(10).Find(&items).Error; err != nil {
-		return err
-	}
-	for _, item := range items {
-		result.Molds.NeedCare = append(result.Molds.NeedCare, MoldItem{
-			ID: item.ID, Code: item.Code, Name: item.Name, Status: item.Status,
-			CurrentLocation: item.CurrentLocation, NextMaintenanceAt: item.NextMaintenanceAt,
-		})
-	}
-	return nil
+	return h.DB.Model(&model.Mold{}).Joins("LEFT JOIN mold_locations ON mold_locations.id = molds.location_id").Select("mold_locations.code AS name, COUNT(*) AS value").Group("mold_locations.code").Scan(&result.Molds.ByLocation).Error
 }
 
 func (h *Handler) fillBusiness(result *DashboardResponse) error {

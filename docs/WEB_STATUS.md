@@ -1,6 +1,6 @@
 # Windows Client / Web 状态
 
-> 基准日期：2026-09-02
+> 基准日期：2026-09-04
 > 范围：`web/` 共用 Vue 业务、`client/` Windows Tauri 壳与平台能力
 
 当前按全新内网部署实现。Windows 10/11 Tauri 是正式产品，桌面 Web 是共用代码的备用入口；不维护公网、系统代理、macOS、旧页面、旧 API 或旧客户端双轨。
@@ -22,6 +22,7 @@
 | Web/Tauri 共用 | 已完成 | 业务页面、状态、权限、DTO、校验和错误只维护一套 Vue 实现 |
 | API canonical 收敛 | 已完成 | 共用客户端仅使用 `/api/v1/workorder`、`/api/v1/materials`、`/api/v1/products`、`/api/v1/molds` 与 inventory-documents/balances/ledgers；不依赖旧任务、单数资料或旧 inventory 别名 |
 | 模块页拆分 | 已完成 | `ModulePage.vue` 只做注册表分发；统计、仓库、任务、模具、供应商和通用目录使用独立内容组件 |
+| 模具重构 | 已完成，待运行态验收 | 新页面支持筛选、表格/卡片详情 Drawer、图片分组、DWG 文件、位置管理、跨页批量移位、ZIP 预览/人工修正/导入导出，以及 ZIP、图片、DWG 拖拽添加；不迁移旧生命周期 UI |
 | 应用壳拆分 | 已完成 | `AppWorkspace.vue` 只消费导航、账号、连接和更新等壳层字段 |
 | 推荐导航架构 | 已完成 | 首页独立一级入口；业务按业务办理、基础资料、数据与报表分组；系统能力收进系统设置；仍由模块注册表按权限过滤 |
 | 工作台控制器 | 已完成 | 配置、展示、DirtyGuard、模具、仓库、任务和通用目录均已下沉，3314 行降至 1516 行；根层负责会话、导航和领域组合 |
@@ -91,6 +92,8 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - `git diff --check`
 - 本轮 `web/npm run build`：通过；Vue 类型检查、Vite 生产构建通过，最大入口约 176.73 kB。
 - 本轮 `client/npm run build`：通过；Tauri 前端类型检查、Vite 生产构建通过；仅有既有 `@vueuse/core` Rollup 注释警告。
+- 本轮模具页面：Web 与 Client `npm run build` 均通过；Windows 10/11、图片大批量上传、ZIP 导入和 DWG 下载仍需运行态验收。
+- 本轮模具交互：图片组、ZIP 导入和 DWG 区域增加键盘可达的拖拽/点击入口；客户 Excel 导入同样提供拖放区，顶部按钮只打开弹窗，点击区域才打开系统文件选择器；Tauri 原生文件拖放路径已桥接为 WebView `File`，Windows 不依赖 HTML5 `dataTransfer.files`；详情加载失败、未保存关闭、编辑入口和窄屏 Drawer/空态显示已整改；Web/Tauri 生产构建与真实 Finder/资源管理器拖入仍需运行态验收。
 - 本轮 `web/npm test`：通过，4 项启动连接/身份隔离回归测试通过。
 - 本轮 `git diff --check`：通过。
 - 本轮弹层显示整改：移除 Element Plus Dialog/Drawer 内的 `AnimatePresence`、`motion.*` 初始透明度包装，覆盖客户导入/导出、客户资料 Drawer、客户编码、替代默认资料和任务操作 Dialog；Web/Tauri 构建需重新验证，Windows 真机首帧与焦点仍待验收。

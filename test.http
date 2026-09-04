@@ -351,19 +351,10 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "code": "MOLD-001",
-  "name": "白壳前模",
-  "customer_id": {{customer_id}},
-  "product_id": 1,
-  "cavity_count": 8,
-  "mold_material": "ABS",
-  "steel": "P20",
-  "size": "450x350x280",
-  "weight_gram": 180000,
-  "manufacturer": "深圳模具厂",
-  "owner": "客户A",
-  "storage_location": "工模架 A1",
-  "maintenance_cycle_days": 30,
+  "mold_number": "MOLD-001",
+  "model": "白壳前模",
+  "mold_type": "single",
+  "location_id": 1,
   "remark": "白壳产品常用模具"
 }
 
@@ -373,56 +364,39 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8080/api/v1/molds?page=1&page_size=10&q=MOLD
 Authorization: Bearer {{token}}
 
-### 查询模具属性和履历
+### 查询模具详情
 GET http://127.0.0.1:8080/api/v1/molds/{{mold_id}}
 Authorization: Bearer {{token}}
 
-### 借出模具
-POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/loan
+### 查询模具位置
+GET http://127.0.0.1:8080/api/v1/mold-locations
+Authorization: Bearer {{token}}
+
+### 批量移动模具
+POST http://127.0.0.1:8080/api/v1/molds/bulk-location
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "location": "注塑车间 1 号机",
-  "counterparty": "注塑部",
-  "handler_name": "王工",
-  "reason": "生产试模"
+  "mold_ids": [{{mold_id}}],
+  "location_id": 2
 }
 
-### 归还模具
-POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/return
-Content-Type: application/json
+### 导出模具资料包
+GET http://127.0.0.1:8080/api/v1/molds/export
 Authorization: Bearer {{token}}
 
-{
-  "location": "工模架 A1",
-  "handler_name": "李工",
-  "reason": "试模完成"
-}
-
-### 登记模具维修
-POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/repair
-Content-Type: application/json
+### 模具资料包导入预览
+POST http://127.0.0.1:8080/api/v1/molds/import/preview
 Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----bb-mold-package
 
-{
-  "reason": "顶针磨损",
-  "description": "更换顶针并清理水路",
-  "handler_name": "陈师傅",
-  "completed": true
-}
+------bb-mold-package
+Content-Disposition: form-data; name="file"; filename="博邦模具资料包.zip"
+Content-Type: application/zip
 
-### 登记模具保养
-POST http://127.0.0.1:8080/api/v1/molds/{{mold_id}}/maintenance
-Content-Type: application/json
-Authorization: Bearer {{token}}
-
-{
-  "description": "清洁、防锈、检查水路",
-  "handler_name": "保养员",
-  "maintenance_cycle_days": 30,
-  "completed": true
-}
+< ./tmp/博邦模具资料包.zip
+------bb-mold-package--
 
 ### 创建注塑部门
 POST http://127.0.0.1:8080/api/v1/system/departments

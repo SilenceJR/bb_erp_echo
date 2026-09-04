@@ -7,7 +7,7 @@
       @back="switchModule('dashboard')"
     >
       <template #actions>
-        <el-button v-if="formSchema.length && canWriteActive" class="add-button" type="primary" @click="toggleCreateForm">
+        <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive" class="add-button" type="primary" @click="toggleCreateForm">
           {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
         </el-button>
       </template>
@@ -17,11 +17,11 @@
       <el-segmented v-model="activeWarehouseTab" :options="warehouseTabOptions" @change="switchWarehouseTab" />
     </div>
 
-    <ModuleCreateForm />
+    <ModuleCreateForm v-if="activeKey !== 'molds'" />
     <ModuleAssignmentDialogs />
 
     <FilterBar
-      v-if="activeKey !== 'updates'"
+      v-if="activeKey !== 'updates' && activeKey !== 'molds'"
       :message="panelMessage"
       :loading="loading"
       :resettable="hasActiveFilters"
@@ -44,7 +44,7 @@
       </template>
     </FilterBar>
 
-    <section v-if="operationalSummaryCards.length && !loading && rows.length" class="operational-summary-grid" :aria-label="`${activeModule?.title || '业务'}当前页摘要`">
+    <section v-if="activeKey !== 'molds' && operationalSummaryCards.length && !loading && rows.length" class="operational-summary-grid" :aria-label="`${activeModule?.title || '业务'}当前页摘要`">
       <MetricCard v-for="card in operationalSummaryCards" :key="card.label" v-bind="card" />
     </section>
 

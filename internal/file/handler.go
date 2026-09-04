@@ -110,7 +110,7 @@ func (h *Handler) List(c *echo.Context) error {
 		query = query.Where("category = ?", category)
 	}
 	var assets []model.ImageFile
-	if err := query.Order("id desc").Find(&assets).Error; err != nil {
+	if err := query.Order("sort_order asc, id asc").Find(&assets).Error; err != nil {
 		return err
 	}
 	result := make([]ImageResponse, 0, len(assets))

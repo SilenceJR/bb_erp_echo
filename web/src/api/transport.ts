@@ -1,6 +1,12 @@
 import type {DesktopUpdateApplyResult, DesktopUpdatePlan, DesktopUpdateProgress} from '../types'
 import type {FileSaveResult, ServerIdentity} from '../platform/types'
 
+export interface DesktopFileUploadResult {
+  status: number
+  contentType: string
+  body: string
+}
+
 // HttpTransport 隔离业务请求与运行平台的网络实现。
 // Web 使用浏览器同源 fetch；Tauri 在启动时注入 Rust HTTP 插件实现。
 export interface HttpTransport {
@@ -13,6 +19,7 @@ export interface DesktopHttpBridge extends HttpTransport {
   testServerUrl(value: string): Promise<ServerIdentity>
   discoverServers(): Promise<ServerIdentity[]>
   saveApiFile(path: string, fileName: string, token?: string): Promise<FileSaveResult>
+  uploadFiles(paths: string[], endpoint: string, fields: Record<string, string>, token: string): Promise<DesktopFileUploadResult>
   onWindowCloseRequested(handler: () => Promise<boolean>): Promise<() => void>
   appVersion(): Promise<string>
   checkClientUpdate(): Promise<DesktopUpdatePlan | null>
