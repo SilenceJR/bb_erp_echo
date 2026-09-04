@@ -5,20 +5,19 @@
         :docked="detailPanelDocked"
         :size="detailPanelSize"
         title="任务单详情"
-        :with-header="false"
         :before-close="handleWorkOrderBeforeClose"
         docked-auto-focus="panel"
         destroy-on-close
         @closed="resetWorkOrder"
       >
         <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
+          <el-alert v-if="moduleUnavailable" title="任务单暂不可用" description="当前内容仍保留，暂不能办理业务。请确认后再关闭。" type="warning" :closable="false" show-icon />
           <div class="drawer-heading">
             <div>
               <small>{{ selectedWorkOrder.code }} · {{ workorderTypeLabel(selectedWorkOrder.type) }}</small>
               <h2>{{ selectedWorkOrder.title }}</h2>
               <span>{{ selectedWorkOrder.product_name || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
             </div>
-            <el-button circle aria-label="关闭任务单详情" @click="closeWorkOrder"><el-icon><Close /></el-icon></el-button>
           </div>
 
           <div class="stock-summary">
@@ -39,7 +38,7 @@
             v-else-if="selectedWorkOrder.product_id"
             class="workorder-drawer-stock"
             title="当前账号无权查看仓库库存"
-            description="产品关联已保留；如需查看实时库存，请联系管理员授予 warehouse:read。"
+            description="产品关联已保留；如需查看实时库存，请联系管理员开通库存查看权限。"
             type="info"
             :closable="false"
             show-icon
@@ -68,7 +67,7 @@
               <el-progress :percentage="departmentProgressMetrics(selectedWorkOrder).percentage" :stroke-width="8"/>
             </div>
           </section>
-          <ImageGallery owner-type="workorder" :owner-id="selectedWorkOrder.id" :token="token" :can-write="hasPermission('workorder:write')" category="workorder"/>
+          <ImageGallery owner-type="workorder" :owner-id="selectedWorkOrder.id" :token="token" :can-write="!moduleUnavailable && hasPermission('workorder:write')" category="workorder"/>
 
           <section v-if="canWriteActive" class="movement-section">
             <h3>办公室操作</h3>
@@ -95,8 +94,8 @@
                 <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</p>
                 <el-progress :percentage="Number(task.progress || 0)" :stroke-width="8"/>
                 <small>{{ task.remark || '暂无备注' }}</small>
-                <ImageGallery owner-type="department_task" :owner-id="task.id" :token="token" :can-write="canOperateDepartmentTask(task)" category="department_task"/>
-                <div v-if="canOperateDepartmentTask(task)" class="department-task-actions">
+                <ImageGallery owner-type="department_task" :owner-id="task.id" :token="token" :can-write="!moduleUnavailable && canOperateDepartmentTask(task)" category="department_task"/>
+                <div v-if="!moduleUnavailable && canOperateDepartmentTask(task)" class="department-task-actions">
                   <el-button v-if="task.status === 'received'" link type="primary" @click="startDepartmentTask(task)">开始处理</el-button>
                   <el-button v-if="['received', 'processing', 'partial_completed'].includes(String(task.status))" link type="warning" @click="partialCompleteDepartmentTask(task)">部分完成</el-button>
                   <el-button v-if="['received', 'processing', 'partial_completed'].includes(String(task.status))" link type="success" @click="completeDepartmentTask(task)">完成</el-button>
@@ -125,6 +124,7 @@
             <p v-else class="drawer-empty">暂无流转日志</p>
           </section>
         </div>
+        <template #footer><el-button @click="closeWorkOrder">关闭</el-button></template>
       </ResponsiveDetailCarrier>
       <WorkorderActionDialog />
 
@@ -138,8 +138,11 @@ import WorkorderStockCard from './WorkorderStockCard.vue'
 import WorkorderActionDialog from './WorkorderActionDialog.vue'
 import {useWorkorderContext} from '../../composables/workorderContext'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import {useWorkspaceContext} from '../../composables/workspaceContext'
 import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
 import {Close} from '@element-plus/icons-vue'
+
+const {moduleUnavailable} = useWorkspaceContext()
 
 const {
   token, selectedWorkOrder, workorderDrawerVisible, workorderLogs,

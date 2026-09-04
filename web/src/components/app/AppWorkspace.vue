@@ -19,7 +19,7 @@
       <div class="sidebar-brand">
         <img src="/bobang-logo-hd.png" alt="" />
         <div v-if="isNarrow || sidebarMode !== 'icon'"><strong>博邦光电</strong><span>ERP 业务工作台</span></div>
-        <span v-else class="brand-mark" aria-label="博邦光电">BB</span>
+
       </div>
       <AppNavigation
         :active-key="activeKey"
@@ -37,7 +37,6 @@
         <el-button
           ref="sidebarToggle"
           class="sidebar-mode-toggle"
-          circle
           :aria-label="sidebarToggleLabel"
           :title="sidebarToggleLabel"
           aria-controls="app-navigation"
@@ -66,7 +65,7 @@
       <div class="user-chip" :inert="mobileNavOpen">
         <div class="user-copy"><span>{{ currentUser?.name || currentUser?.username }}</span><small>{{ accountTypeText }}</small></div>
         <el-dropdown trigger="click" @command="handleUserCommand">
-          <el-button circle class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
+          <el-button class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="settings">设置</el-dropdown-item>
@@ -101,6 +100,7 @@ import AppNavigation from '../ui/AppNavigation.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
 import {Menu} from '@element-plus/icons-vue'
+import {clientSidebarMode, clientViewport, activeDetailWidth, activeDetailDocked} from '../../composables/detailLayout'
 
 const {
   token, currentUser, activeKey, activeModule, businessItems, systemItems, userInitial,
@@ -113,15 +113,15 @@ const mobileNavOpen = ref(false)
 const restoreFocusAfterMobileClose = ref(true)
 const sidebarElement = ref<HTMLElement | null>(null)
 const sidebarToggle = ref<{ref?: HTMLElement; $el?: HTMLElement} | null>(null)
-const viewportWidth = ref(window.innerWidth)
-const sidebarMode = ref<SidebarMode>(normalizeSidebarMode(localStorage.getItem(sidebarStorageKey)))
+const viewportWidth = clientViewport
+const sidebarMode = clientSidebarMode
 const isNarrow = computed(() => viewportWidth.value <= 1023)
 const navigationInactive = computed(() => isNarrow.value ? !mobileNavOpen.value : sidebarMode.value === 'hidden')
 const effectiveSidebarWidth = computed(() => isNarrow.value || sidebarMode.value === 'hidden' ? 0 : sidebarMode.value === 'icon' ? 64 : 224)
 const detailPanelVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value || pageDetailPanelVisible.value)
 const imageDetailVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value)
-const detailPanelWidth = computed(() => imageDetailVisible.value && viewportWidth.value >= 1464 && viewportWidth.value - effectiveSidebarWidth.value - 520 >= 720 ? 520 : 420)
-const detailPanelDocked = computed(() => detailPanelVisible.value && viewportWidth.value >= 1440 && viewportWidth.value - effectiveSidebarWidth.value - detailPanelWidth.value >= 720)
+const detailPanelWidth = activeDetailWidth
+const detailPanelDocked = activeDetailDocked
 const sidebarToggleLabel = computed(() => isNarrow.value
   ? mobileNavOpen.value ? '关闭业务导航' : '打开业务导航'
   : sidebarMode.value === 'full' ? '切换为图标导航' : sidebarMode.value === 'icon' ? '隐藏业务导航' : '展开完整业务导航')

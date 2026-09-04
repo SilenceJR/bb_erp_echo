@@ -6,14 +6,10 @@
 
 /* Shared table density contract. Keep these classes on the table shell (not
    individual cells) so a whole list remains rhythmically consistent. */
-.bb-table-density-compact .el-table td.el-table__cell,
-.bb-table-density-compact .el-table td.el-table__cell > .cell { height: var(--bb-table-row-compact); min-height: var(--bb-table-row-compact); }
-.bb-table-density-standard .el-table td.el-table__cell,
-.bb-table-density-standard .el-table td.el-table__cell > .cell { height: var(--bb-table-row-standard); min-height: var(--bb-table-row-standard); }
-.bb-table-density-double .el-table td.el-table__cell,
-.bb-table-density-double .el-table td.el-table__cell > .cell { height: var(--bb-table-row-double); min-height: var(--bb-table-row-double); }
-.bb-table-density-complex .el-table td.el-table__cell,
-.bb-table-density-complex .el-table td.el-table__cell > .cell { height: var(--bb-table-row-complex); min-height: var(--bb-table-row-complex); }
+.bb-table-density-compact .el-table td.el-table__cell { height: var(--bb-table-row-compact); }
+.bb-table-density-standard .el-table td.el-table__cell { height: var(--bb-table-row-standard); }
+.bb-table-density-double .el-table td.el-table__cell { height: var(--bb-table-row-double); }
+.bb-table-density-complex .el-table td.el-table__cell { height: var(--bb-table-row-complex); }
 .bb-table-density-compact .el-table td.el-table__cell > .cell,
 .bb-table-density-standard .el-table td.el-table__cell > .cell,
 .bb-table-density-double .el-table td.el-table__cell > .cell,

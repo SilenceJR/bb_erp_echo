@@ -3,7 +3,7 @@
     v-model="visible"
     class="settings-drawer"
     title="设置"
-    size="min(500px, 100%)"
+    size="min(520px, 100%)"
     destroy-on-close
   >
     <div class="settings-content">
@@ -45,7 +45,7 @@
             >
               <span aria-hidden="true"></span>
               <strong>{{ option.label }}</strong>
-              <small>{{ option.description }}</small>
+              <small v-if="accent === option.value" aria-hidden="true">✓</small>
             </button>
           </div>
         </div>
@@ -166,14 +166,14 @@ async function requestServerChange() {
 .setting-field > div:first-child { display: grid; gap: var(--bb-space-1); }
 .setting-field small, .settings-note { color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
 .accent-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--bb-space-2); }
-.accent-option { display: grid; min-height: 76px; gap: var(--bb-space-1); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-sm); background: var(--bb-bg-surface); padding: var(--bb-space-3); color: var(--bb-text-primary); text-align: left; }
+.accent-option { display: flex; align-items: center; min-height: 56px; gap: 8px; border: 1px solid var(--bb-border-default); border-radius: 6px; background: var(--bb-bg-surface); padding: 12px; color: var(--bb-text-primary); text-align: left; cursor: pointer; transition: background-color 120ms, border-color 120ms; }
 .accent-option:hover { border-color: var(--bb-border-strong); }
 .accent-option.active { border-color: var(--bb-border-strong); background: var(--bb-bg-subtle); box-shadow: inset 2px 0 0 var(--bb-action-primary); }
 .accent-option:focus-visible { outline: 2px solid var(--bb-focus-color); outline-offset: 2px; }
-.accent-option > span { width: 24px; height: 24px; border-radius: 50%; background: #0758ad; }
+.accent-option > span { width: 16px; height: 16px; flex: none; border-radius: 50%; background: #135dad; }
 .accent-option.is-teal > span { background: #0e675b; }
 .accent-option.is-violet > span { background: #552d98; }
-.accent-option small { font-size: var(--bb-font-size-12); }
+.accent-option small { margin-left: auto; font-size: 12px; }
 .connection-details { display: grid; gap: var(--bb-space-3); margin: 0; }
 .connection-details > div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--bb-space-3); border-bottom: 1px solid var(--bb-border-subtle); padding-bottom: var(--bb-space-3); }
 .connection-details dt { color: var(--bb-text-secondary); }

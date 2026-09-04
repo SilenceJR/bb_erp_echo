@@ -28,15 +28,17 @@
       <slot></slot>
     </div>
 
-    <footer v-if="rowsCount > 0 && pagination" class="ui-data-table-shell__pagination">
+    <footer v-if="rowsCount > 0" class="ui-data-table-shell__pagination">
       <span>共 {{ total }} 条记录</span>
       <el-pagination
+        v-if="pagination"
         :current-page="page"
         :page-size="pageSize"
         :page-sizes="[20, 50, 100]"
         :total="total"
         background
-        layout="sizes, prev, pager, next, jumper"
+        :pager-count="5"
+        layout="sizes, prev, pager, next"
         @current-change="emit('update:page', $event)"
         @size-change="emit('update:pageSize', $event)"
       />
@@ -87,8 +89,8 @@ const emit = defineEmits<{
 
 .ui-data-table-shell__table {
   overflow: hidden;
-  border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-table-border-radius);
+  border-block: 1px solid var(--bb-border-subtle);
+  border-radius: 0;
   background: var(--bb-bg-elevated);
 }
 
@@ -102,8 +104,8 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: var(--bb-space-3);
-  margin-top: var(--bb-space-4);
-  padding: 0 var(--bb-space-1);
+  min-height: 56px;
+  padding: 8px 0;
   color: var(--bb-text-secondary);
   font-size: var(--bb-font-size-13);
 }

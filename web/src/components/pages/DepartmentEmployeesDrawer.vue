@@ -1,5 +1,5 @@
 <template>
-  <el-drawer v-model="visible" class="business-form-drawer member-management-drawer" size="min(620px, 100%)" :title="`管理员工 · ${department?.name || ''}`" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :before-close="requestClose" destroy-on-close>
+  <ResponsiveDetailCarrier v-model="visible" drawer-class="business-form-drawer member-management-drawer" :size="size" :docked="docked" docked-auto-focus="first-editable" :title="`管理员工 · ${department?.name || ''}`" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :before-close="requestClose" destroy-on-close>
     <el-alert v-if="department?.status !== 'active'" title="停用部门不能新增成员；你仍可移除现有成员或先重新启用部门。" type="warning" :closable="false" show-icon />
     <el-alert v-if="saveError" :title="saveError" type="error" :closable="false" show-icon />
     <el-input v-model.trim="keyword" clearable placeholder="搜索员工姓名或电话" aria-label="搜索员工" />
@@ -12,16 +12,19 @@
     </el-checkbox-group>
     <p v-if="!loading && !filtered.length" class="drawer-empty">没有符合条件的员工</p>
     <template #footer><div class="form-actions"><el-button :disabled="saving" @click="requestClose()">取消</el-button><el-button type="primary" :loading="saving" :disabled="loading || Boolean(loadError)" @click="$emit('save')">保存 {{ selected.length }} 名成员</el-button></div></template>
-  </el-drawer>
+  </ResponsiveDetailCarrier>
 </template>
 <script setup lang="ts">
 import {computed} from 'vue'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import type {DepartmentItem, EmployeeItem} from '../../types'
 import PageState from '../ui/PageState.vue'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 const props = defineProps<{modelValue: boolean; department: DepartmentItem | null; employees: EmployeeItem[]; selectedEmployeeIDs: number[]; originalEmployeeIDs: number[]; keyword: string; loading: boolean; saving: boolean; loadError: string; saveError: string}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void; (event: 'update:selectedEmployeeIDs', value: number[]): void; (event: 'update:keyword', value: string): void; (event: 'save'): void; (event: 'retry'): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
+const {docked, size} = useResponsiveDetailPanel(visible, true)
 const selected = computed({get: () => props.selectedEmployeeIDs, set: (value) => emit('update:selectedEmployeeIDs', value)})
 const keyword = computed({get: () => props.keyword, set: (value) => emit('update:keyword', value)})
 const filtered = computed(() => { const q = props.keyword.trim().toLocaleLowerCase('zh-CN'); return q ? props.employees.filter((item) => `${item.name} ${item.phone || ''}`.toLocaleLowerCase('zh-CN').includes(q)) : props.employees })

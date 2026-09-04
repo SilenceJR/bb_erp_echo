@@ -42,10 +42,9 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: var(--bb-space-3);
   margin-bottom: var(--bb-space-3);
-  border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-md);
-  background: var(--bb-bg-elevated);
-  padding: var(--bb-space-2) var(--bb-space-3);
+  border-bottom: 1px solid var(--bb-border-subtle);
+  padding: 12px 0;
+  flex-wrap: wrap;
 }
 
 .ui-filter-bar__controls,
@@ -61,7 +60,8 @@ const emit = defineEmits<{
   flex-wrap: wrap;
 }
 
-.ui-filter-bar__controls :deep(.el-input) { min-width: min(280px, 100%); flex: 1 1 280px; }
+.ui-filter-bar__controls :deep(> .el-input) { width: 320px; min-width: min(240px, 100%); max-width: 480px; flex: 1 1 280px; }
+.ui-filter-bar__controls :deep(> .el-select) { width: 180px; flex: 0 1 180px; }
 
 .ui-filter-bar__actions {
   flex: 0 0 auto;

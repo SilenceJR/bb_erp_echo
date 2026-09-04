@@ -4,61 +4,48 @@
       <header class="startup-brand">
         <img src="/bobang-logo-hd.png" alt="博邦光电"/>
         <div>
-          <span>博邦 ERP · {{ platformKind === 'tauri' ? 'Windows 客户端' : 'Web 工作台' }}</span>
-          <h1 id="startup-title">正在准备业务工作台</h1>
+          <span>博邦 ERP · {{ platformKind === 'tauri' ? '桌面客户端' : 'Web 工作台' }}</span>
+          <h1 id="startup-title">连接工作台</h1>
           <small v-if="version">客户端版本 {{ version }}</small>
         </div>
       </header>
 
-      <AnimatePresence mode="wait" :initial="false">
-        <motion.div
+
+        <div
           v-if="isBusy"
           :key="phase"
           class="startup-progress"
           aria-live="polite"
           aria-busy="true"
-          :initial="{opacity: 0, y: 6}"
-          :animate="{opacity: 1, y: 0}"
-          :exit="{opacity: 0, y: -6}"
-          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
         >
           <el-progress :percentage="100" :show-text="false" :indeterminate="true" :duration="1.6"/>
           <strong>{{ message }}</strong>
-          <p>优先连接上次使用的服务器；不可用时再发现局域网服务。</p>
-        </motion.div>
+          <p>请稍候。</p>
+        </div>
 
-        <motion.section
+        <section
           v-else-if="phase === 'AutoConnected'"
           :key="phase"
           class="startup-result startup-connected"
           aria-live="polite"
-          :initial="{opacity: 0, y: 6}"
-          :animate="{opacity: 1, y: 0}"
-          :exit="{opacity: 0, y: -6}"
-          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
         >
           <StatusTag label="连接成功" tone="success"/>
           <strong>{{ message }}</strong>
-        </motion.section>
+        </section>
 
-        <motion.div
+        <div
           v-else-if="phase === 'SelectServer'"
           :key="phase"
-          :initial="{opacity: 0, y: 6}"
-          :animate="{opacity: 1, y: 0}"
-          :exit="{opacity: 0, y: -6}"
-          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
-          :on-animation-complete="focusResult"
         >
           <section ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="server-result-title">
             <div class="startup-result__heading">
               <div>
-                <span>发现服务冲突</span>
-                <h2 id="server-result-title">请选择本次连接的服务器</h2>
+                <span>发现多个服务器</span>
+                <h2 id="server-result-title">选择服务器</h2>
               </div>
               <StatusTag :label="`${candidates.length} 个服务`" tone="warning"/>
             </div>
-            <el-alert title="局域网内存在多个已验证候选（可能包含克隆身份），客户端不会静默选择或覆盖上次连接。" type="warning" :closable="false" show-icon/>
+            <el-alert title="请选择要使用的服务器；不确定时请联系管理员确认。" type="warning" :closable="false" show-icon/>
             <div class="server-list">
               <article v-for="server in candidates" :key="serverIdentityKey(server)" class="server-card">
                 <div class="server-card__copy">
@@ -76,16 +63,11 @@
               <el-button @click="rediscover">重新发现</el-button>
             </div>
           </section>
-        </motion.div>
+        </div>
 
-        <motion.div
+        <div
           v-else
           :key="phase"
-          :initial="{opacity: 0, y: 6}"
-          :animate="{opacity: 1, y: 0}"
-          :exit="{opacity: 0, y: -6}"
-          :transition="{duration: 0.18, ease: [0.2, 0, 0, 1]}"
-          :on-animation-complete="focusResult"
         >
           <section ref="resultHeading" class="startup-result" tabindex="-1" aria-labelledby="manual-result-title">
             <div class="startup-result__heading">
@@ -98,7 +80,7 @@
             <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon role="alert"/>
 
             <template v-if="platformKind === 'tauri'">
-              <p class="startup-help">确认服务端已启动，并允许 Windows 专用网络访问 ERP TCP 端口和 UDP 39080。UDP 不可用时仍可手动连接。</p>
+              <p class="startup-help">请确认电脑与服务器连接同一网络，也可以输入服务器地址连接。</p>
               <el-form class="manual-server-form" label-position="top" @submit.prevent="connectManually">
                 <el-form-item label="服务器 IPv4 地址">
                   <el-input v-model.trim="manualAddress" :disabled="manualTesting" placeholder="例如 192.168.1.20:8080" clearable/>
@@ -116,15 +98,14 @@
               </div>
             </template>
           </section>
-        </motion.div>
-      </AnimatePresence>
+        </div>
+
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import {computed, nextTick, ref, watch} from 'vue'
-import {AnimatePresence, motion} from 'motion-v'
 import {useStartupConnectionContext} from '../../composables/workspaceContext'
 import StatusTag from '../ui/StatusTag.vue'
 import {serverIdentityKey} from '../../platform/connectionPolicy'
@@ -163,6 +144,7 @@ async function focusResult() {
 }
 
 watch(focusRevision, focusResult)
+watch(phase, focusResult, {flush: 'post'})
 
 </script>
 
@@ -176,16 +158,18 @@ watch(focusRevision, focusResult)
 }
 .startup-card {
   display: grid;
-  width: min(760px, 100%);
+  width: min(560px, 100%);
   gap: var(--bb-space-8);
   border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-xl);
+  border-radius: 10px;
   background: var(--bb-bg-surface);
-  padding: var(--bb-space-10);
+  padding: 32px;
 }
 .startup-brand { display: flex; align-items: center; gap: var(--bb-space-5); }
 .startup-brand img {
-  width: 148px;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
   border: 1px solid var(--bb-border-subtle);
   border-radius: var(--bb-radius-md);
 }

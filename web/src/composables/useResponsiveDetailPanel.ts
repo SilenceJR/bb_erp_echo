@@ -1,13 +1,17 @@
-import {computed, onBeforeUnmount, onMounted, ref, type Ref} from 'vue'
+import {computed, onBeforeUnmount, onMounted, watch, unref, type Ref} from 'vue'
+import {clientViewport, sidebarPixels, detailWidths, activeDetailKey} from './detailLayout'
+import {canDockDetail} from '../platform/detailPanel'
 
 /** Keeps business detail in one carrier: docked on wide screens, overlay elsewhere. */
-export function useResponsiveDetailPanel(visible: Ref<boolean>, imageDense = false) {
-  const viewportWidth = ref(window.innerWidth)
-  const preferredWidth = computed(() => imageDense && viewportWidth.value >= 1464 ? 520 : 420)
-  const docked = computed(() => visible.value && viewportWidth.value >= 1440 && viewportWidth.value - 224 - preferredWidth.value >= 720)
-  const size = computed(() => docked.value ? `${preferredWidth.value}px` : 'min(520px, 100%)')
-  const sync = () => { viewportWidth.value = window.innerWidth }
+export function useResponsiveDetailPanel(visible: Ref<boolean>, imageDense: boolean | Ref<boolean> = false) {
+  const key = Symbol('detail')
+  const preferredWidth = computed(() => unref(imageDense) ? 520 : 420)
+  // A secondary editor overlays the existing detail; it must never create a second docked column.
+  const docked = computed(() => visible.value && activeDetailKey.value === key && canDockDetail(clientViewport.value, sidebarPixels.value, preferredWidth.value))
+  const size = computed(() => `min(${preferredWidth.value}px, 100%)`)
+  watch([visible, preferredWidth], ([open, width]) => { if (open) detailWidths.set(key, width); else detailWidths.delete(key) }, {immediate: true, flush: 'sync'})
+  const sync = () => { clientViewport.value = window.innerWidth }
   onMounted(() => window.addEventListener('resize', sync))
-  onBeforeUnmount(() => window.removeEventListener('resize', sync))
+  onBeforeUnmount(() => { window.removeEventListener('resize', sync); detailWidths.delete(key) })
   return {docked, size}
 }

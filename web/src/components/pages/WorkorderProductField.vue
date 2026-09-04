@@ -92,10 +92,10 @@
       @refresh="loadWorkorderProductStock"
     />
 
-    <el-dialog
+    <ResponsiveDetailCarrier
       v-model="temporaryProductDialogVisible"
       title="临时添加产品档案"
-      width="min(560px, calc(100vw - 28px))"
+      :size="productPanel.size.value" :docked="productPanel.docked.value" docked-auto-focus="first-editable"
       append-to-body
       :close-on-click-modal="!temporaryProductSubmitting"
       :close-on-press-escape="!temporaryProductSubmitting"
@@ -139,7 +139,7 @@
           <el-button type="primary" native-type="submit" form="temporary-product-form" :loading="temporaryProductSubmitting" :disabled="!temporaryProductForm.operator_employee_id || Boolean(operatorDirectory.unavailableReason.value)">保存并选择</el-button>
         </div>
       </template>
-    </el-dialog>
+    </ResponsiveDetailCarrier>
   </div>
 </template>
 
@@ -148,6 +148,8 @@ import {computed, nextTick, type DirectiveBinding, type ObjectDirective} from 'v
 import {useWorkorderContext} from '../../composables/workorderContext'
 import StatusTag from '../ui/StatusTag.vue'
 import WorkorderStockCard from './WorkorderStockCard.vue'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import OperatorSelect from '../ui/OperatorSelect.vue'
 
 const {
@@ -177,6 +179,7 @@ const {
   createTemporaryProduct,
 } = useWorkorderContext().product
 
+const productPanel = useResponsiveDetailPanel(temporaryProductDialogVisible, true)
 const canCreateTemporaryProduct = computed(() => (
   hasPermission('warehouse:read')
   && hasPermission('workorder:write')

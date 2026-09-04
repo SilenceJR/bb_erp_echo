@@ -1,7 +1,8 @@
 <template>
-  <el-dialog v-model="actionDialogVisible" :title="title" width="min(560px, calc(100vw - 28px))" append-to-body :close-on-click-modal="!actionSubmitting" :close-on-press-escape="!actionSubmitting" :show-close="!actionSubmitting" :before-close="beforeClose">
+  <ResponsiveDetailCarrier v-model="actionDialogVisible" :title="title" :size="actionPanel.size.value" :docked="actionPanel.docked.value" docked-auto-focus="first-editable" :close-on-click-modal="!actionSubmitting" :close-on-press-escape="!actionSubmitting" :before-close="beforeClose">
     <div v-if="actionDialogVisible" key="workorder-action-content" class="workorder-dialog-motion">
-    <el-form id="workorder-action-form" label-position="top" :disabled="actionSubmitting" @submit.prevent="submitWorkOrderAction">
+    <el-form id="workorder-action-form" label-position="top" :disabled="actionSubmitting" @submit.prevent="!moduleUnavailable && submitWorkOrderAction()">
+      <el-alert v-if="moduleUnavailable" title="任务单暂不可用，已填写内容仍保留，当前不能提交。" type="warning" :closable="false" show-icon />
       <el-alert v-if="impactMessage" :title="impactMessage" :type="dangerous ? 'warning' : 'info'" :closable="false" show-icon />
       <el-alert v-if="actionError" :title="actionError" type="error" :closable="false" show-icon />
       <div class="workorder-action-summary"><strong>{{ selectedWorkOrder?.title }}</strong><small>{{ actionTarget ? `部门：${departmentName(actionTarget.department_id)}` : `任务编号：${selectedWorkOrder?.code}` }}</small></div>
@@ -12,14 +13,19 @@
     </el-form>
     </div>
     <template #footer><div class="form-actions"><el-button :disabled="actionSubmitting" @click="closeWorkOrderAction()">取消</el-button><el-button native-type="submit" form="workorder-action-form" :type="confirmType" :loading="actionSubmitting" :disabled="confirmDisabled">{{ confirmText }}</el-button></div></template>
-  </el-dialog>
+  </ResponsiveDetailCarrier>
 </template>
 <script setup lang="ts">
 import {computed, watch} from 'vue'
 import {useWorkorderContext} from '../../composables/workorderContext'
 import OperatorSelect from '../ui/OperatorSelect.vue'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {operatorDirectory, selectedWorkOrder, actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError, actionFieldErrors, actionForm, closeWorkOrderAction, submitWorkOrderAction, departmentName, formatQuantity} = useWorkorderContext().action
+const {moduleUnavailable} = useWorkspaceContext()
+const actionPanel = useResponsiveDetailPanel(actionDialogVisible, true)
 const titles: Record<string, string> = {dispatch: '派发任务', pause: '暂停任务', resume: '恢复任务', urgent: '调整加急状态', complete_normal: '确认正常完成', complete_forced: '强制完成任务', department_start: '开始处理部门任务', department_partial_complete: '提交部分完成', department_complete: '完成部门任务'}
 const title = computed(() => titles[actionKind.value] || '任务操作确认')
 const dangerous = computed(() => actionKind.value === 'complete_forced')
@@ -46,7 +52,7 @@ const quantityError = computed(() => {
 })
 const reasonError = computed(() => needsReason.value && !actionForm.reason.trim() ? actionFieldErrors.reason : '')
 const confirmDisabled = computed(() => Boolean(
-  operatorDirectory.unavailableReason.value
+  moduleUnavailable.value || operatorDirectory.unavailableReason.value
   || (needsQuantity.value && (!actionForm.completed_quantity.trim() || quantityError.value)),
 ))
 const confirmType = computed<'primary' | 'success' | 'warning' | 'danger'>(() => {

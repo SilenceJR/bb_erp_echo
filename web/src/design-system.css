@@ -15,36 +15,36 @@
   --bb-brand-300: #82d3ea;
   --bb-brand-400: #42b9dc;
   --bb-brand-500: #079ed1;
-  --bb-brand-600: #087abf;
+  --bb-brand-600: #104F95;
   --bb-brand-700: #0758ad;
-  --bb-brand-800: #0a4888;
+  --bb-brand-800: #0D427D;
   --bb-brand-900: #113b68;
   --bb-brand-gradient: linear-gradient(135deg, var(--bb-brand-500) 0%, var(--bb-brand-700) 100%);
-  --bb-action-primary: var(--bb-brand-700);
-  --bb-accent-text: var(--bb-brand-700);
+  --bb-action-primary: #135DAD;
+  --bb-accent-text: #135DAD;
   --bb-accent-icon: var(--bb-brand-500);
-  --bb-accent-selected-bg: var(--bb-brand-50);
-  --bb-accent-selected-text: var(--bb-brand-700);
-  --bb-focus-color: var(--bb-brand-500);
+  --bb-accent-selected-bg: #EAF2FC;
+  --bb-accent-selected-text: #135DAD;
+  --bb-focus-color: #135DAD;
 
   /* Neutral and semantic surfaces. */
-  --bb-text-primary: #1d2939;
+  --bb-text-primary: #172536;
   --bb-text-on-brand: #ffffff;
-  --bb-text-regular: #344054;
-  --bb-text-secondary: #667085;
-  --bb-text-placeholder: #98a2b3;
-  --bb-text-disabled: #b3bbc6;
-  --bb-bg-page: #f7f8fa;
-  --bb-bg-surface: #ffffff;
+  --bb-text-regular: #344459;
+  --bb-text-secondary: #58687A;
+  --bb-text-placeholder: #637287;
+  --bb-text-disabled: #8994A3;
+  --bb-bg-page: #F2F3F5;
+  --bb-bg-surface: #FFFFFF;
   /* Elevated is the semantic surface for controls and Teleport overlays. It
      stays distinct from the page without forcing every component to invent a
      local white background (especially important in the dark client). */
-  --bb-bg-elevated: #ffffff;
-  --bb-bg-subtle: #f3f5f7;
+  --bb-bg-elevated: #FFFFFF;
+  --bb-bg-subtle: #F6F7F9;
   --bb-bg-sunken: #eceff2;
-  --bb-bg-overlay: rgba(14, 35, 51, 0.42);
-  --bb-border-subtle: #eaecf0;
-  --bb-border-default: #dfe3e8;
+  --bb-bg-overlay: rgba(19,27,38,.36);
+  --bb-border-subtle: #E8EBEF;
+  --bb-border-default: #DCE1E7;
   --bb-border-strong: #c8ced6;
 
   --bb-success: #188b63;
@@ -77,8 +77,8 @@
   --bb-line-height-relaxed: 1.7;
   --bb-font-weight-regular: 400;
   --bb-font-weight-medium: 500;
-  --bb-font-weight-semibold: 650;
-  --bb-font-weight-bold: 700;
+  --bb-font-weight-semibold: 600;
+  --bb-font-weight-bold: 600;
 
   /* 4px spacing grid. */
   --bb-space-0: 0;
@@ -112,7 +112,7 @@
   --bb-table-header-height: 40px;
   --bb-table-row-compact: 44px;
   --bb-table-row-standard: 48px;
-  --bb-table-row-double: 64px;
+  --bb-table-row-double: 60px;
   --bb-table-row-complex: 72px;
   --bb-table-head-font-size: 12px;
   --bb-table-body-font-size: 14px;
@@ -121,9 +121,9 @@
   /* Motion and stacking. */
   --bb-duration-fast: 120ms;
   --bb-duration-base: 160ms;
-  --bb-duration-slow: 220ms;
+  --bb-duration-slow: 180ms;
   --bb-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --bb-focus-ring: 0 0 0 3px rgba(7, 158, 209, 0.24);
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
   --bb-z-sticky: 10;
   --bb-z-header: 20;
   --bb-z-overlay: 1000;
@@ -136,7 +136,7 @@
   --bb-detail-panel-width: 420px;
   --bb-content-max-width: 1240px;
   --bb-content-wide-width: 1440px;
-  --bb-content-docked-inset: clamp(20px, 2.2vw, 32px);
+  --bb-content-docked-inset: 24px;
 
   /* Element Plus theme bridge. */
   --el-color-primary-rgb: 7, 88, 173;
@@ -146,12 +146,12 @@
   --el-color-error-rgb: 180, 35, 44;
   --el-color-info-rgb: 62, 111, 137;
   --el-color-primary: var(--bb-action-primary);
-  --el-color-primary-light-3: #4f86c6;
+  --el-color-primary-light-3: #104F95;
   --el-color-primary-light-5: #83add6;
   --el-color-primary-light-7: #b7cee7;
   --el-color-primary-light-8: #d5e3f1;
-  --el-color-primary-light-9: #edf3f9;
-  --el-color-primary-dark-2: var(--bb-brand-800);
+  --el-color-primary-light-9: #EAF2FC;
+  --el-color-primary-dark-2: #0D427D;
   --el-color-success: var(--bb-success);
   --el-color-success-light-3: color-mix(in srgb, var(--bb-success) 70%, white);
   --el-color-success-light-5: color-mix(in srgb, var(--bb-success) 50%, white);
@@ -223,6 +223,9 @@
   --el-overlay-color-lighter: var(--bb-bg-overlay);
   --el-transition-duration: var(--bb-duration-base);
   --el-transition-duration-fast: var(--bb-duration-fast);
+  --bb-bg-navigation: #F5F6F7;
+  --bb-bg-hover: #EDF0F4;
+  --bb-border-control: #7E8C9C;
 }
 
 :root[data-accent="teal"] {
@@ -232,18 +235,23 @@
   --bb-brand-300: #70dfc7;
   --bb-brand-400: #35c4ad;
   --bb-brand-500: #159f8c;
-  --bb-brand-600: #0f806f;
+  --bb-brand-600: #095E58;
   --bb-brand-700: #0e675b;
-  --bb-brand-800: #105249;
+  --bb-brand-800: #084E49;
   --bb-brand-900: #103f3a;
-  --bb-action-primary: var(--bb-brand-700);
-  --bb-focus-ring: 0 0 0 3px rgba(21, 159, 140, 0.24);
+  --bb-action-primary: #0B7069;
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
   --el-color-primary-rgb: 14, 103, 91;
-  --el-color-primary-light-3: #55958b;
+  --el-color-primary-light-3: #095E58;
   --el-color-primary-light-5: #87b3ac;
   --el-color-primary-light-7: #b7d1cd;
   --el-color-primary-light-8: #d5e4e2;
-  --el-color-primary-light-9: #edf5f4;
+  --el-color-primary-light-9: #E7F4F0;
+  --bb-accent-text: #0B7069;
+  --bb-accent-selected-bg: #E7F4F0;
+  --bb-accent-selected-text: #0B7069;
+  --bb-focus-color: #0B7069;
+  --el-color-primary-dark-2: #084E49;
 }
 
 :root[data-accent="violet"] {
@@ -253,50 +261,55 @@
   --bb-brand-300: #bca1fb;
   --bb-brand-400: #9c72ef;
   --bb-brand-500: #7e4dd8;
-  --bb-brand-600: #6938bc;
+  --bb-brand-600: #59369F;
   --bb-brand-700: #552d98;
-  --bb-brand-800: #47277b;
+  --bb-brand-800: #4A2C86;
   --bb-brand-900: #392161;
-  --bb-action-primary: var(--bb-brand-700);
-  --bb-focus-ring: 0 0 0 3px rgba(126, 77, 216, 0.24);
+  --bb-action-primary: #6844B5;
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
   --el-color-primary-rgb: 85, 45, 152;
-  --el-color-primary-light-3: #8870b7;
+  --el-color-primary-light-3: #59369F;
   --el-color-primary-light-5: #aa98c9;
   --el-color-primary-light-7: #ccc0dc;
   --el-color-primary-light-8: #ded6e8;
-  --el-color-primary-light-9: #f0edf4;
+  --el-color-primary-light-9: #F0EBFA;
+  --bb-accent-text: #6844B5;
+  --bb-accent-selected-bg: #F0EBFA;
+  --bb-accent-selected-text: #6844B5;
+  --bb-focus-color: #6844B5;
+  --el-color-primary-dark-2: #4A2C86;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bb-text-primary: #f2f4f7;
-  --bb-text-regular: #d0d5dd;
-  --bb-text-secondary: #98a2b3;
-  --bb-text-placeholder: #7f8998;
-  --bb-text-disabled: #667085;
-  --bb-bg-page: #202225;
-  --bb-bg-surface: #272a2e;
-  --bb-bg-elevated: #2f3338;
-  --bb-bg-subtle: #1b1d20;
+  --bb-text-primary: #E8EDF4;
+  --bb-text-regular: #D2DAE5;
+  --bb-text-secondary: #B2BDCB;
+  --bb-text-placeholder: #A4AFBE;
+  --bb-text-disabled: #7F8A9A;
+  --bb-bg-page: #15181D;
+  --bb-bg-surface: #1C2027;
+  --bb-bg-elevated: #252B34;
+  --bb-bg-subtle: #242A33;
   --bb-bg-sunken: #181a1d;
-  --bb-bg-overlay: rgba(0, 0, 0, 0.62);
-  --bb-border-subtle: #30343a;
-  --bb-border-default: #3c4148;
+  --bb-bg-overlay: rgba(4,8,14,.60);
+  --bb-border-subtle: #303844;
+  --bb-border-default: #465260;
   --bb-border-strong: #565d66;
   --bb-brand-50: color-mix(in srgb, var(--bb-brand-500) 18%, #272a2e);
   --bb-brand-100: color-mix(in srgb, var(--bb-brand-500) 28%, #272a2e);
-  --bb-accent-text: #7cc7ff;
+  --bb-accent-text: #85B7FF;
   --bb-accent-icon: #69bdf8;
-  --bb-accent-selected-bg: #263e50;
-  --bb-accent-selected-text: #e5f4ff;
-  --bb-focus-color: #69bdf8;
-  --bb-focus-ring: 0 0 0 3px rgba(105, 189, 248, 0.52);
-  --el-color-primary-light-3: #1768b5;
+  --bb-accent-selected-bg: #213A57;
+  --bb-accent-selected-text: #B7D4FF;
+  --bb-focus-color: #85B7FF;
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
+  --el-color-primary-light-3: #A3C9FF;
   --el-color-primary-light-5: #447da5;
   --el-color-primary-light-7: #315a76;
   --el-color-primary-light-8: #29485e;
-  --el-color-primary-light-9: #202f3c;
-  --el-color-primary-dark-2: #064783;
+  --el-color-primary-light-9: #213A57;
+  --el-color-primary-dark-2: #6AA5FA;
   --bb-success: #5bc79d;
   --bb-success-bg: #183a2e;
   --bb-success-border: #28654f;
@@ -327,34 +340,47 @@
   --el-mask-color-extra-light: rgba(0, 0, 0, 0.36);
   --el-disabled-bg-color: color-mix(in srgb, var(--bb-bg-elevated) 72%, var(--bb-bg-sunken));
   --el-overlay-color-lighter: var(--bb-bg-overlay);
+  --bb-bg-navigation: #191D23;
+  --bb-bg-hover: #2E3540;
+  --bb-border-control: #748194;
+  --bb-text-on-brand: #102034;
+  --bb-action-primary: #85B7FF;
+  --bb-brand-600: #A3C9FF;
+  --bb-brand-800: #6AA5FA;
 }
 
 :root[data-theme="dark"][data-accent="teal"] {
-  --bb-accent-text: #73e3c9;
+  --bb-accent-text: #63D4C1;
   --bb-accent-icon: #5ed6ba;
-  --bb-accent-selected-bg: #20443b;
-  --bb-accent-selected-text: #e0fff7;
-  --bb-focus-color: #5ed6ba;
-  --bb-focus-ring: 0 0 0 3px rgba(94, 214, 186, 0.5);
-  --el-color-primary-light-3: #177767;
+  --bb-accent-selected-bg: #1C3D38;
+  --bb-accent-selected-text: #9CE7D8;
+  --bb-focus-color: #63D4C1;
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
+  --el-color-primary-light-3: #8CE1D2;
   --el-color-primary-light-5: #3f8f7e;
   --el-color-primary-light-7: #2b5e52;
   --el-color-primary-light-8: #244940;
-  --el-color-primary-light-9: #1d332f;
-  --el-color-primary-dark-2: #0b4f46;
+  --el-color-primary-light-9: #1C3D38;
+  --el-color-primary-dark-2: #46C4AE;
+  --bb-action-primary: #63D4C1;
+  --bb-brand-600: #8CE1D2;
+  --bb-brand-800: #46C4AE;
 }
 
 :root[data-theme="dark"][data-accent="violet"] {
-  --bb-accent-text: #cbb4ff;
+  --bb-accent-text: #C2AEFF;
   --bb-accent-icon: #b99cff;
-  --bb-accent-selected-bg: #3c3155;
-  --bb-accent-selected-text: #f2ebff;
-  --bb-focus-color: #b99cff;
-  --bb-focus-ring: 0 0 0 3px rgba(185, 156, 255, 0.52);
-  --el-color-primary-light-3: #6742a2;
+  --bb-accent-selected-bg: #3A2D55;
+  --bb-accent-selected-text: #D6C8FF;
+  --bb-focus-color: #C2AEFF;
+  --bb-focus-ring: 0 0 0 2px var(--bb-focus-color);
+  --el-color-primary-light-3: #D3C5FF;
   --el-color-primary-light-5: #7c66a3;
   --el-color-primary-light-7: #55456e;
   --el-color-primary-light-8: #403652;
-  --el-color-primary-light-9: #302a3b;
-  --el-color-primary-dark-2: #452478;
+  --el-color-primary-light-9: #3A2D55;
+  --el-color-primary-dark-2: #AF94FA;
+  --bb-action-primary: #C2AEFF;
+  --bb-brand-600: #D3C5FF;
+  --bb-brand-800: #AF94FA;
 }

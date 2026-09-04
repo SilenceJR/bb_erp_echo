@@ -17,7 +17,7 @@
           </div>
           <el-tag :type="connectivityType" effect="light" round>{{ connectivityTag }}</el-tag>
         </div>
-        <p class="update-manifest">{{ manifestUrl || '尚未配置升级 manifest 地址' }}</p>
+        <p class="update-manifest">{{ manifestUrl || '尚未配置更新服务，请联系管理员' }}</p>
         <dl class="update-meta-grid">
           <div><dt>最后尝试</dt><dd>{{ formatTime(status?.last_attempt_at) }}</dd></div>
           <div><dt>最后成功</dt><dd>{{ formatTime(status?.last_success_at) }}</dd></div>
@@ -42,7 +42,7 @@
 
     <div class="update-package-grid">
       <PackageCard
-        title="Go 服务端"
+        title="服务端"
         description="只报告和下载新版本，不会自动替换正在运行的服务。"
         :item="serverStatus"
         :known="statusKnown"
@@ -56,11 +56,10 @@
       <div class="update-card-heading">
         <div>
           <span class="update-kicker">客户端更新缓存</span>
-          <h2 id="client-v2-cache-title">完整更新资源</h2>
+          <h2 id="client-v2-cache-title">客户端安装包</h2>
         </div>
-        <el-tag type="info" effect="light">协议 v{{ clientProtocolVersion }}</el-tag>
       </div>
-      <p class="update-package-description">服务端已验签并缓存的 Windows 客户端更新资源摘要。</p>
+      <p class="update-package-description">已在服务器准备的 Windows 客户端安装包。</p>
       <dl class="update-version-list">
         <div><dt>完整包</dt><dd>{{ cacheStateLabel(status?.client_full_cached) }}</dd></div>
         <div><dt>缓存总量</dt><dd>{{ formatBytes(status?.client_cache_bytes) }}</dd></div>

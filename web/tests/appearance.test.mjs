@@ -81,7 +81,10 @@ test('暗色三品牌覆盖 Element primary 层级且 plain 按钮保持清晰',
     for (const suffix of ['3', '5', '7', '8', '9']) tokenHex(block, `--el-color-primary-light-${suffix}`)
     tokenHex(block, '--el-color-primary-dark-2')
     assert.ok(contrast(plainText, tokenHex(block, '--el-color-primary-light-9')) >= 4.5, `${selector} plain button contrast`)
-    assert.ok(contrast('#ffffff', tokenHex(block, '--el-color-primary-light-3')) >= 4.5, `${selector} primary hover contrast`)
+    const darkStart = css.indexOf(':root[data-theme="dark"] {')
+    const darkBlock = css.slice(darkStart, css.indexOf('\n}', darkStart) + 2)
+    const onBrand = tokenHex(darkBlock, '--bb-text-on-brand')
+    assert.ok(contrast(onBrand, tokenHex(block, '--el-color-primary-light-3')) >= 4.5, `${selector} primary hover contrast`)
   }
   assert.match(elementTheme, /\.el-button--primary\.is-plain/)
   assert.match(elementTheme, /--el-button-text-color: var\(--bb-accent-text\)/)

@@ -112,8 +112,6 @@
 .permission-empty p { margin: 7px 0 0; color: var(--bb-text-secondary); font-size: 13px; }
 .warehouse-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .warehouse-tabs .el-segmented { max-width: 100%; }
-.warehouse-tabs button { min-height: 36px; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-sm); background: var(--bb-bg-elevated); color: var(--bb-text-primary); padding: 0 13px; }
-.warehouse-tabs button.active { border-color: transparent; background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); font-weight: 700; }
 .inline-form {
   grid-template-columns: repeat(4,minmax(150px,1fr));
   align-items: end;
@@ -217,7 +215,6 @@
   backdrop-filter: blur(2px);
 }
 .item-drawer { background: var(--bb-bg-surface); padding: var(--bb-space-5); }
-.el-drawer__body { padding: 0!important; background: var(--bb-bg-surface); }
 .drawer-heading { position: sticky; top: 0; z-index: var(--bb-z-sticky); display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: var(--bb-space-5); border-bottom: 1px solid var(--bb-border-subtle); background: var(--bb-bg-surface); padding-bottom: var(--bb-space-3); }
 .drawer-heading small, .drawer-heading span { color: var(--bb-text-secondary); }
 .drawer-heading h2 { margin: 4px 0 6px; font-size: 26px; }
@@ -470,12 +467,10 @@
 .employee-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--bb-space-4); }
 .employee-form-grid .el-date-editor { width: 100%; }
 .business-form-drawer .el-drawer__header { margin-bottom: 0; padding: var(--bb-space-6) var(--bb-space-6) var(--bb-space-4); }
-.business-form-drawer .el-drawer__body { min-width: 0; padding: 0 var(--bb-space-6) calc(var(--bb-space-6) + env(safe-area-inset-bottom, 0px)) !important; }
 .business-form-drawer .el-drawer__footer { padding: var(--bb-space-4) var(--bb-space-6) calc(var(--bb-space-4) + env(safe-area-inset-bottom, 0px)); }
 .business-form-drawer .el-form, .member-management-drawer .el-drawer__body { min-width: 0; }
 .el-drawer.settings-drawer { --bb-settings-inline-inset: var(--bb-space-6); overflow-x: hidden; }
 .el-drawer.settings-drawer > .el-drawer__header { margin-bottom: 0; padding: var(--bb-space-6) var(--bb-settings-inline-inset) var(--bb-space-5); }
-.el-drawer.settings-drawer > .el-drawer__body { min-width: 0; overflow-x: hidden; padding: 0 var(--bb-settings-inline-inset) calc(var(--bb-space-6) + env(safe-area-inset-bottom, 0px)) !important; }
 .workspace-detail-aside.customer-profile-drawer .customer-form-grid { grid-template-columns: 1fr; }
 .el-drawer.customer-profile-drawer > .el-drawer__body { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 .employee-departments-readonly { display: grid; gap: var(--bb-space-2); border-top: 1px solid var(--bb-border-default); padding-top: var(--bb-space-4); }

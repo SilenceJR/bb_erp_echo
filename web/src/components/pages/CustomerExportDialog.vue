@@ -6,6 +6,7 @@
     width="min(1120px, 96vw)"
     :close-on-click-modal="!downloading"
     :close-on-press-escape="!downloading"
+    :before-close="requestClose"
     destroy-on-close
     @closed="reset"
   >
@@ -71,7 +72,7 @@
 
     <template #footer>
       <div class="dialog-actions">
-        <el-button :disabled="downloading" @click="visible = false">取消</el-button>
+        <el-button :disabled="downloading" @click="requestClose()">取消</el-button>
         <el-button v-if="!previewReady" type="primary" :loading="loading" @click="createPreview">查看导出预览</el-button>
         <el-button v-else type="primary" :loading="downloading" :disabled="loading || !document || document.empty" @click="download">确认导出 XLSX</el-button>
       </div>
@@ -107,12 +108,18 @@ const currentScopeText = computed(() => {
   return parts.length ? parts.join(' · ') : '当前为全部编码，无其他筛选。'
 })
 
-useDirtyGuard('customer-export', {
+const exportGuard = useDirtyGuard('customer-export', {
   busy: () => props.modelValue && (loading.value || downloading.value),
   dirty: () => props.modelValue && (previewReady.value || scope.value !== 'current'),
   busyMessage: '客户资料导出正在处理，请等待完成后再离开',
   dirtyMessage: '当前导出范围或预览尚未完成，离开后不会保留。',
 })
+
+async function requestClose(done?: () => void) {
+  if (!(await exportGuard.confirmLeave())) return
+  if (done) done()
+  else visible.value = false
+}
 
 function query(page = 1) {
   const params = new URLSearchParams({scope: frozen.value.scope, page: String(page), page_size: String(pageSize.value)})

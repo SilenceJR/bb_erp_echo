@@ -1,9 +1,7 @@
 <template>
   <div class="data-page customer-page">
-    <LayoutGroup id="customer-profile-transition">
     <PageHeader
       title="客户资料"
-      description="客户编码是后续业务的稳定关联；每个编码可维护一条或多条具体资料。"
       :readonly="!canWrite"
       @back="switchModule('dashboard')"
     >
@@ -40,9 +38,8 @@
       </div>
     </form>
 
-    <section v-if="filteredCodes.length" class="customer-summary" aria-label="当前筛选客户摘要" aria-live="polite">
-      <span v-if="activeTab === 'profiles'"><strong>{{ filteredCodes.length }}</strong> 个编码 · <strong>{{ filteredProfileCount }}</strong> 条资料 · <strong>{{ filteredMultipleCount }}</strong> 个多资料编码</span>
-      <span v-else><strong>{{ filteredCodes.length }}</strong> 个编码 · <strong>{{ filteredEmptyCount }}</strong> 个未关联资料</span>
+    <section v-if="filteredCodes.length && activeTab === 'codes'" class="customer-summary" aria-label="当前筛选客户编码摘要" aria-live="polite">
+      <span><strong>{{ filteredCodes.length }}</strong> 个编码 · <strong>{{ filteredEmptyCount }}</strong> 个未关联资料</span>
     </section>
 
     <el-alert v-if="listError && sourceCodes.length" :title="listError" type="error" :closable="false" show-icon />
@@ -59,10 +56,10 @@
       <section class="customer-desktop-table" aria-label="按客户编码分组的客户资料">
         <el-table :data="codes" row-key="id" stripe>
           <el-table-column label="客户编码" width="132"><template #default="{row}"><span class="customer-code">{{ row.code }}</span></template></el-table-column>
-          <el-table-column label="客户资料" min-width="210"><template #default="{row}"><div class="primary-profile"><motion.strong v-if="row.default_profile && !(drawerVisible && selectedProfile?.id === row.default_profile.id)" :layout-id="`customer-profile-title-${row.default_profile.id}`" :transition="{duration: 0.28, ease: [0.2, 0, 0, 1]}">{{ profileTitle(row.default_profile) }}</motion.strong><strong v-else>{{ profileTitle(row.default_profile) }}</strong><small>{{ row.default_profile?.name || (row.profile_count ? '未填写客户名称' : '尚未建立资料') }}</small></div></template></el-table-column>
+          <el-table-column label="客户资料" min-width="210"><template #default="{row}"><div class="primary-profile"><strong>{{ profileTitle(row.default_profile) }}</strong><small>{{ row.default_profile?.name || (row.profile_count ? '未填写客户名称' : '尚未建立资料') }}</small></div></template></el-table-column>
           <el-table-column label="联系人" min-width="140"><template #default="{row}">{{ row.default_profile?.contact_name || '—' }}</template></el-table-column>
           <el-table-column label="联系电话" min-width="150"><template #default="{row}"><span class="text-cell">{{ row.default_profile?.contact_phone || '—' }}</span></template></el-table-column>
-          <el-table-column label="业务员" min-width="120"><template #default="{row}">{{ row.default_profile?.salesperson || '—' }}</template></el-table-column>
+          <el-table-column v-if="!drawerVisible" label="业务员" min-width="120"><template #default="{row}">{{ row.default_profile?.salesperson || '—' }}</template></el-table-column>
           <el-table-column label="操作" width="100" align="center" fixed="right"><template #default="{row}"><el-button v-if="row.default_profile" link type="primary" @click="openProfile(row.default_profile, asCustomerCode(row), $event)">详情</el-button><span v-else>—</span></template></el-table-column>
         </el-table>
       </section>
@@ -82,7 +79,8 @@
     </template>
 
     <div v-if="filteredCodes.length" class="customer-pagination">
-      <el-pagination background layout="prev, pager, next, sizes, total" :total="total" :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" @update:current-page="changePage" @update:page-size="changePageSize" />
+      <span>共 {{ total }} 条记录</span>
+      <el-pagination background layout="sizes, prev, pager, next" :total="total" :current-page="page" :page-size="pageSize" :page-sizes="[20, 50, 100]" @update:current-page="changePage" @update:page-size="changePageSize" />
     </div>
 
     <CustomerProfileDrawer
@@ -105,49 +103,57 @@
       @select-profile="openProfile"
     />
 
-    <el-dialog v-model="codeDialogVisible" :title="codeDialogMode === 'create' ? '新增客户编码' : '修改客户编码'" width="min(460px, 92vw)" :close-on-click-modal="!codeSaving" :close-on-press-escape="!codeSaving" :before-close="beforeCloseCodeDialog" @closed="codeError = ''">
-      <div v-if="codeDialogVisible" key="customer-code-dialog-content" class="customer-dialog-motion">
-          <el-form label-position="top" :disabled="codeSaving" @submit.prevent="saveCode">
-            <el-alert v-if="codeError" :title="codeError" type="error" :closable="false" show-icon />
-            <el-form-item label="客户编码" required :error="codeFieldError"><el-input v-model.trim="codeInput" maxlength="40" autofocus placeholder="BB-001" @blur="normalizeCodeInput" /><small class="field-help">1、BB-1、bb-001 均会规范为 BB-001。数字必须大于 0。</small></el-form-item>
-            <el-alert v-if="codeDialogMode === 'edit'" title="修改后所有关联资料和选择项将显示新编码。" type="warning" :closable="false" show-icon />
-          </el-form>
-      </div>
-      <template #footer><div class="dialog-actions"><el-button :disabled="codeSaving" @click="closeCodeDialog">取消</el-button><el-button type="primary" :loading="codeSaving" @click="saveCode">保存编码</el-button></div></template>
-    </el-dialog>
+    <ResponsiveDetailCarrier
+      v-model="codeDialogVisible"
+      drawer-class="business-form-drawer customer-code-carrier workspace-detail-drawer"
+      :docked="codePanel.docked.value"
+      :size="codePanel.size.value"
+      :title="codeDialogMode === 'create' ? '新增客户编码' : '修改客户编码'"
+      :close-on-click-modal="!codeSaving"
+      :close-on-press-escape="!codeSaving"
+      :before-close="beforeCloseCodeDialog"
+      docked-auto-focus="first-editable"
+      destroy-on-close
+      @closed="codeError = ''"
+    >
+      <el-form id="customer-code-editor" label-position="top" :disabled="codeSaving" @submit.prevent="saveCode">
+        <el-alert v-if="codeError" :title="codeError" type="error" :closable="false" show-icon />
+        <el-form-item label="客户编码" required :error="codeFieldError"><el-input v-model.trim="codeInput" maxlength="40" autofocus placeholder="BB-001" @blur="normalizeCodeInput" /><small class="field-help">1、BB-1、bb-001 均会规范为 BB-001。数字必须大于 0。</small></el-form-item>
+        <el-alert v-if="codeDialogMode === 'edit'" title="修改后所有关联资料和选择项将显示新编码。" type="warning" :closable="false" show-icon />
+      </el-form>
+      <template #footer><div class="dialog-actions"><el-button :disabled="codeSaving" @click="closeCodeDialog">取消</el-button><el-button type="primary" native-type="submit" form="customer-code-editor" :loading="codeSaving">保存编码</el-button></div></template>
+    </ResponsiveDetailCarrier>
 
     <el-dialog v-model="replacementVisible" title="选择替代默认资料" width="min(520px, 92vw)" :close-on-click-modal="!deleting" :close-on-press-escape="!deleting">
-      <div v-if="replacementVisible" key="replacement-dialog-content" class="customer-dialog-motion">
-          <p class="replacement-tip">当前删除的是默认资料。请先从同一客户编码中选择新默认，切换与删除会在同一事务中完成。</p>
-          <el-alert v-if="deleteError" :title="deleteError" type="error" :closable="false" show-icon />
-          <el-radio-group v-model="replacementID" class="replacement-list">
-            <el-radio v-for="profile in replacementOptions" :key="profile.id" :value="profile.id" border><span><strong>{{ profile.short_name || profile.name || `资料 #${profile.id}` }}</strong><small>{{ profile.name || '未填写客户名称' }} · {{ profile.contact_name || '未填写联系人' }}</small></span></el-radio>
-          </el-radio-group>
-      </div>
+      <p class="replacement-tip">当前删除的是默认资料。请先从同一客户编码中选择新默认，切换与删除会在同一事务中完成。</p>
+      <el-alert v-if="deleteError" :title="deleteError" type="error" :closable="false" show-icon />
+      <el-radio-group v-model="replacementID" class="replacement-list">
+        <el-radio v-for="profile in replacementOptions" :key="profile.id" :value="profile.id" border><span><strong>{{ profile.short_name || profile.name || `资料 #${profile.id}` }}</strong><small>{{ profile.name || '未填写客户名称' }} · {{ profile.contact_name || '未填写联系人' }}</small></span></el-radio>
+      </el-radio-group>
       <template #footer><div class="dialog-actions"><el-button :disabled="deleting" @click="replacementVisible = false">取消</el-button><el-button type="danger" :loading="deleting" :disabled="!replacementID" @click="confirmDeleteWithReplacement">切换默认并删除</el-button></div></template>
     </el-dialog>
 
     <CustomerImportDialog v-if="canImport" v-model="importVisible" :token="token" @completed="handleImportCompleted" />
     <CustomerExportDialog v-model="exportVisible" :token="token" :keyword="keyword" :filter="filter" />
-    </LayoutGroup>
   </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {LayoutGroup, motion} from 'motion-v'
 import {ElMessage} from 'element-plus'
 import {request} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 import type {CustomerCodeItem, CustomerOption, CustomerProfile, PaginatedResponse} from '../../types'
 import PageHeader from '../ui/PageHeader.vue'
 import PageState from '../ui/PageState.vue'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
 import CustomerProfileDrawer, {type CustomerProfileFormValue} from './CustomerProfileDrawer.vue'
 import CustomerImportDialog from './CustomerImportDialog.vue'
 import CustomerExportDialog from './CustomerExportDialog.vue'
 
-const {token, hasPermission, switchModule, registerModuleLeaveGuard, cache} = useWorkspaceContext()
+const {token, hasPermission, switchModule, registerModuleLeaveGuard, cache, setPageDetailPanelVisible} = useWorkspaceContext()
 const canWrite = computed(() => hasPermission('customers:write'))
 const canImport = computed(() => hasPermission('customers:import'))
 const activeTab = ref<'profiles' | 'codes'>('profiles')
@@ -212,6 +218,7 @@ const codeFieldError = ref('')
 const codeError = ref('')
 const codeSaving = ref(false)
 const codeDirty = computed(() => codeInput.value !== codeInitial.value)
+const codePanel = useResponsiveDetailPanel(codeDialogVisible, true)
 
 const replacementVisible = ref(false)
 const pendingDeleteProfile = ref<CustomerProfile | null>(null)
@@ -221,6 +228,8 @@ const deleting = ref(false)
 const deletingCodeID = ref<number | null>(null)
 const deleteError = ref('')
 const replacementOptions = computed(() => (pendingDeleteCode.value?.profiles || []).filter((item) => item.id !== pendingDeleteProfile.value?.id))
+
+watch([drawerVisible, codeDialogVisible], ([profileOpen, codeOpen]) => setPageDetailPanelVisible(profileOpen || codeOpen), {immediate: true, flush: 'sync'})
 
 function normalizeCodeRecord(item: CustomerCodeItem): CustomerCodeItem {
   const profiles = (item.profiles || []).map((profile) => ({...profile, code: item.code}))
@@ -274,6 +283,12 @@ function formatDate(value?: string) { if (!value) return '—'; const date = new
 function eventTarget(event?: Event) { return event?.currentTarget instanceof HTMLElement ? event.currentTarget : document.activeElement instanceof HTMLElement ? document.activeElement : null }
 
 async function openCreateProfile(code?: CustomerCodeItem | null, event?: Event) {
+  if (codeDialogVisible.value) {
+    if (codeSaving.value) { ElMessage.warning('客户编码正在保存，请等待完成后再继续'); return }
+    if (!(await confirmCodeClose())) return
+    codeDialogVisible.value = false
+  }
+  if (drawerVisible.value && drawerMode.value !== 'view' && (await profileDrawer.value?.requestClose()) === false) return
   profileDetailGeneration.value += 1
   if (event || !drawerVisible.value) returnFocus.value = eventTarget(event)
   drawerMode.value = 'create'
@@ -287,6 +302,12 @@ async function openCreateProfile(code?: CustomerCodeItem | null, event?: Event) 
   drawerVisible.value = true
 }
 async function openProfile(profile: CustomerProfile, code: CustomerCodeItem, event?: Event) {
+  if (codeDialogVisible.value) {
+    if (codeSaving.value) { ElMessage.warning('客户编码正在保存，请等待完成后再继续'); return }
+    if (!(await confirmCodeClose())) return
+    codeDialogVisible.value = false
+  }
+  if (drawerVisible.value && drawerMode.value !== 'view' && (await profileDrawer.value?.requestClose()) === false) return
   const generation = ++profileDetailGeneration.value
   const targetProfileID = profile.id
   if (event || !drawerVisible.value) returnFocus.value = eventTarget(event)
@@ -311,9 +332,10 @@ async function saveProfile(form: CustomerProfileFormValue) {
   drawerSaving.value = true
   drawerError.value = ''
   try {
+    let savedProfile: CustomerProfile
     if (drawerMode.value === 'edit' && selectedProfile.value) {
       const {customer_code_id: _customerCodeID, new_code: _newCode, ...body} = form
-      await request(`/api/v1/customers/${selectedProfile.value.id}`, {method: 'PATCH', body}, token.value)
+      savedProfile = await request<CustomerProfile>(`/api/v1/customers/${selectedProfile.value.id}`, {method: 'PATCH', body}, token.value)
       ElMessage.success('客户资料已保存')
     } else {
       let customerCodeID = form.customer_code_id
@@ -322,11 +344,28 @@ async function saveProfile(form: CustomerProfileFormValue) {
         customerCodeID = created.id
       }
       const {new_code: _newCode, ...rest} = form
-      await request('/api/v1/customers', {method: 'POST', body: {...rest, customer_code_id: customerCodeID}}, token.value)
+      savedProfile = await request<CustomerProfile>('/api/v1/customers', {method: 'POST', body: {...rest, customer_code_id: customerCodeID}}, token.value)
       ElMessage.success('客户资料已新增')
     }
-    drawerVisible.value = false
     await loadCodes()
+    const refreshedCode = sourceCodes.value.find((item) => item.id === savedProfile.customer_code_id)
+    const codeForView = refreshedCode || (selectedCode.value?.id === savedProfile.customer_code_id ? selectedCode.value : undefined)
+    const refreshedProfile = {
+      ...savedProfile,
+      code: codeForView?.code || savedProfile.code,
+    }
+    selectedProfile.value = refreshedProfile
+    if (codeForView) {
+      selectedCode.value = {
+        ...codeForView,
+        profiles: codeForView.profiles.map((item) => item.id === savedProfile.id ? refreshedProfile : item),
+        default_profile: codeForView.default_profile?.id === savedProfile.id || savedProfile.is_default ? refreshedProfile : codeForView.default_profile,
+      }
+    } else {
+      selectedCode.value = null
+    }
+    drawerMode.value = 'view'
+    drawerVisible.value = true
   } catch (cause) { drawerError.value = cause instanceof Error ? cause.message : '客户资料保存失败' }
   finally { drawerSaving.value = false }
 }
@@ -363,6 +402,8 @@ async function deleteProfile(id: number, replacement?: number) {
 }
 
 async function openCodeDialog(mode: 'create' | 'edit', code?: CustomerCodeItem) {
+  if (codeDialogVisible.value && !(await confirmCodeClose())) return
+  if (drawerVisible.value && (await profileDrawer.value?.requestClose()) === false) return
   codeDialogMode.value = mode; editingCode.value = code || null; codeError.value = ''; codeFieldError.value = ''
   if (mode === 'edit' && code) codeInput.value = code.code
   else { try { codeInput.value = (await request<{code: string}>('/api/v1/customer-codes/next', {}, token.value)).code } catch { codeInput.value = 'BB-001' } }
@@ -404,7 +445,7 @@ async function leaveGuard() {
   codeDialogVisible.value = false; importVisible.value = false; exportVisible.value = false
   return true
 }
-function beforeUnload(event: BeforeUnloadEvent) { if (drawerSaving.value || codeSaving.value || deleting.value || deletingCodeID.value !== null || profileDrawer.value?.dirty || codeDirty.value || importVisible.value) { event.preventDefault(); event.returnValue = '' } }
+function beforeUnload(event: BeforeUnloadEvent) { if (drawerSaving.value || codeSaving.value || deleting.value || deletingCodeID.value !== null || profileDrawer.value?.dirty || (codeDialogVisible.value && codeDirty.value) || importVisible.value) { event.preventDefault(); event.returnValue = '' } }
 watch([keyword, filter], () => { page.value = 1 })
 watch(drawerVisible, (visible) => { if (!visible) profileDetailGeneration.value += 1 }, {flush: 'sync'})
 watch([() => filteredCodes.value.length, pageSize], () => {
@@ -412,14 +453,14 @@ watch([() => filteredCodes.value.length, pageSize], () => {
   if (page.value > lastPage) page.value = lastPage
 })
 onMounted(() => { registerModuleLeaveGuard(leaveGuard); window.addEventListener('beforeunload', beforeUnload); void loadCodes() })
-onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveGuard(null); window.removeEventListener('beforeunload', beforeUnload) })
+onBeforeUnmount(() => { profileDetailGeneration.value += 1; setPageDetailPanelVisible(false); registerModuleLeaveGuard(null); window.removeEventListener('beforeunload', beforeUnload) })
 </script>
 
 <style scoped>
 .customer-page { min-width: 0; }
 .customer-tabs { margin-bottom: var(--bb-space-3); }
 .customer-tabs :deep(.el-tabs__item) { min-height: 44px; font-weight: var(--bb-font-weight-semibold); }
-.customer-filter-bar { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); margin-bottom: var(--bb-space-2); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-surface); padding: var(--bb-space-2) var(--bb-space-3); }
+.customer-filter-bar { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); margin-bottom: var(--bb-space-3); border-bottom: 1px solid var(--bb-border-subtle); padding: 0 0 var(--bb-space-3); }
 .customer-filter-controls,
 .customer-filter-actions { display: flex; align-items: center; gap: var(--bb-space-2); }
 .customer-filter-controls { min-width: 0; flex: 1 1 auto; }
@@ -429,7 +470,7 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .customer-filter-actions span { color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
 .customer-summary { display: flex; min-height: 36px; align-items: center; margin-bottom: var(--bb-space-2); border-bottom: 1px solid var(--bb-border-default); padding: var(--bb-space-1) var(--bb-space-2); color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
 .customer-summary strong { color: var(--bb-text-primary); font-size: var(--bb-font-size-14); font-variant-numeric: tabular-nums; }
-.customer-desktop-table { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-surface); }
+.customer-desktop-table { overflow-x: auto; overflow-y: hidden; background: transparent; }
 .customer-code { color: var(--bb-accent-text); font-family: var(--bb-font-mono); font-weight: var(--bb-font-weight-bold); white-space: nowrap; }
 .primary-profile { display: grid; gap: var(--bb-space-1); }
 .primary-profile small { overflow: hidden; color: var(--bb-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
@@ -437,7 +478,9 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
 .code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--bb-space-4); margin-bottom: var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-lg); background: var(--bb-bg-surface); padding: var(--bb-space-3) var(--bb-space-4); }
 .code-toolbar > div { display: grid; gap: var(--bb-space-1); }
 .code-toolbar span { color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
-.customer-pagination { display: flex; justify-content: flex-end; overflow-x: auto; margin-top: var(--bb-space-4); padding-bottom: var(--bb-space-1); }
+.customer-pagination { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); overflow-x: auto; margin-top: var(--bb-space-4); padding: var(--bb-space-2) 0; color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
+.customer-pagination > span { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.customer-pagination :deep(.el-pagination) { flex-wrap: wrap; justify-content: flex-end; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
 .field-help { display: block; margin-top: var(--bb-space-1); color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
 .replacement-tip { margin: 0 0 var(--bb-space-4); color: var(--bb-text-secondary); line-height: var(--bb-line-height-relaxed); }
@@ -455,7 +498,8 @@ onBeforeUnmount(() => { profileDetailGeneration.value += 1; registerModuleLeaveG
   .customer-filter-controls .el-select { width: 100%; }
   .customer-filter-actions { justify-content: space-between; }
   .customer-desktop-table { overflow-x: auto; }
-  .customer-pagination { justify-content: center; }
+  .customer-pagination { align-items: flex-start; flex-wrap: wrap; }
+  .customer-pagination :deep(.el-pagination) { justify-content: flex-start; }
   .code-toolbar { align-items: stretch; flex-direction: column; }
   .code-toolbar .el-button { width: 100%; margin: 0; }
 }

@@ -11,6 +11,7 @@ export function useDepartments(token: Ref<string>) {
   const formVisible = ref(false)
   const memberVisible = ref(false)
   const editing = ref<DepartmentItem | null>(null)
+  const formReadonly = ref(false)
   const memberDepartment = ref<DepartmentItem | null>(null)
   const form = reactive({name: '', code: ''})
   const selectedEmployeeIDs = ref<number[]>([])
@@ -30,12 +31,22 @@ export function useDepartments(token: Ref<string>) {
       departments.value = Array.isArray(result) ? result : result.items || []
     } catch (cause) { error.value = cause instanceof Error ? cause.message : '部门加载失败' } finally { loading.value = false }
   }
-  function openCreate() { editing.value = null; form.name = ''; form.code = ''; saveError.value = ''; formVisible.value = true }
-  function openEdit(item: any) { editing.value = item; form.name = item.name; form.code = item.code || ''; saveError.value = ''; formVisible.value = true }
+  function openCreate() { editing.value = null; formReadonly.value = false; form.name = ''; form.code = ''; saveError.value = ''; formVisible.value = true }
+  function openEdit(item: any) { editing.value = item; formReadonly.value = false; form.name = item.name; form.code = item.code || ''; saveError.value = ''; formVisible.value = true }
+  function openView(item: DepartmentItem) { editing.value = item; formReadonly.value = true; form.name = item.name; form.code = item.code || ''; saveError.value = ''; formVisible.value = true }
   async function save() {
     if (!form.name.trim() || !form.code.trim()) { saveError.value = '请填写部门名称和编码。'; return }
     saving.value = true; saveError.value = ''
-    try { await request(editing.value ? `/api/v1/system/departments/${editing.value.id}` : '/api/v1/system/departments', {method: editing.value ? 'PUT' : 'POST', body: {name: form.name.trim(), code: form.code.trim()}}, token.value); formVisible.value = false; await load(); ElMessage.success(editing.value ? '部门已更新' : '部门已新增') }
+    try {
+      const wasEditing = Boolean(editing.value)
+      const saved = await request<DepartmentItem>(editing.value ? `/api/v1/system/departments/${editing.value.id}` : '/api/v1/system/departments', {method: editing.value ? 'PUT' : 'POST', body: {name: form.name.trim(), code: form.code.trim()}}, token.value)
+      editing.value = saved
+      form.name = saved.name
+      form.code = saved.code || ''
+      formReadonly.value = true
+      await load()
+      ElMessage.success(wasEditing ? '部门已更新' : '部门已新增')
+    }
     catch (cause) { saveError.value = cause instanceof Error ? cause.message : '部门保存失败' } finally { saving.value = false }
   }
   async function setStatus(item: any, status: 'active' | 'disabled') { await request(`/api/v1/system/departments/${item.id}/status`, {method: 'PATCH', body: {status}}, token.value); await load() }
@@ -90,5 +101,5 @@ export function useDepartments(token: Ref<string>) {
     try { await request(`/api/v1/system/departments/${memberDepartment.value.id}/employees`, {method: 'PUT', body: {employee_ids: selectedEmployeeIDs.value}}, token.value); memberVisible.value = false; await load(); ElMessage.success('部门成员已保存') }
     catch (cause) { saveError.value = cause instanceof Error ? cause.message : '部门成员保存失败' } finally { saving.value = false }
   }
-  return {departments, employees, loading, error, formVisible, memberVisible, editing, memberDepartment, form, selectedEmployeeIDs, originalEmployeeIDs, memberKeyword, saving, saveError, memberLoading, memberLoadError, load, openCreate, openEdit, save, setStatus, openMembers, loadMembers, saveMembers}
+  return {departments, employees, loading, error, formVisible, formReadonly, memberVisible, editing, memberDepartment, form, selectedEmployeeIDs, originalEmployeeIDs, memberKeyword, saving, saveError, memberLoading, memberLoadError, load, openCreate, openEdit, openView, save, setStatus, openMembers, loadMembers, saveMembers}
 }

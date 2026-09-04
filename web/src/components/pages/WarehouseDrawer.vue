@@ -5,20 +5,19 @@
         :docked="detailPanelDocked"
         :size="detailPanelSize"
         title="物品详情"
-        :with-header="false"
         :before-close="handleWarehouseBeforeClose"
         docked-auto-focus="panel"
         destroy-on-close
         @closed="resetWarehouseItem"
       >
         <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
+          <el-alert v-if="moduleUnavailable" title="仓库暂不可用" description="已填写内容仍保留，当前不能提交。请确认后再关闭。" type="warning" :closable="false" show-icon />
           <div class="drawer-heading">
             <div>
               <small>{{ selectedWarehouseItem.category }}</small>
               <h2>{{ selectedWarehouseItem.name }}</h2>
               <span>{{ selectedWarehouseItem.code }} · {{ selectedWarehouseItem.spec || '无规格' }}</span>
             </div>
-            <el-button circle aria-label="关闭物品详情" @click="closeWarehouseItem"><el-icon><Close /></el-icon></el-button>
           </div>
 
           <PageState v-if="warehouseDetailLoading" kind="loading" title="正在加载库存详情" />
@@ -52,7 +51,7 @@
             <h3>办理出入库</h3>
             <el-alert v-if="!warehouseQuantityAvailable" title="库存数量未返回，暂不能办理出入库。" type="warning" :closable="false" show-icon/>
             <div v-else-if="hasPermission('inventory:documents:write')" class="movement-actions">
-              <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" :disabled="movementSubmitting" @click="startMovement(definition.key)">
+              <el-button v-for="definition in availableMovementDefinitions" :key="definition.key" plain type="primary" :disabled="movementSubmitting || Boolean(moduleUnavailable)" @click="startMovement(definition.key)">
                 {{ definition.title }}
               </el-button>
             </div>
@@ -60,7 +59,7 @@
             <p v-if="movementDependencyMessage" class="permission-hint">{{ movementDependencyMessage }}</p>
           </section>
 
-          <el-form v-if="movementMode" class="movement-form" label-position="top" :disabled="movementSubmitting" @submit.prevent="submitMovement">
+          <el-form v-if="movementMode" id="warehouse-movement-editor" class="movement-form" label-position="top" :disabled="movementSubmitting" @submit.prevent="!moduleUnavailable && submitMovement()">
             <div class="form-heading">
               <strong>{{ movementTitle }}</strong>
               <span>本次只办理当前物品，提交后立即过账</span>
@@ -71,17 +70,10 @@
                 <el-option v-for="item in rowsFor('suppliers')" :key="item.id" :label="`${item.name}（${item.code}）`" :value="item.id"/>
               </el-select>
             </el-form-item>
-            <el-button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" link type="primary" class="inline-link" :disabled="movementSubmitting" @click="showQuickSupplier = !showQuickSupplier">
-              {{ showQuickSupplier ? '取消新增供应商' : '＋ 快捷新增供应商' }}
+            <el-button v-if="movementMode === 'purchase_inbound' && hasPermission('suppliers:write')" link type="primary" class="inline-link" :disabled="movementSubmitting" @click="showQuickSupplier = true">
+              新增供应商
             </el-button>
-            <div v-if="showQuickSupplier" class="quick-supplier">
-              <el-form-item label="供应商名称" required><el-input v-model.trim="quickSupplier.name" placeholder="请输入供应商名称"/></el-form-item>
-              <el-form-item label="供应商编码" required><el-input v-model.trim="quickSupplier.code" placeholder="请输入唯一编码"/></el-form-item>
-              <el-form-item label="联系人"><el-input v-model.trim="quickSupplier.contact" placeholder="选填"/></el-form-item>
-              <el-form-item label="联系电话"><el-input v-model.trim="quickSupplier.phone" placeholder="选填"/></el-form-item>
-              <el-alert v-if="quickSupplierError" :title="quickSupplierError" type="error" :closable="false" show-icon/>
-              <el-button :loading="quickSupplierSubmitting" :disabled="movementSubmitting || quickSupplierSubmitting" @click="createQuickSupplier">保存并选择供应商</el-button>
-            </div>
+
             <el-form-item v-if="movementMode === 'return_rework_inbound'" label="退回来源">
               <el-radio-group v-model="movementForm.source_type" @change="resetMovementSource">
                 <el-radio-button v-if="hasPermission('customers:read')" value="customer">客户退回</el-radio-button>
@@ -134,10 +126,6 @@
                 <div><dt>操作人</dt><dd>{{ operatorDirectory.employees.value.find((item) => item.id === Number(movementForm.operator_employee_id))?.name || '尚未选择' }}</dd></div>
               </dl>
             </aside>
-            <div class="form-actions movement-submit-bar">
-              <el-button :disabled="movementSubmitting" @click="cancelMovement">取消</el-button>
-              <el-button type="primary" native-type="submit" :loading="movementSubmitting" :disabled="!movementCanSubmit">{{ movementSubmitLabel }}</el-button>
-            </div>
           </el-form>
 
           <section v-if="hasPermission('inventory:documents:read')" class="movement-history">
@@ -162,20 +150,38 @@
           <el-alert v-else title="出入库记录需要库存单据查看权限。" type="info" :closable="false" show-icon/>
           </template>
         </div>
+        <template #footer>
+          <el-button :disabled="movementSubmitting" @click="closeWarehouseItem">关闭</el-button>
+          <template v-if="movementMode">
+            <el-button :disabled="movementSubmitting" @click="cancelMovement">取消办理</el-button>
+            <el-button type="primary" native-type="submit" form="warehouse-movement-editor" :loading="movementSubmitting" :disabled="!movementCanSubmit || Boolean(moduleUnavailable)">{{ movementSubmitLabel }}</el-button>
+          </template>
+        </template>
       </ResponsiveDetailCarrier>
 
+  <ResponsiveDetailCarrier v-model="showQuickSupplier" title="新增供应商" :size="supplierPanel.size.value" :docked="supplierPanel.docked.value" docked-auto-focus="first-editable" :before-close="closeSupplier" :close-on-click-modal="!quickSupplierSubmitting" :close-on-press-escape="!quickSupplierSubmitting">
+    <el-form id="quick-supplier-editor" label-position="top" :disabled="quickSupplierSubmitting" @submit.prevent="createQuickSupplier">
+      <el-form-item label="供应商名称" required><el-input v-model.trim="quickSupplier.name" /></el-form-item>
+      <el-form-item label="供应商编码" required><el-input v-model.trim="quickSupplier.code" /></el-form-item>
+      <el-form-item label="联系人"><el-input v-model.trim="quickSupplier.contact" /></el-form-item>
+      <el-form-item label="联系电话"><el-input v-model.trim="quickSupplier.phone" /></el-form-item>
+      <el-alert v-if="quickSupplierError" :title="quickSupplierError" type="error" :closable="false" show-icon />
+    </el-form>
+    <template #footer><el-button :disabled="quickSupplierSubmitting" @click="closeSupplier()">取消</el-button><el-button type="primary" native-type="submit" form="quick-supplier-editor" :loading="quickSupplierSubmitting">保存并选择</el-button></template>
+  </ResponsiveDetailCarrier>
 </template>
 
 <script setup lang="ts">
+import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
 import OperatorSelect from '../ui/OperatorSelect.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
-import {Close} from '@element-plus/icons-vue'
 
 const {
+  moduleUnavailable,
   operatorDirectory,
   token,
   selectedWarehouseItem,
@@ -333,4 +339,17 @@ const {
   trendBarPercentage,
 } = useWorkspaceContext()
 const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(warehouseDrawerVisible, true)
+const supplierPanel = useResponsiveDetailPanel(showQuickSupplier, true)
+const supplierGuard = useDirtyGuard('warehouse-supplier-editor', {
+  busy: () => showQuickSupplier.value && quickSupplierSubmitting.value,
+  busyMessage: '供应商正在保存，请稍候。',
+  dirty: () => showQuickSupplier.value && Object.values(quickSupplier).some(Boolean),
+  dirtyMessage: '供应商信息尚未保存，是否放弃修改？',
+})
+async function closeSupplier(done?: () => void) {
+  if (!(await supplierGuard.confirmLeave())) return
+  Object.assign(quickSupplier, {name: '', code: '', contact: '', phone: ''})
+  if (done) done()
+  else showQuickSupplier.value = false
+}
 </script>

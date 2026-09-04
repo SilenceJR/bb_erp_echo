@@ -35,7 +35,7 @@ withDefaults(defineProps<{
   readonly: false,
   eyebrow: '',
   parentLabel: '首页',
-  showBack: true,
+  showBack: false,
 })
 
 const emit = defineEmits<{
@@ -68,15 +68,16 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--bb-space-8);
+  gap: var(--bb-space-4);
+  flex-wrap: wrap;
 }
 
 .ui-page-header__copy h1 {
   margin: 0;
   color: var(--bb-text-primary);
-  font-size: clamp(var(--bb-font-size-24), 2.2vw, var(--bb-font-size-30));
+  font-size: 24px;
   letter-spacing: -.018em;
-  line-height: var(--bb-line-height-tight);
+  line-height: 32px;
 }
 
 .ui-page-header__eyebrow {
@@ -93,7 +94,7 @@ const emit = defineEmits<{
   max-width: 680px;
   margin: var(--bb-space-1) 0 0;
   color: var(--bb-text-secondary);
-  font-size: var(--bb-font-size-14);
+  font-size: 13px;
 }
 
 .ui-page-header__actions {

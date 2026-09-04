@@ -884,7 +884,8 @@ async function closeUserAffiliation(done?: () => void) {
     try { await appMessageBox.confirm('账号归属修改尚未保存，确认关闭？', '放弃修改', {type: 'warning'}) } catch { return }
   }
   affiliationError.value = ''
-  if (done) done(); else affiliationTarget.value = null
+  affiliationTarget.value = null
+  done?.()
 }
 
 async function saveUserAffiliation() {
@@ -1082,14 +1083,9 @@ function handleModuleUnavailableEvent(event: Event) {
   const moduleKey = deferredModuleForPath(detail?.path || '')
   if (!moduleKey || activeKey.value !== moduleKey) return
   moduleUnavailable.value = {module: moduleKey, message: detail?.message || '此功能暂不可用'}
-  rows.value = []
-  columns.value = []
-  pageTotal.value = 0
-  showCreateForm.value = false
-  editingSupplier.value = null
-  if (moduleKey === 'warehouses') performWarehouseClose()
-  if (moduleKey === 'workorder') closeWorkOrder()
-  panelMessage.value = '此功能暂不可用'
+  // A failing request must not discard an open draft. The owning panel keeps
+  // its error and values visible until the user explicitly leaves it.
+  panelMessage.value = '此功能暂不可用，已填写内容仍保留，请确认后再关闭'
 }
 
 async function loadMe() {

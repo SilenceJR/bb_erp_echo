@@ -23,10 +23,6 @@
           <span v-if="!collapsed" class="navigation-button__label">设置</span>
         </button>
       </el-tooltip>
-      <div v-if="!collapsed" class="ui-app-navigation__help">
-        <span>遇到问题？</span>
-        <small>请联系系统管理员</small>
-      </div>
     </div>
   </nav>
 </template>
@@ -78,8 +74,8 @@ function findBusiness(key: string) {
 </script>
 
 <style scoped>
-.ui-app-navigation { display: flex; min-height: 100%; flex-direction: column; }
-.ui-app-navigation__items { display: grid; gap: var(--bb-space-1); }
+.ui-app-navigation { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.ui-app-navigation__items { display: grid; gap: 2px; overflow-y: auto; min-height: 0; padding-bottom: 12px; }
 .navigation-group { display: grid; gap: var(--bb-space-1); padding-top: var(--bb-space-3); }
 .navigation-group h2 { margin: var(--bb-space-2) var(--bb-space-3) var(--bb-space-1); color: var(--bb-text-placeholder); font-size: 11px; font-weight: var(--bb-font-weight-semibold); letter-spacing: .06em; }
 .ui-app-navigation__footer { display: grid; gap: var(--bb-space-2); margin-top: auto; border-top: 1px solid var(--bb-border-subtle); padding-top: var(--bb-space-3); }

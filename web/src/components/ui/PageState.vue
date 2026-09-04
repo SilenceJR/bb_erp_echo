@@ -58,9 +58,9 @@ const icon = computed(() => ({
   place-items: center;
   align-content: center;
   gap: var(--bb-space-2);
-  border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-md);
-  background: var(--bb-bg-elevated);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   padding: var(--bb-space-8);
   color: var(--bb-text-secondary);
   text-align: center;
@@ -82,7 +82,7 @@ const icon = computed(() => ({
   width: 48px;
   height: 48px;
   place-items: center;
-  border: 1px solid var(--bb-border-subtle);
+  border: 0;
   border-radius: var(--bb-radius-md);
   background: var(--bb-bg-subtle);
   background: transparent;

@@ -1,8 +1,8 @@
 <template>
-  <el-dialog
+  <ResponsiveDetailCarrier
     :model-value="!!assignmentTarget"
-    :title="assignmentConfig?.title"
-    width="min(680px, 92vw)"
+    :title="assignmentConfig?.title || '配置'"
+    :size="assignmentPanel.size.value" :docked="assignmentPanel.docked.value"
     :close-on-click-modal="!assignmentSaving"
     :close-on-press-escape="!assignmentSaving"
     :show-close="!assignmentSaving"
@@ -32,9 +32,9 @@
       <span v-if="assignmentOptionsReady && !assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
     </div>
     <template #footer><div class="assignment-actions"><el-button :disabled="assignmentSaving" @click="requestAssignmentClose">取消</el-button><el-button type="primary" :loading="assignmentSaving" :disabled="!assignmentOptionsReady || assignmentSaving || !!assignmentScopeBlockedReason" @click="saveAssignment">保存配置</el-button></div></template>
-  </el-dialog>
+  </ResponsiveDetailCarrier>
 
-  <el-dialog :model-value="!!affiliationTarget" title="修正账号归属" width="min(520px, 92vw)" :close-on-click-modal="!affiliationSaving" :close-on-press-escape="!affiliationSaving" :before-close="closeUserAffiliation">
+  <ResponsiveDetailCarrier :model-value="!!affiliationTarget" title="修正账号归属" :size="affiliationPanel.size.value" :docked="affiliationPanel.docked.value" docked-auto-focus="first-editable" :close-on-click-modal="!affiliationSaving" :close-on-press-escape="!affiliationSaving" :before-close="closeUserAffiliation">
     <el-form v-if="affiliationTarget" label-position="top" :disabled="affiliationSaving" @submit.prevent="saveUserAffiliation">
       <p class="assignment-tip">{{ affiliationTarget.username }} · {{ affiliationTarget.name }}。个人管理账号可不绑定部门，但未绑定时不能执行任务或库存写入。</p>
       <el-alert v-if="affiliationError" :title="affiliationError" type="error" :closable="false" show-icon />
@@ -42,13 +42,15 @@
       <el-form-item label="所属终端"><el-select v-model="affiliationTerminalID" clearable :disabled="!affiliationDepartmentID" placeholder="不绑定终端"><el-option v-for="item in affiliationTerminalOptions" :key="item.id" :label="String(item.name)" :value="item.id" /></el-select></el-form-item>
     </el-form>
     <template #footer><div class="form-actions"><el-button :disabled="affiliationSaving" @click="closeUserAffiliation()">取消</el-button><el-button type="primary" :loading="affiliationSaving" :disabled="affiliationTarget?.account_type === 'department_terminal' && (!affiliationDepartmentID || !affiliationTerminalID)" @click="saveUserAffiliation">保存归属</el-button></div></template>
-  </el-dialog>
+  </ResponsiveDetailCarrier>
 </template>
 
 <script setup lang="ts">
 import {computed} from 'vue'
 import {useDirtyGuard} from '../../../composables/useDirtyGuard'
 import {useWorkspaceContext} from '../../../composables/workspaceContext'
+import ResponsiveDetailCarrier from '../../ui/ResponsiveDetailCarrier.vue'
+import {useResponsiveDetailPanel} from '../../../composables/useResponsiveDetailPanel'
 import PageState from '../../ui/PageState.vue'
 
 const {
@@ -62,6 +64,8 @@ const {
   closeUserAffiliation, saveUserAffiliation,
 } = useWorkspaceContext()
 
+const assignmentPanel = useResponsiveDetailPanel(computed(() => !!assignmentTarget.value), true)
+const affiliationPanel = useResponsiveDetailPanel(computed(() => !!affiliationTarget.value), true)
 const assignmentDirty = computed(() => {
   if (!assignmentTarget.value || !assignmentConfig.value) return false
   const original = Array.isArray(assignmentTarget.value[assignmentConfig.value.selectedKey])

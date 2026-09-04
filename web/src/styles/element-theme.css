@@ -80,10 +80,13 @@
 
 .el-input__wrapper,
 .el-select__wrapper {
-  min-height: var(--bb-control-md);
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding-block: 0;
   border-radius: var(--bb-radius-sm);
   background: var(--bb-bg-elevated);
-  box-shadow: 0 0 0 1px var(--bb-border-default) inset;
+  box-shadow: 0 0 0 1px var(--bb-border-control) inset;
   transition: background-color var(--bb-duration-fast) var(--bb-ease-standard),
     box-shadow var(--bb-duration-fast) var(--bb-ease-standard);
 }
@@ -246,7 +249,7 @@
 .el-dialog__title { color: var(--bb-text-primary); font-size: var(--bb-font-size-20); font-weight: var(--bb-font-weight-bold); }
 .el-dialog__body { max-height: min(66vh, 640px); overflow: auto; padding: var(--bb-space-5) var(--bb-space-6); color: var(--bb-text-regular); }
 .el-dialog__footer { border-top: 1px solid var(--bb-border-subtle); padding: var(--bb-space-4) var(--bb-space-6); }
-.el-dialog__headerbtn { width: 32px; height: 32px; top: var(--bb-space-5); right: var(--bb-space-5); }
+.el-dialog__headerbtn { width: 40px; height: 40px; top: 16px; right: 24px; }
 .el-dialog__headerbtn .el-dialog__close { color: var(--bb-text-secondary); }
 .el-dialog__headerbtn:hover .el-dialog__close { color: var(--bb-accent-text); }
 .el-drawer { box-shadow: var(--bb-shadow-lg); }

@@ -26,7 +26,7 @@ const emit = defineEmits<{select: []}>()
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 44px;
+  height: 40px;
   align-items: center;
   gap: var(--bb-space-3);
   border: 0;
@@ -48,7 +48,7 @@ const emit = defineEmits<{select: []}>()
 .navigation-button:hover { background: color-mix(in srgb, var(--bb-bg-sunken) 54%, transparent); color: var(--bb-text-primary); }
 .navigation-button.active { background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); font-weight: var(--bb-font-weight-semibold); }
 .navigation-button.active::before { background: var(--bb-action-primary); }
-.navigation-button__icon { display: grid; width: 20px; flex: 0 0 20px; place-items: center; color: var(--bb-text-secondary); font-size: 17px; }
+.navigation-button__icon { display: grid; width: 20px; flex: 0 0 20px; place-items: center; color: var(--bb-text-secondary); font-size: 18px; }
 .navigation-button.active .navigation-button__icon { color: var(--bb-accent-text); }
 .navigation-button__icon svg { width: 1em; height: 1em; }
 .navigation-button__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

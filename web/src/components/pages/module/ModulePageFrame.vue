@@ -1,6 +1,6 @@
 <template>
   <div class="data-page">
-    <PageHeader
+    <PageHeader v-if="activeKey !== 'molds'"
       :title="activeModule?.title || '业务页面'"
       :description="activeModule?.description"
       :readonly="activePageReadonly"
@@ -8,8 +8,8 @@
     >
       <template #actions>
         <el-button v-if="activeKey === 'statistics'" :loading="loading" @click="loadActiveModule">刷新</el-button>
-        <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive && !moduleUnavailable" class="add-button" type="primary" :disabled="loading" @click="toggleCreateForm">
-          {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
+        <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive && !moduleUnavailable" class="add-button" type="primary" :disabled="loading || showCreateForm" @click="toggleCreateForm">
+          {{ `＋ 新增${createEntityTitle}` }}
         </el-button>
       </template>
     </PageHeader>
@@ -18,7 +18,7 @@
       <el-segmented v-model="activeWarehouseTab" :options="warehouseTabOptions" @change="switchWarehouseTab" />
     </div>
 
-    <ModuleCreateForm v-if="activeKey !== 'molds' && !moduleUnavailable" />
+    <ModuleCreateForm v-if="activeKey !== 'molds'" />
     <ModuleAssignmentDialogs />
 
     <FilterBar
@@ -60,24 +60,14 @@
     <PageState v-else-if="skeletonResult" kind="readonly" :title="skeletonResult.name" :description="skeletonResult.message" />
     <UpdateCenter v-else-if="activeKey === 'updates'" :token="token" :can-check="hasPermission('system:updates:write')" />
     <PageState v-else-if="listError && !hasRenderableData" kind="error" title="数据加载失败" :description="listError" action-label="重新加载" @action="loadActiveModule" />
-    <AnimatePresence v-else mode="wait" :initial="false">
-      <motion.div
-        :key="activeKey"
-        class="module-page-motion"
-        :initial="{ opacity: 0, y: 6 }"
-        :animate="{ opacity: 1, y: 0 }"
-        :exit="{ opacity: 0, y: -6 }"
-        :transition="{ duration: 0.16, ease: [0.2, 0, 0, 1] }"
-      >
+    <div v-show="!moduleUnavailable && !skeletonResult && activeKey !== 'updates' && !(listError && !hasRenderableData)" class="module-page-content">
         <component :is="content" />
-      </motion.div>
-    </AnimatePresence>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type {Component} from 'vue'
-import {AnimatePresence, motion} from 'motion-v'
 import UpdateCenter from '../../UpdateCenter.vue'
 import FilterBar from '../../ui/FilterBar.vue'
 import MetricCard from '../../ui/MetricCard.vue'
@@ -105,5 +95,5 @@ const {
 </script>
 
 <style scoped>
-.module-page-motion { min-width: 0; }
+.module-page-content { min-width: 0; }
 </style>

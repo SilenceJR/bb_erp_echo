@@ -3,7 +3,7 @@
     :model-value="modelValue"
     class="change-password-dialog"
     title="修改密码"
-    width="min(480px, calc(100vw - 32px))"
+    width="min(520px, calc(100vw - 32px))"
     append-to-body
     destroy-on-close
     :before-close="handleBeforeClose"
@@ -321,8 +321,8 @@ async function submit() {
 
 .password-visibility-toggle {
   display: inline-grid;
-  min-width: 36px;
-  min-height: 32px;
+  min-width: 40px;
+  min-height: 40px;
   place-items: center;
   border: 0;
   border-radius: var(--bb-radius-xs);

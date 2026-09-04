@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
-import {shouldRequestDockedDetailClose} from '../src/platform/detailPanel.ts'
+import {canDockDetail, shouldRequestDockedDetailClose} from '../src/platform/detailPanel.ts'
 
 const activeDockedDetail = {
   key: 'Escape',
@@ -35,7 +35,7 @@ test('停靠面板从同轨道零宽平滑展开且首帧保持可读', () => {
   const component = readFileSync(new URL('../src/components/ui/ResponsiveDetailCarrier.vue', import.meta.url), 'utf8')
   assert.match(shell, /grid-template-columns: var\(--bb-shell-sidebar-width\) minmax\(0, 1fr\) 0/)
   assert.match(shell, /transition: grid-template-columns var\(--bb-duration-slow\)/)
-  assert.match(component, /workspace-detail-panel-enter-from \{ opacity: \.92; transform: translateX\(8px\); \}/)
+  assert.match(component, /workspace-detail-panel-enter-from \{ transform: translateX\(6px\); \}/)
   assert.doesNotMatch(component, /workspace-detail-panel-enter-from \{ opacity: 0/)
 })
 
@@ -55,7 +55,18 @@ test('停靠编辑表单聚焦首个可编辑控件，查看态策略可保留�
 test('已打开的停靠详情从查看切换编辑时重新进入首个字段', () => {
   const carrier = readFileSync(new URL('../src/components/ui/ResponsiveDetailCarrier.vue', import.meta.url), 'utf8')
   assert.match(carrier, /watch\(\(\) => props\.dockedAutoFocus, async \(policy, previousPolicy\) =>/)
-  assert.match(carrier, /policy !== 'first-editable'[^\n]+!props\.modelValue \|\| !props\.docked/)
-  assert.match(carrier, /await nextTick\(\)\s+focusDockedEntry\(\)/)
+  assert.match(carrier, /policy !== 'first-editable'[^\n]+!props\.modelValue/)
+  assert.match(carrier, /if \(props\.docked\) focusDockedEntry\(\)\s+else focusOverlayEntry\(\)/)
   assert.match(carrier, /\}, \{flush: 'post'\}\)/)
+})
+
+test('停靠按真实可用宽度验证阈值两侧与导航三态', () => {
+  for (const sidebar of [0, 64, 224]) {
+    for (const panel of [420, 520]) {
+      const threshold = Math.max(1440, sidebar + panel + 2 + 48 + 720)
+      assert.equal(canDockDetail(threshold - 1, sidebar, panel), false)
+      assert.equal(canDockDetail(threshold, sidebar, panel), true)
+      assert.equal(canDockDetail(threshold + 1, sidebar, panel), true)
+    }
+  }
 })

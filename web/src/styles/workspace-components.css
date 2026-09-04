@@ -1,0 +1,65 @@
+/* Shared interaction geometry. Page code owns content, never control height. */
+:root .el-button { height: 40px; min-height: 40px; box-sizing: border-box; padding: 0 14px; border-radius: 6px; font-size: 14px; line-height: 20px; }
+:root .el-button.is-circle { width: 40px; padding: 0; border-radius: 6px; }
+:root .el-button.is-link, :root .el-button.is-text { height: 40px; min-height: 40px; padding: 0 8px; }
+:root .el-button--primary { --el-button-hover-text-color: var(--bb-text-on-brand); --el-button-active-text-color: var(--bb-text-on-brand); }
+:root .el-button--primary.is-plain { --el-button-hover-text-color: var(--bb-accent-text); --el-button-active-text-color: var(--bb-accent-text); --el-button-active-bg-color: var(--bb-accent-selected-bg); }
+:root .el-button.is-link, :root .el-button.is-text { --el-button-text-color: var(--bb-accent-text); --el-button-hover-text-color: var(--bb-accent-text); --el-button-active-text-color: var(--bb-accent-text); }
+:root .el-button--danger.is-link { --el-button-text-color: var(--bb-danger); --el-button-hover-text-color: var(--bb-danger); }
+:root .el-input { height: 40px; --el-input-height: 40px; }
+:root .el-input__wrapper, :root .el-select__wrapper, :root .el-range-editor.el-input__wrapper { height: 40px; min-height: 40px; padding: 0 12px; box-sizing: border-box; }
+:root .el-input__inner { height: 38px; line-height: 38px; }
+:root .el-date-editor.el-input, :root .el-input-number { height: 40px; --el-input-height: 40px; }
+:root .el-input-number__increase, :root .el-input-number__decrease { height: 38px; }
+:root .el-input-number.is-controls-right .el-input-number__increase, :root .el-input-number.is-controls-right .el-input-number__decrease { height: 19px; }
+:root .el-form-item { margin-bottom: 18px; }
+:root .el-form-item__label { font-size: 13px; line-height: 20px; margin-bottom: 6px; }
+:root .el-form-item__content { min-width: 0; line-height: 20px; }
+:root .el-form-item .el-select, :root .el-form-item .el-date-editor { width: 100%; }
+:root .el-form-item .el-select__wrapper.is-filterable.is-multiple { height: auto; min-height: 40px; padding-block: 6px; }
+:root .el-drawer { border-radius: 0; }
+:root .el-drawer > .el-drawer__header { flex: 0 0 auto; min-height: 72px; margin: 0; padding: 16px 24px; border-bottom: 1px solid var(--bb-border-subtle); color: var(--bb-text-primary); }
+:root .el-drawer > .el-drawer__body { min-height: 0; min-width: 0; padding: 24px; overflow-y: auto; }
+:root .el-drawer > .el-drawer__footer { flex: 0 0 auto; min-height: 72px; padding: 16px 24px; border-top: 1px solid var(--bb-border-subtle); }
+:root .el-drawer__close-btn { width: 40px; height: 40px; border-radius: 6px; }
+:root .el-drawer__close-btn:hover { background: var(--bb-bg-hover); }
+:root .el-drawer .form-grid, :root .detail-body .form-grid, :root .employee-form-grid, :root .customer-form-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+:root .el-drawer .span-two, :root .detail-body .span-two { grid-column: auto; }
+:root .assignment-options { grid-template-columns: minmax(0, 1fr); }
+:root .el-table th.el-table__cell { height: 40px; padding-block: 0; font-size: 13px; font-weight: 600; background: var(--bb-bg-subtle); }
+:root .el-table th.el-table__cell > .cell { min-height: 0; line-height: 20px; }
+:root .el-table td.el-table__cell { height: 48px; padding-block: 8px; }
+:root .el-table td.el-table__cell > .cell { display: block; min-height: 0; line-height: 22px; }
+:root .el-table__body tr:hover > td.el-table__cell { background: var(--bb-bg-hover); }
+:root .el-table__body tr.current-row > td.el-table__cell { background: var(--bb-accent-selected-bg); }
+:root .el-table__body tr.current-row > td.el-table__cell:first-child { box-shadow: inset 2px 0 var(--bb-action-primary); }
+:root .el-table .el-table-fixed-column--right.is-first-column::before { box-shadow: none; }
+:root .el-table.is-scrolling-left .el-table-fixed-column--right.is-first-column::before, :root .el-table.is-scrolling-middle .el-table-fixed-column--right.is-first-column::before { box-shadow: -4px 0 6px -5px var(--bb-border-strong); }
+:root .el-pagination { gap: 8px; }
+:root .el-pagination button, :root .el-pagination .el-pager li { height: 40px; min-width: 40px; line-height: 40px; }
+:root .el-pagination .el-select { width: 120px; }
+:root .el-input__wrapper:focus-within, :root .el-select__wrapper:focus-within { outline: 2px solid var(--bb-focus-color); outline-offset: 2px; box-shadow: none; }
+:root .navigation-button { height: 40px; min-height: 40px; border-radius: 6px; }
+:root button:disabled { opacity: 1; }
+.module-editor { min-width: 0; }
+.detail-footer .form-actions, .el-drawer__footer .form-actions, .el-drawer__footer .assignment-actions { margin: 0; padding: 0; border: 0; }
+.detail-footer > .el-button:first-child, .el-drawer__footer > .el-button:first-child { margin-right: auto; }
+.ui-page-header__actions { flex-wrap: wrap; }
+.ui-app-navigation__footer { flex: none; padding-bottom: 8px; }
+.ui-app-navigation__items { flex: 1; align-content: start; }
+.workspace .content { container-type: inline-size; }
+:root .el-table .el-table__cell .cell { height: auto; min-height: 0; }
+:root .el-select__wrapper:has(.el-tag) { height: auto; min-height: 40px; padding-block: 5px; }
+:root .el-radio-group { box-sizing: border-box; }
+:root .el-radio-button { --el-radio-button-checked-text-color: var(--bb-text-on-brand); }
+:root .el-checkbox { --el-checkbox-checked-icon-color: var(--bb-text-on-brand); }
+:root .el-radio-button__inner { height: 40px; display: inline-flex; align-items: center; justify-content: center; padding-block: 0; }
+:root .code-mode-switch { height: 40px; padding: 3px; }
+:root .code-mode-switch .el-radio-button__inner { height: 32px; min-height: 32px; }
+.mold-filters { display: flex !important; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--bb-border-subtle); }
+.mold-filters > .el-input:first-child { flex: 1 1 320px; min-width: 240px; max-width: 480px; }
+.mold-filters > .el-select { flex: 0 1 180px; width: 180px; }
+.mold-filters > .el-input:not(:first-child) { flex: 0 1 160px; width: 160px; }
+.mold-filters > .el-button { width: auto !important; flex: none; margin: 0; }
+@media (max-width: 1279px) { .workspace .content { padding: 20px; } }
+@media (max-width: 767px) { .workspace .content { padding: 16px; } }

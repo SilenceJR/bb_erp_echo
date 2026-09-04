@@ -72,7 +72,22 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
     finally { if (movementsController === controller) movementsController = null; if (isCurrent(token, itemType, itemID, 'movements')) itemMovementsLoading.value = false }
   }
   async function loadAllItemMovements() { showAllItemMovements.value = true; if (itemMovements.value.length < 100) await loadItemMovements() }
-  function startMovement(mode: string) { if (movementSubmitting.value || !warehouseDetail.value || !deps.warehouseQuantityAvailable.value || warehouseDetailLoading.value || warehouseDetailError.value) return; movementMode.value = mode; showQuickSupplier.value = false; clearMovementForm(); movementFormError.value = ''; void deps.operatorDirectory.load(true); if (mode === 'return_rework_inbound') movementForm.source_type = deps.hasPermission('customers:read') ? 'customer' : 'department' }
+  let switchingMovement = false
+  async function startMovement(mode: string) {
+    if (switchingMovement || movementSubmitting.value || !warehouseDetail.value || !deps.warehouseQuantityAvailable.value || warehouseDetailLoading.value || warehouseDetailError.value || movementMode.value === mode) return
+    switchingMovement = true
+    try {
+      if (movementMode.value && deps.movementFormDirty.value) {
+        try { await appMessageBox.confirm('切换后本次填写内容不会保留。', '切换办理类型？', {confirmButtonText: '确认切换', cancelButtonText: '继续填写', type: 'warning'}) } catch { return }
+      }
+      movementMode.value = mode
+      showQuickSupplier.value = false
+      clearMovementForm()
+      movementFormError.value = ''
+      void deps.operatorDirectory.load(true)
+      if (mode === 'return_rework_inbound') movementForm.source_type = deps.hasPermission('customers:read') ? 'customer' : 'department'
+    } finally { switchingMovement = false }
+  }
   async function cancelMovement() { if (movementSubmitting.value) return; if (deps.movementFormDirty.value) { try { await appMessageBox.confirm('取消后本次填写内容不会保留。', '取消本次办理？', {confirmButtonText: '确认取消', cancelButtonText: '继续填写', type: 'warning'}) } catch { return } }; movementMode.value = ''; showQuickSupplier.value = false; movementFormError.value = ''; quickSupplierError.value = ''; clearMovementForm() }
   function resetMovementSource() { delete movementForm.customer_id; delete movementForm.department_id; delete movementForm.original_document_id }
   function clearMovementForm() { for (const key of Object.keys(movementForm)) delete movementForm[key]; requestSnapshot = ''; idempotencyKey = '' }

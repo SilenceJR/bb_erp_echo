@@ -101,10 +101,11 @@ export function useEmployeeDirectory(token: Ref<string>) {
     saving.value = true
     try {
       const body = {...form, name: form.name.trim(), phone: form.phone.trim(), birthplace: form.birthplace.trim(), residential_address: form.residential_address.trim()}
-      await request(editing.value ? `/api/v1/system/employees/${editing.value.id}` : '/api/v1/system/employees', {method: editing.value ? 'PUT' : 'POST', body}, token.value)
-      drawerVisible.value = false
+      const wasEditing = Boolean(editing.value)
+      const saved = await request<EmployeeItem>(editing.value ? `/api/v1/system/employees/${editing.value.id}` : '/api/v1/system/employees', {method: editing.value ? 'PUT' : 'POST', body}, token.value)
+      openView(saved)
       await load()
-      ElMessage.success(editing.value ? '员工档案已更新' : '员工档案已新增')
+      ElMessage.success(wasEditing ? '员工档案已更新' : '员工档案已新增')
     } catch (cause) {
       saveError.value = cause instanceof Error ? cause.message : '员工档案保存失败'
     } finally {

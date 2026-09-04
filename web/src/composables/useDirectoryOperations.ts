@@ -90,10 +90,6 @@ export function useDirectoryOperations(d: Dependencies) {
     } catch (error) {
       if (isModuleNotInitialized(error)) {
         d.moduleUnavailable.value = {module: item.key, message: error.message || '此功能暂不可用'}
-        d.rows.value = []
-        d.columns.value = []
-        d.pageTotal.value = 0
-        d.showCreateForm.value = false
         d.panelMessage.value = '此功能暂不可用'
         return
       }
@@ -210,32 +206,37 @@ export function useDirectoryOperations(d: Dependencies) {
       if (typeof value === 'string' || typeof value === 'number') d.formState[key] = value
     }
     d.showCreateForm.value = true
-    window.scrollTo({top: 0, behavior: 'smooth'})
   }
 
-  async function createItem() {
+  async function createItem(): Promise<BasicItem | null> {
     const item = d.activeModule.value as ModuleItem | undefined
-    if (d.moduleUnavailable.value) { d.panelMessage.value = '此功能暂不可用，无法保存'; d.showCreateForm.value = false; return }
-    if (!item?.path || !d.canWriteModule(item)) { d.panelMessage.value = '你的账号只有查看权限，不能新增数据'; d.showCreateForm.value = false; return }
+    if (d.moduleUnavailable.value) {
+      d.formError.value = d.moduleUnavailable.value.message || '此功能暂不可用，无法保存'
+      d.panelMessage.value = d.formError.value
+      return null
+    }
+    if (!item?.path || !d.canWriteModule(item)) { d.panelMessage.value = '你的账号只有查看权限，不能新增数据'; d.showCreateForm.value = false; return null }
     d.formError.value = validateActiveForm()
     if (d.formError.value) {
       if (['warehouses', 'workorder'].includes(d.activeKey.value) && !d.formState.operator_employee_id) { await nextTick(); document.getElementById('create-form-operator')?.focus() }
-      return
+      return null
     }
     d.loading.value = true
     d.panelMessage.value = ''
     try {
       const isSupplierEdit = d.activeKey.value === 'suppliers' && d.editingSupplier.value
-      await request(isSupplierEdit ? `${item.path}/${d.editingSupplier.value.id}` : item.path, {method: isSupplierEdit ? 'PATCH' : 'POST', body: normalizedForm()}, d.token.value)
+      const saved = await request<BasicItem>(isSupplierEdit ? `${item.path}/${d.editingSupplier.value.id}` : item.path, {method: isSupplierEdit ? 'PATCH' : 'POST', body: normalizedForm()}, d.token.value)
       if (['warehouses', 'workorder'].includes(d.activeKey.value)) d.operatorDirectory.invalidate()
       if (['roles', 'permissions'].includes(item.key)) delete d.assignmentOptionsCache[item.key]
       clearForm(); await preloadBaseData(); await loadActiveModule()
       d.panelMessage.value = isSupplierEdit ? '已保存' : '已新增'
       ElMessage.success(isSupplierEdit ? '保存成功' : '新增成功')
-      d.editingSupplier.value = null; d.showCreateForm.value = false
+      d.editingSupplier.value = null
+      return saved
     } catch (error) {
       if (['warehouses', 'workorder'].includes(d.activeKey.value) && d.operatorDirectory.handleSubmitError(error)) d.formState.operator_employee_id = undefined
       d.formError.value = error instanceof Error ? error.message : '保存失败'; d.panelMessage.value = d.formError.value
+      return null
     } finally { d.loading.value = false }
   }
 
