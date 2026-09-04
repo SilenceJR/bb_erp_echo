@@ -8,13 +8,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"bb_erp_echo/internal/auth"
+	erpmiddleware "bb_erp_echo/internal/middleware"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 )
 
@@ -35,9 +38,11 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, audit echo.MiddlewareFunc) {
 	g := v1.Group("/files")
 	read, write := h.permission("read"), h.permission("write")
 	g.GET("", h.List, read)
-	g.POST("/images", h.Create, audit, write)
+	largeUpload := []echo.MiddlewareFunc{audit, write, echomiddleware.BodyLimit(2<<30 + 32<<20), erpmiddleware.TransferDeadline(2 * time.Hour), echomiddleware.ContextTimeout(2 * time.Hour)}
+	g.POST("/images", h.Create, largeUpload...)
+	g.GET("/:id/preview", h.Preview, read)
 	g.GET("/:id/content", h.Content, read)
-	g.PUT("/:id/content", h.Replace, audit, write)
+	g.PUT("/:id/content", h.Replace, largeUpload...)
 	g.DELETE("/:id", h.Delete, audit, write)
 }
 
@@ -150,6 +155,8 @@ func (h *Handler) Create(c *echo.Context) error {
 	if err != nil || !validOwnerType(ownerType) {
 		return echo.NewHTTPError(http.StatusBadRequest, "owner_type 或 owner_id 无效")
 	}
+	unlock := lockOwnerAssetMutation(ownerType)
+	defer unlock()
 	if !h.canAccess(auth.GetCurrentUser(c), ownerType, "write") {
 		return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
 	}
@@ -199,6 +206,11 @@ func (h *Handler) Replace(c *echo.Context) error {
 	if err := h.db.First(&old, id).Error; err != nil {
 		return notFound(err)
 	}
+	unlock := lockOwnerAssetMutation(old.OwnerType)
+	defer unlock()
+	if err := h.db.First(&old, id).Error; err != nil {
+		return notFound(err)
+	}
 	if !h.canAccess(auth.GetCurrentUser(c), old.OwnerType, "write") {
 		return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
 	}
@@ -236,6 +248,11 @@ func (h *Handler) Delete(c *echo.Context) error {
 	if err := h.db.First(&asset, id).Error; err != nil {
 		return notFound(err)
 	}
+	unlock := lockOwnerAssetMutation(asset.OwnerType)
+	defer unlock()
+	if err := h.db.First(&asset, id).Error; err != nil {
+		return notFound(err)
+	}
 	if !h.canAccess(auth.GetCurrentUser(c), asset.OwnerType, "write") {
 		return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
 	}
@@ -251,10 +268,17 @@ func (h *Handler) Delete(c *echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+func lockOwnerAssetMutation(ownerType string) func() {
+	if ownerType == OwnerMold {
+		return LockMoldAssetMutation()
+	}
+	return func() {}
+}
+
 // Content 返回受保护的图片内容。
 // @Summary 读取业务图片内容
 // @Tags files
-// @Produce image/jpeg,image/png,image/webp,image/gif
+// @Produce image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,image/bmp,image/tiff,image/svg+xml
 // @Param id path uint true "图片 ID"
 // @Success 200 {file} binary
 // @Failure 400 {object} ErrorResponse
@@ -287,9 +311,60 @@ func (h *Handler) Content(c *echo.Context) error {
 		return err
 	}
 	defer f.Close()
-	c.Response().Header().Set(echo.HeaderContentDisposition, "inline")
+	disposition := "inline"
+	if asset.MimeType == "image/svg+xml" {
+		disposition = "attachment"
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, disposition)
 	c.Response().Header().Set(echo.HeaderContentLength, strconv.FormatInt(asset.Size, 10))
 	return c.Stream(http.StatusOK, asset.MimeType, f)
+}
+
+// Preview 返回服务端从原图生成的受保护静态预览；动画或多帧图片仅返回封面帧。
+// @Summary 读取业务图片静态预览
+// @Tags files
+// @Produce image/jpeg
+// @Param id path uint true "图片 ID"
+// @Success 200 {file} binary
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/files/{id}/preview [get]
+func (h *Handler) Preview(c *echo.Context) error {
+	id, err := parseID(c.Param("id"), false)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id 无效")
+	}
+	var asset model.ImageFile
+	if err := h.db.First(&asset, id).Error; err != nil {
+		return notFound(err)
+	}
+	if !h.canAccess(auth.GetCurrentUser(c), asset.OwnerType, "read") {
+		return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
+	}
+	if err := h.ensureOwnerExists(asset.OwnerType, asset.OwnerID); err != nil {
+		return err
+	}
+	f, err := h.service.OpenPreview(&asset)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return echo.NewHTTPError(http.StatusNotFound, "图片预览不存在，请重新上传或联系管理员生成预览")
+		}
+		return err
+	}
+	defer f.Close()
+	mimeType := asset.PreviewMime
+	if mimeType == "" {
+		mimeType = "image/jpeg"
+	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, "inline")
+	if asset.PreviewSize > 0 {
+		c.Response().Header().Set(echo.HeaderContentLength, strconv.FormatInt(asset.PreviewSize, 10))
+	}
+	return c.Stream(http.StatusOK, mimeType, f)
 }
 
 func (h *Handler) ensureOwnerExists(ownerType string, ownerID uint) error {
@@ -362,7 +437,7 @@ func mapServiceError(err error) error {
 	if errors.As(err, &validation) {
 		return echo.NewHTTPError(http.StatusBadRequest, validation.Error())
 	}
-	return err
+	return echo.NewHTTPError(http.StatusInternalServerError, "服务器保存图片或生成静态预览失败，请稍后重试；如仍失败请将请求编号提供给管理员").Wrap(err)
 }
 func idString(id uint) string { return strconv.FormatUint(uint64(id), 10) }
 func notFound(err error) error {

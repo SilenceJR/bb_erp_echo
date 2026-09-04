@@ -231,7 +231,7 @@ export interface CustomerImportPreview {
   errors: SpreadsheetCellError[]
 }
 
-// 图片元数据，对应文件服务返回结构；content_url 只作为元数据保留，不直接用于渲染。
+// 图片元数据，对应文件服务返回结构；图库优先渲染服务器生成的静态预览，content_url 保留原图。
 export interface ImageFile {
   id: number
   owner_type: string
@@ -241,5 +241,6 @@ export interface ImageFile {
   size: number
   category: string
   content_url: string
+  preview_url?: string
   created_at: string
 }

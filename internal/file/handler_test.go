@@ -70,12 +70,12 @@ func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	warehouse := &auth.CurrentUser{Username: "warehouse", OrganizationID: 1}
-	c := multipartContext(t, http.MethodPost, "/api/v1/files/images", "product", product.ID, "main", "one.png", []byte("\x89PNG\r\n\x1a\n"))
+	c := multipartContext(t, http.MethodPost, "/api/v1/files/images", "product", product.ID, "main", "one.png", validPNGBytes())
 	setUser(c, warehouse)
 	if err := h.Create(c); err != nil {
 		t.Fatal(err)
 	}
-	moldC := multipartContext(t, http.MethodPost, "/api/v1/files/images", "mold", mold.ID, "", "one.png", []byte("\x89PNG\r\n\x1a\n"))
+	moldC := multipartContext(t, http.MethodPost, "/api/v1/files/images", "mold", mold.ID, "", "one.png", validPNGBytes())
 	setUser(moldC, warehouse)
 	if err := h.Create(moldC); err == nil {
 		t.Fatal("warehouse permission uploaded mold")
@@ -87,7 +87,7 @@ func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 	if err := db.Create(&work).Error; err != nil {
 		t.Fatal(err)
 	}
-	wc := multipartContext(t, http.MethodPost, "/api/v1/files/images", OwnerWorkOrder, work.ID, "", "one.png", []byte("\x89PNG\r\n\x1a\n"))
+	wc := multipartContext(t, http.MethodPost, "/api/v1/files/images", OwnerWorkOrder, work.ID, "", "one.png", validPNGBytes())
 	setUser(wc, workorderUser)
 	if err := h.Create(wc); err != nil {
 		t.Fatalf("workorder permission: %v", err)
@@ -101,7 +101,7 @@ func TestPermissionAndDepartmentBoundaries(t *testing.T) {
 	if err := h.List(lc); err != nil {
 		t.Fatalf("cross department read: %v", err)
 	}
-	wc2 := multipartContext(t, http.MethodPut, "/1/content", OwnerDepartmentTask, task.ID, "", "one.png", []byte("\x89PNG\r\n\x1a\n"))
+	wc2 := multipartContext(t, http.MethodPut, "/1/content", OwnerDepartmentTask, task.ID, "", "one.png", validPNGBytes())
 	setUser(wc2, reader)
 	wc2.SetPath("/api/v1/files/:id/content")
 	wc2.SetPathValues(echo.PathValues{{Name: "id", Value: uintString(task.ID)}})
@@ -122,7 +122,7 @@ func TestCreateReturnsArrayForSingleAndMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	user := &auth.CurrentUser{Username: "warehouse", OrganizationID: 1}
-	png := []byte("\x89PNG\r\n\x1a\n")
+	png := validPNGBytes()
 
 	single := multipartContextWithFiles(t, http.MethodPost, "/api/v1/files/images", OwnerProduct, product.ID, "gallery", []multipartUpload{{name: "single.png", data: png}})
 	setUser(single, user)
@@ -137,7 +137,7 @@ func TestCreateReturnsArrayForSingleAndMultipleFiles(t *testing.T) {
 	if err := json.Unmarshal(singleRecorder.Body.Bytes(), &singleResult); err != nil {
 		t.Fatalf("decode single response: %v", err)
 	}
-	if len(singleResult) != 1 || singleResult[0].OriginalName != "single.png" {
+	if len(singleResult) != 1 || singleResult[0].OriginalName != "single.png" || singleResult[0].PreviewURL == "" {
 		t.Fatalf("single response = %+v", singleResult)
 	}
 
@@ -168,8 +168,8 @@ func TestCreateReturnsArrayForSingleAndMultipleFiles(t *testing.T) {
 	if count != 3 {
 		t.Fatalf("image records = %d, want 3", count)
 	}
-	if count := storedFileCount(t, h.service.UploadRoot); count != 3 {
-		t.Fatalf("stored files = %d, want 3", count)
+	if count := storedFileCount(t, h.service.UploadRoot); count != 6 {
+		t.Fatalf("stored files = %d, want 6 originals and previews", count)
 	}
 }
 
@@ -180,7 +180,7 @@ func TestCreateRejectsInvalidBatchWithoutPersisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := multipartContextWithFiles(t, http.MethodPost, "/api/v1/files/images", OwnerProduct, product.ID, "gallery", []multipartUpload{
-		{name: "valid.png", data: []byte("\x89PNG\r\n\x1a\n")},
+		{name: "valid.png", data: validPNGBytes()},
 		{name: "invalid.png", data: []byte("not an image")},
 	})
 	setUser(c, &auth.CurrentUser{Username: "warehouse", OrganizationID: 1})
@@ -236,8 +236,31 @@ func TestContentMissingAndServicePathValidation(t *testing.T) {
 			t.Fatalf("missing owner error = %v", err)
 		}
 	}
-	if _, err := h.service.SaveImage(uploadHeader(t, "one.png", []byte("\x89PNG\r\n\x1a\n")), "../../outside", 1, "", nil, 1); err == nil {
+	if _, err := h.service.SaveImage(uploadHeader(t, "one.png", validPNGBytes()), "../../outside", 1, "", nil, 1); err == nil {
 		t.Fatal("invalid owner path accepted")
+	}
+}
+
+func TestPreviewReturnsGeneratedStaticJPEG(t *testing.T) {
+	h, db := testHandler(t)
+	product := model.Product{Name: "P", Code: "P-PREVIEW"}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatal(err)
+	}
+	asset, err := h.service.SaveImage(uploadHeader(t, "photo.jfif", validJPEGBytes()), OwnerProduct, product.ID, "gallery", nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := contextFor(t, http.MethodGet, "/api/v1/files/1/preview", nil)
+	c.SetPath("/api/v1/files/:id/preview")
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: uintString(asset.ID)}})
+	setUser(c, &auth.CurrentUser{Username: "warehouse", OrganizationID: 1})
+	if err := h.Preview(c); err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	recorder := c.Get("test_recorder").(*httptest.ResponseRecorder)
+	if recorder.Code != http.StatusOK || recorder.Header().Get(echo.HeaderContentType) != "image/jpeg" {
+		t.Fatalf("preview response status=%d content-type=%q", recorder.Code, recorder.Header().Get(echo.HeaderContentType))
 	}
 }
 

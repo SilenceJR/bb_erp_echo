@@ -2,10 +2,9 @@ package mold
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 
+	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 
@@ -194,15 +193,31 @@ func (s *gormService) Update(id uint, input Input) (model.Mold, error) {
 }
 
 func (s *gormService) Delete(id uint) error {
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
 	var item model.Mold
 	if err := s.db.First(&item, id).Error; err != nil {
 		return mapMoldError(err)
 	}
 	var images []model.ImageFile
 	var drawings []model.MoldDrawing
-	s.db.Where("owner_type = ? AND owner_id = ?", "mold", id).Find(&images)
-	s.db.Where("mold_id = ?", id).Find(&drawings)
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.Where("owner_type = ? AND owner_id = ?", "mold", id).Find(&images).Error; err != nil {
+		return err
+	}
+	if err := s.db.Where("mold_id = ?", id).Find(&drawings).Error; err != nil {
+		return err
+	}
+	paths := make([]string, 0, len(images)*2+len(drawings))
+	for _, asset := range images {
+		paths = append(paths, asset.StoragePath)
+		if asset.PreviewPath != "" {
+			paths = append(paths, asset.PreviewPath)
+		}
+	}
+	for _, asset := range drawings {
+		paths = append(paths, asset.StoragePath)
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Unscoped().Where("owner_type = ? AND owner_id = ?", "mold", id).Delete(&model.ImageFile{}).Error; err != nil {
 			return err
 		}
@@ -212,29 +227,12 @@ func (s *gormService) Delete(id uint) error {
 		if err := tx.Unscoped().Delete(&item).Error; err != nil {
 			return err
 		}
-		for _, asset := range images {
-			_ = s.removeStored(asset.StoragePath)
-		}
-		for _, asset := range drawings {
-			_ = s.removeStored(asset.StoragePath)
-		}
-		return nil
-	})
-}
-
-func (s *gormService) removeStored(relative string) error {
-	if s.storageRoot == "" {
-		return nil
+		return filemodule.QueueCleanupTasks(tx, paths)
+	}); err != nil {
+		return err
 	}
-	clean := filepath.Clean(filepath.FromSlash(relative))
-	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return errors.New("非法文件路径")
-	}
-	err := os.Remove(filepath.Join(s.storageRoot, clean))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	filemodule.CleanupStoredPaths(s.storageRoot, s.db, paths)
+	return nil
 }
 
 func (s *gormService) Locations(includeDisabled bool) ([]model.MoldLocation, error) {

@@ -5,13 +5,16 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
+	erpmiddleware "bb_erp_echo/internal/middleware"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 )
 
@@ -33,13 +36,13 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	group := v1.Group("/molds", audit)
 	group.GET("", h.ListMolds, require("/api/v1/molds", "read"))
 	group.GET("/:id/drawings", h.ListDrawings, require("/api/v1/molds", "read"))
-	group.POST("/:id/drawings", h.UploadDrawing, require("/api/v1/molds", "write"))
+	group.POST("/:id/drawings", h.UploadDrawing, require("/api/v1/molds", "write"), echomiddleware.BodyLimit(MaxDrawingSize+32<<20), erpmiddleware.TransferDeadline(2*time.Hour), echomiddleware.ContextTimeout(2*time.Hour))
 	group.GET("/:id/drawings/:drawing_id/content", h.DrawingContent, require("/api/v1/molds", "read"))
 	group.DELETE("/:id/drawings/:drawing_id", h.DeleteDrawing, require("/api/v1/molds", "write"))
 	group.GET("/export", h.Export, require("/api/v1/molds", "read"))
 	group.GET("/import-template", h.ImportTemplate, require("/api/v1/molds", "read"))
-	group.POST("/import/preview", h.ImportPreview, require("/api/v1/molds/import", "import"))
-	group.POST("/import/commit", h.ImportCommit, require("/api/v1/molds/import", "import"))
+	group.POST("/import/preview", h.ImportPreview, require("/api/v1/molds/import", "import"), echomiddleware.BodyLimit(MaxPackageSize+32<<20), erpmiddleware.TransferDeadline(2*time.Hour), echomiddleware.ContextTimeout(2*time.Hour))
+	group.POST("/import/commit", h.ImportCommit, require("/api/v1/molds/import", "import"), echomiddleware.BodyLimit(MaxPackageSize+32<<20), erpmiddleware.TransferDeadline(2*time.Hour), echomiddleware.ContextTimeout(2*time.Hour))
 	group.GET("/:id", h.GetMold, require("/api/v1/molds", "read"))
 	group.POST("", h.CreateMold, require("/api/v1/molds", "write"))
 	group.PATCH("/:id", h.UpdateMold, require("/api/v1/molds", "write"))

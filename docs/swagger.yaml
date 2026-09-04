@@ -460,6 +460,8 @@ definitions:
         type: integer
       owner_type:
         type: string
+      preview_url:
+        type: string
       replaces_id:
         type: integer
       size:
@@ -2703,6 +2705,12 @@ paths:
       - image/png
       - image/webp
       - image/gif
+      - image/heic
+      - image/heif
+      - image/avif
+      - image/bmp
+      - image/tiff
+      - image/svg+xml
       responses:
         "200":
           description: OK
@@ -2781,6 +2789,46 @@ paths:
       security:
       - BearerAuth: []
       summary: 替换业务图片
+      tags:
+      - files
+  /api/v1/files/{id}/preview:
+    get:
+      parameters:
+      - description: 图片 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/file.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/file.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/file.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/file.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/file.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 读取业务图片静态预览
       tags:
       - files
   /api/v1/files/images:

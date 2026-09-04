@@ -3,10 +3,14 @@ package mold
 import (
 	"archive/zip"
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"sort"
 	"testing"
 
+	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/spreadsheet"
 )
 
@@ -24,12 +28,11 @@ func TestNaturalAssetSortAndCategoryInference(t *testing.T) {
 	}
 }
 
-func TestImageMimeMatchesExtension(t *testing.T) {
-	if !imageMimeMatchesExtension("image/jpeg", ".jpg") || !imageMimeMatchesExtension("image/png", ".png") {
-		t.Fatal("expected supported image MIME types to match")
-	}
-	if imageMimeMatchesExtension("image/png", ".jpg") || imageMimeMatchesExtension("application/pdf", ".png") {
-		t.Fatal("unexpected image MIME match")
+func TestMoldImportAcceptsGalleryImageExtensions(t *testing.T) {
+	for _, ext := range []string{".jpg", ".JPG", ".jfif", ".png", ".gif", ".webp", ".heic", ".HEIC", ".heif", ".avif", ".bmp", ".tif", ".tiff", ".svg"} {
+		if !filemodule.AllowedImageExtension(ext) {
+			t.Fatalf("expected mold import to accept %s", ext)
+		}
 	}
 }
 
@@ -82,14 +85,10 @@ func TestReadPackageTemplateAndSharedImage(t *testing.T) {
 	}
 }
 
-var tinyPNG = []byte{
-	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-	0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
-	0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-	0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-	0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-	0x42, 0x60, 0x82,
-}
+var tinyPNG = func() []byte {
+	var output bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{R: 32, G: 64, B: 96, A: 255})
+	_ = png.Encode(&output, img)
+	return output.Bytes()
+}()

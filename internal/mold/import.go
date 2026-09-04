@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"bb_erp_echo/internal/auth"
+	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/spreadsheet"
 
@@ -29,6 +30,12 @@ import (
 
 const moldImportModule = "molds"
 const MaxPackageSize int64 = 2 << 30
+const maxMoldArchiveEntries = 2000
+const maxMoldExpandedBytes uint64 = 4 << 30
+const maxMoldWorkbookBytes uint64 = 64 << 20
+const maxMoldLocationsBytes uint64 = 4 << 20
+const maxMoldCorrectionsBytes = 4 << 20
+const maxMoldStagedAssets = 5000
 
 var moldColumns = []spreadsheet.Column{
 	{Key: "id", Title: "序号", Width: 8, Type: spreadsheet.CellTypeNumber, Alignment: "center"},
@@ -168,7 +175,11 @@ func (h *Handler) ImportCommit(c *echo.Context) error {
 		return err
 	}
 	defer cleanup()
-	corrections, err := parseImportCorrections(c.FormValue("corrections"))
+	correctionsRaw := c.FormValue("corrections")
+	if len(correctionsRaw) > maxMoldCorrectionsBytes {
+		return echo.NewHTTPError(http.StatusBadRequest, "人工修正参数超过 4 MiB")
+	}
+	corrections, err := parseImportCorrections(correctionsRaw)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "人工修正参数无效")
 	}
@@ -191,8 +202,14 @@ func (h *Handler) ImportCommit(c *echo.Context) error {
 	}
 	paths, err := h.stageAssets(data)
 	if err != nil {
+		var validationErr *filemodule.ValidationError
+		if errors.As(err, &validationErr) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 		return err
 	}
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
 	oldPaths, err := h.moldStoredPaths()
 	if err != nil {
 		cleanupStaged(h.StorageRoot, paths)
@@ -207,13 +224,13 @@ func (h *Handler) ImportCommit(c *echo.Context) error {
 		if err := replaceMoldData(tx, data, paths, current.ID); err != nil {
 			return err
 		}
-		return nil
+		return filemodule.QueueCleanupTasks(tx, oldPaths)
 	})
 	if err != nil {
 		cleanupStaged(h.StorageRoot, paths)
 		return err
 	}
-	cleanupPaths(h.StorageRoot, oldPaths)
+	filemodule.CleanupStoredPaths(h.StorageRoot, h.DB, oldPaths)
 	return c.JSON(http.StatusCreated, result)
 }
 
@@ -318,7 +335,15 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "ZIP 资料包无效")
 	}
 	files := map[string]*zip.File{}
+	if len(zr.File) > maxMoldArchiveEntries {
+		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("资料包文件数量超过 %d 个，请拆分后导入", maxMoldArchiveEntries))
+	}
+	var declaredExpandedBytes uint64
 	for _, item := range zr.File {
+		if item.UncompressedSize64 > maxMoldExpandedBytes-declaredExpandedBytes {
+			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包解压后的文件总量超过 4 GiB，请拆分后导入")
+		}
+		declaredExpandedBytes += item.UncompressedSize64
 		clean := filepath.ToSlash(filepath.Clean(item.Name))
 		if item.Name != clean || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
 			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包包含非法路径")
@@ -331,6 +356,9 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 	main := files["molds.xlsx"]
 	if main == nil {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "缺少 molds.xlsx")
+	}
+	if main.UncompressedSize64 > maxMoldWorkbookBytes {
+		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "molds.xlsx 超过 64 MiB，请减少数据后重试")
 	}
 	reader, err := main.Open()
 	if err != nil {
@@ -371,6 +399,10 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 		}
 		switch parts[0] {
 		case "images":
+			if err := validateImageEntry(item); err != nil {
+				data.Errors = append(data.Errors, importError(path, err.Error()))
+				continue
+			}
 			asset, ok := parseImageAsset(item, parts, known)
 			if !ok {
 				data.Errors = append(data.Errors, importError(path, "图片无法匹配模具编号或图片分组"))
@@ -467,6 +499,9 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 func parseLocations(item *zip.File) ([]model.MoldLocation, error) {
 	result := []model.MoldLocation{{Code: "A1-1", Status: model.MoldLocationActive}, {Code: "B1-1", Status: model.MoldLocationActive}}
 	if item != nil {
+		if item.UncompressedSize64 > maxMoldLocationsBytes {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "locations.json 超过 4 MiB")
+		}
 		if r, err := item.Open(); err == nil {
 			defer r.Close()
 			var input []model.MoldLocation
@@ -529,6 +564,9 @@ func normalizeCategory(value string) string {
 func parseImportCorrections(raw string) (map[string]ImportCorrection, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
+	}
+	if len(raw) > maxMoldCorrectionsBytes {
+		return nil, errors.New("人工修正参数超过 4 MiB")
 	}
 	var result map[string]ImportCorrection
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
@@ -621,46 +659,36 @@ func naturalAssetLess(left, right string) bool {
 func isASCIIDigit(value byte) bool { return value >= '0' && value <= '9' }
 
 func validImageEntry(item *zip.File) bool {
-	if item == nil || item.UncompressedSize64 == 0 || item.UncompressedSize64 > 20<<20 || !allowedImageExt(filepath.Ext(item.Name)) {
-		return false
-	}
-	r, err := item.Open()
-	if err != nil {
-		return false
-	}
-	defer r.Close()
-	buf := make([]byte, 512)
-	n, err := r.Read(buf)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false
-	}
-	return imageMimeMatchesExtension(http.DetectContentType(buf[:n]), filepath.Ext(item.Name))
+	return item != nil && item.UncompressedSize64 > 0 && item.UncompressedSize64 <= uint64(MaxPackageSize) && filemodule.AllowedImageExtension(filepath.Ext(item.Name))
 }
 
-func allowedImageExt(ext string) bool {
-	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
-		return true
-	default:
-		return false
+func validateImageEntry(item *zip.File) error {
+	if !validImageEntry(item) {
+		return errors.New("图片为空、超过单文件安全边界或扩展名不受支持")
 	}
-}
-
-func imageMimeMatchesExtension(mimeType, ext string) bool {
-	ext = strings.ToLower(ext)
-	return (ext == ".jpg" || ext == ".jpeg") && mimeType == "image/jpeg" || ext == ".png" && mimeType == "image/png" || ext == ".webp" && mimeType == "image/webp" || ext == ".gif" && mimeType == "image/gif"
+	return filemodule.ValidateStaticImage(int64(item.UncompressedSize64), filepath.Ext(item.Name), func() (io.ReadCloser, error) {
+		return item.Open()
+	})
 }
 
 type stagedAsset struct {
-	Asset packageAsset
-	Path  string
-	Size  int64
+	Asset       packageAsset
+	Path        string
+	Size        int64
+	PreviewPath string
+	PreviewMime string
+	PreviewSize int64
 }
 
 func (h *Handler) stageAssets(data packageData) ([]stagedAsset, error) {
 	staged := make([]stagedAsset, 0, len(data.Images)+len(data.Drawings))
+	var stagedBytes int64
 	for _, asset := range append(append([]packageAsset{}, data.Images...), data.Drawings...) {
 		for _, code := range asset.Codes {
+			if len(staged) >= maxMoldStagedAssets {
+				cleanupStaged(h.StorageRoot, staged)
+				return nil, fmt.Errorf("资料包展开后的图片和图纸超过 %d 个，请拆分后导入", maxMoldStagedAssets)
+			}
 			ext := strings.ToLower(filepath.Ext(asset.Name))
 			prefix := filepath.Join("mold", "import", time.Now().Format("20060102"))
 			if asset.Category != "" {
@@ -690,10 +718,19 @@ func (h *Handler) stageAssets(data packageData) ([]stagedAsset, error) {
 				cleanupStaged(h.StorageRoot, staged)
 				return nil, err
 			}
-			written, copyErr := io.Copy(dst, io.LimitReader(src, MaxPackageSize+1))
+			remaining := int64(maxMoldExpandedBytes) - stagedBytes
+			if remaining <= 0 {
+				src.Close()
+				dst.Close()
+				_ = os.Remove(path)
+				cleanupStaged(h.StorageRoot, staged)
+				return nil, errors.New("资料包实际解压文件总量超过 4 GiB，请拆分后导入")
+			}
+			readLimit := min(MaxPackageSize, remaining) + 1
+			written, copyErr := io.Copy(dst, io.LimitReader(src, readLimit))
 			src.Close()
 			closeErr := dst.Close()
-			if copyErr != nil || closeErr != nil || written > MaxPackageSize {
+			if copyErr != nil || closeErr != nil || written > MaxPackageSize || written > remaining {
 				_ = os.Remove(path)
 				cleanupStaged(h.StorageRoot, staged)
 				if copyErr != nil {
@@ -704,7 +741,50 @@ func (h *Handler) stageAssets(data packageData) ([]stagedAsset, error) {
 				}
 				return nil, errors.New("资料包内文件超过大小限制")
 			}
-			staged = append(staged, stagedAsset{Asset: asset, Path: relative, Size: written})
+			stagedBytes += written
+			if stagedBytes > int64(maxMoldExpandedBytes) {
+				_ = os.Remove(path)
+				cleanupStaged(h.StorageRoot, staged)
+				return nil, errors.New("资料包实际解压文件总量超过 4 GiB，请拆分后导入")
+			}
+			stagedItem := stagedAsset{Asset: asset, Path: relative, Size: written}
+			if asset.Category != "" {
+				preview, previewMime, previewErr := filemodule.MakeStaticPreviewFile(path, ext)
+				if previewErr != nil {
+					_ = os.Remove(path)
+					cleanupStaged(h.StorageRoot, staged)
+					return nil, fmt.Errorf("图片 %s 无法生成静态预览: %w", asset.Name, previewErr)
+				}
+				stagedBytes += int64(len(preview))
+				if stagedBytes > int64(maxMoldExpandedBytes) {
+					_ = os.Remove(path)
+					cleanupStaged(h.StorageRoot, staged)
+					return nil, errors.New("资料包实际解压文件和预览总量超过 4 GiB，请拆分后导入")
+				}
+				previewName, previewErr := randomStorageName(".jpg")
+				if previewErr != nil {
+					_ = os.Remove(path)
+					cleanupStaged(h.StorageRoot, staged)
+					return nil, previewErr
+				}
+				previewRelative := filepath.ToSlash(filepath.Join(prefix, "preview-"+previewName))
+				previewPath := filepath.Join(h.StorageRoot, filepath.FromSlash(previewRelative))
+				previewFile, previewErr := os.OpenFile(previewPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+				if previewErr == nil {
+					_, previewErr = previewFile.Write(preview)
+					if closePreviewErr := previewFile.Close(); previewErr == nil {
+						previewErr = closePreviewErr
+					}
+				}
+				if previewErr != nil {
+					_ = os.Remove(path)
+					_ = os.Remove(previewPath)
+					cleanupStaged(h.StorageRoot, staged)
+					return nil, fmt.Errorf("保存图片 %s 的静态预览失败: %w", asset.Name, previewErr)
+				}
+				stagedItem.PreviewPath, stagedItem.PreviewMime, stagedItem.PreviewSize = previewRelative, previewMime, int64(len(preview))
+			}
+			staged = append(staged, stagedItem)
 			staged[len(staged)-1].Asset.Codes = []string{code}
 		}
 	}
@@ -757,7 +837,7 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 				return fmt.Errorf("图片 %s 的模具不存在", asset.Asset.Name)
 			}
 			if asset.Asset.Category != "" {
-				image := model.ImageFile{OwnerType: "mold", OwnerID: moldID, UploadedBy: uploadedBy, Category: asset.Asset.Category, SortOrder: imageOrder[code+asset.Asset.Category], OriginalName: filepath.Base(asset.Asset.Name), Size: asset.Size, MimeType: importImageMime(asset.Asset.Name), Extension: strings.ToLower(filepath.Ext(asset.Asset.Name)), StoragePath: asset.Path}
+				image := model.ImageFile{OwnerType: "mold", OwnerID: moldID, UploadedBy: uploadedBy, Category: asset.Asset.Category, SortOrder: imageOrder[code+asset.Asset.Category], OriginalName: filepath.Base(asset.Asset.Name), Size: asset.Size, MimeType: filemodule.ImageMIMEForExtension(filepath.Ext(asset.Asset.Name)), Extension: strings.ToLower(filepath.Ext(asset.Asset.Name)), StoragePath: asset.Path, PreviewPath: asset.PreviewPath, PreviewMime: asset.PreviewMime, PreviewSize: asset.PreviewSize}
 				imageOrder[code+asset.Asset.Category]++
 				if err := tx.Create(&image).Error; err != nil {
 					return err
@@ -775,7 +855,7 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 
 func (h *Handler) moldStoredPaths() ([]string, error) {
 	var images []model.ImageFile
-	if err := h.DB.Where("owner_type = ?", "mold").Select("storage_path").Find(&images).Error; err != nil {
+	if err := h.DB.Where("owner_type = ?", "mold").Select("storage_path", "preview_path").Find(&images).Error; err != nil {
 		return nil, err
 	}
 	var drawings []model.MoldDrawing
@@ -785,6 +865,9 @@ func (h *Handler) moldStoredPaths() ([]string, error) {
 	paths := make([]string, 0, len(images)+len(drawings))
 	for _, image := range images {
 		paths = append(paths, image.StoragePath)
+		if image.PreviewPath != "" {
+			paths = append(paths, image.PreviewPath)
+		}
 	}
 	for _, drawing := range drawings {
 		paths = append(paths, drawing.StoragePath)
@@ -801,20 +884,10 @@ func locationStatus(value string) string {
 func cleanupStaged(root string, staged []stagedAsset) {
 	for _, item := range staged {
 		_ = os.Remove(filepath.Join(root, filepath.FromSlash(item.Path)))
+		if item.PreviewPath != "" {
+			_ = os.Remove(filepath.Join(root, filepath.FromSlash(item.PreviewPath)))
+		}
 	}
-}
-func importImageMime(name string) string {
-	ext := strings.ToLower(filepath.Ext(name))
-	if ext == ".png" {
-		return "image/png"
-	}
-	if ext == ".webp" {
-		return "image/webp"
-	}
-	if ext == ".gif" {
-		return "image/gif"
-	}
-	return "image/jpeg"
 }
 
 func firstLocation(ids map[string]uint) uint {
@@ -887,11 +960,6 @@ func addStoredFile(zw *zip.Writer, root, archive, relative string) error {
 	}
 	_, err = io.Copy(w, f)
 	return err
-}
-func cleanupPaths(root string, paths []string) {
-	for _, relative := range paths {
-		_ = os.Remove(filepath.Join(root, filepath.FromSlash(relative)))
-	}
 }
 func randomStorageName(ext string) (string, error) {
 	raw := make([]byte, 16)

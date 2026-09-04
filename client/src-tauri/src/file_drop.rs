@@ -28,7 +28,13 @@ pub async fn upload_dropped_files(
     request: DroppedFileUpload,
 ) -> Result<DroppedFileUploadResult, String> {
     let url = api_url(&request.server_url, &request.endpoint)?;
-    if request.token.trim().is_empty() || request.paths.is_empty() || request.paths.len() > 100 {
+    if request.paths.len() > 100 {
+        return Err(format!(
+            "本次拖入了 {} 张图片，一次最多上传 100 张，请分批上传",
+            request.paths.len()
+        ));
+    }
+    if request.token.trim().is_empty() || request.paths.is_empty() {
         return Err("拖放上传参数无效".to_string());
     }
 

@@ -3,6 +3,12 @@ package file
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"image"
+	"image/color"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"mime/multipart"
 	"net/http/httptest"
 	"os"
@@ -11,6 +17,8 @@ import (
 	"testing"
 
 	"bb_erp_echo/internal/model"
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -20,7 +28,7 @@ func TestImageLifecycleAndFormatValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
@@ -29,7 +37,7 @@ func TestImageLifecycleAndFormatValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	asset, err := service.SaveImage(uploadHeader(t, "one.png", []byte("\x89PNG\r\n\x1a\n")), OwnerProduct, 1, "main", nil, 1)
+	asset, err := service.SaveImage(uploadHeader(t, "one.png", validPNGBytes()), OwnerProduct, 1, "main", nil, 1)
 	if err != nil {
 		t.Fatalf("valid upload: %v", err)
 	}
@@ -43,14 +51,14 @@ func TestImageLifecycleAndFormatValidation(t *testing.T) {
 		t.Fatal("fake image accepted")
 	}
 
-	replacement, err := service.ReplaceImage(asset.ID, uploadHeader(t, "two.gif", []byte("GIF89a")), "detail", 2)
+	replacement, err := service.ReplaceImage(asset.ID, uploadHeader(t, "two.gif", validGIFBytes()), "detail", 2)
 	if err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 	if replacement.ReplacesID == nil || *replacement.ReplacesID != asset.ID {
 		t.Fatalf("missing replaces_id: %+v", replacement)
 	}
-	inherited, err := service.ReplaceImage(replacement.ID, uploadHeader(t, "three.png", []byte("\x89PNG\r\n\x1a\n")), "", 3)
+	inherited, err := service.ReplaceImage(replacement.ID, uploadHeader(t, "three.png", validPNGBytes()), "", 3)
 	if err != nil {
 		t.Fatalf("replace inherited metadata: %v", err)
 	}
@@ -67,12 +75,12 @@ func TestImageLifecycleAndFormatValidation(t *testing.T) {
 	}
 }
 
-func TestDeleteRollsBackWhenPhysicalRemovalFails(t *testing.T) {
+func TestDeleteKeepsDatabaseStateWhenPhysicalCleanupFails(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:delete_rollback?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
@@ -85,21 +93,34 @@ func TestDeleteRollsBackWhenPhysicalRemovalFails(t *testing.T) {
 	if err := db.Create(asset).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.DeleteImage(asset); err == nil {
-		t.Fatal("directory removal unexpectedly succeeded")
+	if err := service.DeleteImage(asset); err != nil {
+		t.Fatalf("database delete should succeed despite orphan cleanup: %v", err)
 	}
 	var visible model.ImageFile
-	if err := db.First(&visible, asset.ID).Error; err != nil {
-		t.Fatalf("soft delete was not rolled back: %v", err)
+	if err := db.First(&visible, asset.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("deleted record should stay hidden, got: %v", err)
+	}
+	var pending model.FileCleanupTask
+	if err := db.Where("storage_path = ?", "product/directory").First(&pending).Error; err != nil {
+		t.Fatalf("cleanup failure was not persisted: %v", err)
+	}
+	if err := os.Remove(filepath.Join(path, "child")); err != nil {
+		t.Fatal(err)
+	}
+	if err := RetryPendingCleanups(root, db); err != nil {
+		t.Fatalf("retry cleanup: %v", err)
+	}
+	if err := db.First(&pending, pending.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("completed cleanup task still exists: %v", err)
 	}
 }
 
-func TestReplaceRollsBackWhenOldPhysicalRemovalFails(t *testing.T) {
+func TestReplaceKeepsNewRecordWhenOldPhysicalCleanupFails(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:replace_rollback?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
@@ -112,12 +133,12 @@ func TestReplaceRollsBackWhenOldPhysicalRemovalFails(t *testing.T) {
 	if err := db.Create(old).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ReplaceImage(old.ID, uploadHeader(t, "new.png", []byte("\x89PNG\r\n\x1a\n")), "", 9); err == nil {
-		t.Fatal("replace unexpectedly succeeded")
+	if _, err := service.ReplaceImage(old.ID, uploadHeader(t, "new.png", validPNGBytes()), "", 9); err != nil {
+		t.Fatalf("replacement should succeed despite orphan cleanup: %v", err)
 	}
 	var visible model.ImageFile
-	if err := db.First(&visible, old.ID).Error; err != nil {
-		t.Fatalf("old record was not restored: %v", err)
+	if err := db.First(&visible, old.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("old record should stay hidden, got: %v", err)
 	}
 	var active int64
 	db.Model(&model.ImageFile{}).Count(&active)
@@ -126,51 +147,39 @@ func TestReplaceRollsBackWhenOldPhysicalRemovalFails(t *testing.T) {
 	}
 }
 
-func TestSaveImageRejectsDeclaredAndActualOversize(t *testing.T) {
+func TestSaveImageDoesNotTrustDeclaredSizeAsBusinessLimit(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:oversize?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	service := NewService(t.TempDir(), db)
-	declared := &multipart.FileHeader{Filename: "large.png", Size: MaxImageSize + 1}
-	if _, err := service.SaveImage(declared, OwnerProduct, 1, "", nil, 1); err == nil {
-		t.Fatal("declared oversize accepted")
+	header := uploadHeader(t, "large.png", validPNGBytes())
+	header.Size = 200 << 20
+	if _, err := service.SaveImage(header, OwnerProduct, 1, "", nil, 1); err != nil {
+		t.Fatalf("large declared size should not be rejected before decoding: %v", err)
 	}
-	actualData := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, int(MaxImageSize+1-8))...)
-	actual := uploadHeaderWithMax(t, "actual.png", actualData, int(MaxImageSize)+1<<20)
-	actual.Size = 1
-	if _, err := service.SaveImage(actual, OwnerProduct, 1, "", nil, 1); err == nil {
-		t.Fatal("actual oversize accepted")
-	} else {
-		var validation *ValidationError
-		if !errors.As(err, &validation) {
-			t.Fatalf("actual oversize error = %v, want ValidationError", err)
-		}
+}
+
+func TestSaveImagesRejectsBatchOverLimit(t *testing.T) {
+	service, _ := newBatchTestService(t)
+	headers := make([]*multipart.FileHeader, MaxImageBatch+1)
+	for i := range headers {
+		headers[i] = uploadHeader(t, fmt.Sprintf("image-%03d.png", i), validPNGBytes())
 	}
-	var files int
-	if err := filepath.WalkDir(service.UploadRoot, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() {
-			files++
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if files != 0 {
-		t.Fatalf("oversize upload left %d files", files)
+	_, err := service.SaveImages(headers, OwnerProduct, 1, "gallery", 1)
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) || !strings.Contains(err.Error(), "一次最多上传 100 张") {
+		t.Fatalf("error = %v, want explicit batch limit validation", err)
 	}
 }
 
 func TestSaveImagesValidationFailureLeavesBatchEmpty(t *testing.T) {
 	service, db := newBatchTestService(t)
 	headers := []*multipart.FileHeader{
-		uploadHeader(t, "valid.png", []byte("\x89PNG\r\n\x1a\n")),
+		uploadHeader(t, "valid.png", validPNGBytes()),
 		uploadHeader(t, "invalid.png", []byte("not an image")),
 	}
 
@@ -180,21 +189,32 @@ func TestSaveImagesValidationFailureLeavesBatchEmpty(t *testing.T) {
 	assertBatchEmpty(t, service, db)
 }
 
-func TestSaveImagesWriteFailureCleansEarlierFiles(t *testing.T) {
-	service, db := newBatchTestService(t)
-	actualData := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, int(MaxImageSize+1-8))...)
-	oversized := uploadHeaderWithMax(t, "oversized.png", actualData, int(MaxImageSize)+1<<20)
-	// 让声明大小通过首轮校验，实际大小在落盘阶段触发上限，从而覆盖批次中途写入失败。
-	oversized.Size = 1
-	headers := []*multipart.FileHeader{
-		uploadHeader(t, "first.png", []byte("\x89PNG\r\n\x1a\n")),
-		oversized,
+func TestSaveImageGeneratesStaticPreviewForExpandedFormats(t *testing.T) {
+	service, _ := newBatchTestService(t)
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "photo.jpg", data: validJPEGBytes()},
+		{name: "photo.jfif", data: validJPEGBytes()},
+		{name: "picture.bmp", data: validBMPBytes()},
+		{name: "scan.tiff", data: validTIFFBytes()},
+		{name: "drawing.svg", data: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10" fill="#2463eb"/></svg>`)},
 	}
-
-	if _, err := service.SaveImages(headers, OwnerProduct, 1, "gallery", 1); err == nil {
-		t.Fatal("oversized batch unexpectedly succeeded")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			asset, err := service.SaveImage(uploadHeader(t, test.name, test.data), OwnerProduct, 1, "gallery", nil, 1)
+			if err != nil {
+				t.Fatalf("save expanded image: %v", err)
+			}
+			if asset.PreviewPath == "" || asset.PreviewMime != "image/jpeg" || asset.PreviewSize <= 0 {
+				t.Fatalf("preview metadata = %+v", asset)
+			}
+			if _, err := os.Stat(filepath.Join(service.UploadRoot, filepath.FromSlash(asset.PreviewPath))); err != nil {
+				t.Fatalf("preview file: %v", err)
+			}
+		})
 	}
-	assertBatchEmpty(t, service, db)
 }
 
 func TestSaveImagesDatabaseFailureRollsBackRecordsAndFiles(t *testing.T) {
@@ -203,14 +223,55 @@ func TestSaveImagesDatabaseFailureRollsBackRecordsAndFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	headers := []*multipart.FileHeader{
-		uploadHeader(t, "duplicate.png", []byte("\x89PNG\r\n\x1a\n")),
-		uploadHeader(t, "duplicate.png", []byte("\x89PNG\r\n\x1a\n")),
+		uploadHeader(t, "duplicate.png", validPNGBytes()),
+		uploadHeader(t, "duplicate.png", validPNGBytes()),
 	}
 
 	if _, err := service.SaveImages(headers, OwnerProduct, 1, "gallery", 1); err == nil {
 		t.Fatal("database failure batch unexpectedly succeeded")
 	}
 	assertBatchEmpty(t, service, db)
+}
+
+func validPNGBytes() []byte {
+	var body bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 10, G: 20, B: 30, A: 255})
+	_ = png.Encode(&body, img)
+	return body.Bytes()
+}
+
+func validGIFBytes() []byte {
+	var body bytes.Buffer
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.Black, color.White})
+	_ = gif.Encode(&body, img, nil)
+	return body.Bytes()
+}
+
+func validJPEGBytes() []byte {
+	return encodeTestImage(func(w *bytes.Buffer, img image.Image) error {
+		return jpeg.Encode(w, img, &jpeg.Options{Quality: 90})
+	})
+}
+
+func validBMPBytes() []byte {
+	return encodeTestImage(func(w *bytes.Buffer, img image.Image) error {
+		return bmp.Encode(w, img)
+	})
+}
+
+func validTIFFBytes() []byte {
+	return encodeTestImage(func(w *bytes.Buffer, img image.Image) error {
+		return tiff.Encode(w, img, nil)
+	})
+}
+
+func encodeTestImage(encode func(*bytes.Buffer, image.Image) error) []byte {
+	var body bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{R: 10, G: 20, B: 30, A: 255})
+	_ = encode(&body, img)
+	return body.Bytes()
 }
 
 func newBatchTestService(t *testing.T) (*Service, *gorm.DB) {
@@ -220,7 +281,7 @@ func newBatchTestService(t *testing.T) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	return NewService(t.TempDir(), db), db

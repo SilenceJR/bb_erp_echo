@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -225,8 +226,17 @@ func (a *App) configureEcho() {
 	a.Echo.Use(echomiddleware.RequestID())
 	a.Echo.Use(echomiddleware.Recover())
 	a.Echo.Use(echomiddleware.Secure())
-	// 模具资料包允许上传不超过 2 GiB 的 ZIP；处理过程使用临时文件，不会按包大小占用内存。
-	a.Echo.Use(echomiddleware.BodyLimit(mold.MaxPackageSize + 32<<20))
+	// 普通接口保持较小请求体；大文件路径在业务权限校验后应用各自专用边界。
+	a.Echo.Use(echomiddleware.BodyLimitWithConfig(echomiddleware.BodyLimitConfig{
+		LimitBytes: 32 << 20,
+		Skipper: func(c *echo.Context) bool {
+			path, method := c.Request().URL.Path, c.Request().Method
+			return method == http.MethodPost && path == "/api/v1/files/images" ||
+				method == http.MethodPut && strings.HasPrefix(path, "/api/v1/files/") && strings.HasSuffix(path, "/content") ||
+				method == http.MethodPost && (path == "/api/v1/molds/import/preview" || path == "/api/v1/molds/import/commit") ||
+				method == http.MethodPost && strings.HasPrefix(path, "/api/v1/molds/") && strings.HasSuffix(path, "/drawings")
+		},
+	}))
 	a.Echo.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 		AllowOrigins: a.Config.HTTP.AllowedOrigins,
 		AllowMethods: []string{
@@ -290,6 +300,9 @@ func (a *App) registerRoutes() error {
 	if err := imageService.EnsureRoot(); err != nil {
 		return fmt.Errorf("create image upload root: %w", err)
 	}
+	if err := filemodule.RetryPendingCleanups(a.Config.Files.RootDir, a.DB); err != nil {
+		return fmt.Errorf("retry pending file cleanup: %w", err)
+	}
 	mold.NewHandlerWithStorage(a.DB, a.Config.Files.RootDir).RegisterRoutes(protected, require, auditMiddleware)
 	filemodule.NewHandler(imageService, a.DB, a.Authorizer).RegisterRoutes(protected, auditMiddleware)
 	statistics.RegisterRoutes(protected, a.DB, require, auditMiddleware)
@@ -321,8 +334,12 @@ func (a *App) prepareServer() {
 		return
 	}
 	a.Server = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", a.Config.HTTP.Host, a.Config.HTTP.Port),
-		Handler: a.Echo,
+		Addr:              fmt.Sprintf("%s:%d", a.Config.HTTP.Host, a.Config.HTTP.Port),
+		Handler:           a.Echo,
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
 	}
 }
 

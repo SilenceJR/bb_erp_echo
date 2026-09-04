@@ -96,6 +96,7 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - 本轮模具交互：图片组、ZIP 导入和 DWG 区域增加键盘可达的拖拽/点击入口；客户 Excel 导入同样提供拖放区，顶部按钮只打开弹窗，点击区域才打开系统文件选择器；Tauri 原生文件拖放路径已桥接为 WebView `File`，Windows 不依赖 HTML5 `dataTransfer.files`；详情加载失败、未保存关闭、编辑入口和窄屏 Drawer/空态显示已整改；Web/Tauri 生产构建与真实 Finder/资源管理器拖入仍需运行态验收。
 - 本轮 `web/npm test`：通过，4 项启动连接/身份隔离回归测试通过。
 - 本轮 `git diff --check`：通过。
+- 本轮图片上传兼容：Web/Tauri 共用图库不再依赖 Windows WebView 的 `File.type`，前端按扩展名接受 JPG/JPEG/JFIF、PNG、GIF、WebP、HEIC/HEIF、AVIF、BMP、TIF/TIFF、SVG，并取消原 20 MiB 客户端拦截；单批统一最多 100 张。图片列表优先加载服务端 `preview_url` 静态预览，保留 `content_url` 原图；预览失败不自动下载高清原图，界面保留文件名、原因、刷新入口、处理建议和请求编号，上传错误只在持久提示中展示完整详情。手机 JPEG 静态预览应用 EXIF 方向。Web 测试、Web 与 Client 生产构建通过；Windows 真机选择/拖入、超大图片和各格式预览仍待运行态验收。
 - 本轮弹层显示整改：移除 Element Plus Dialog/Drawer 内的 `AnimatePresence`、`motion.*` 初始透明度包装，覆盖客户导入/导出、客户资料 Drawer、客户编码、替代默认资料和任务操作 Dialog；Web/Tauri 构建需重新验证，Windows 真机首帧与焦点仍待验收。
 - 启动重复排查：开发模式出现的 `optimized dependencies changed. reloading` 属于 Vite 依赖发现重载，不纳入生产问题；`npx tauri build --bundles app` 已成功生成内置静态资源的 macOS `.app`，生产包不运行 Vite `devUrl`。完整 DMG 打包仅在当前 macOS 的 `bundle_dmg.sh` 挂载步骤失败，应用编译与 `.app` 产物成功。
 - 隔离 SQLite + 本地浏览器：同源身份验证后进入登录页，服务器名称/地址/版本正确，账号输入获得焦点，1920×1080 无页面横向溢出

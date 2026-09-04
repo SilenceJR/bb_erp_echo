@@ -86,7 +86,7 @@ func openMoldTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Mold{}, &model.MoldLocation{}, &model.MoldDrawing{}, &model.ImageFile{}); err != nil {
+	if err := db.AutoMigrate(&model.Mold{}, &model.MoldLocation{}, &model.MoldDrawing{}, &model.ImageFile{}, &model.FileCleanupTask{}); err != nil {
 		t.Fatal(err)
 	}
 	return db

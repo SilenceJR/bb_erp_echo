@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"bb_erp_echo/internal/auth"
+	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/request"
 
@@ -69,12 +70,17 @@ func (h *Handler) UploadDrawing(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := h.ensureMold(id); err != nil {
-		return err
-	}
 	header, err := c.FormFile("file")
 	if err != nil || header == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "请选择 DWG 文件")
+	}
+	// Multipart parsing may take a long time on a slow connection. Only hold the
+	// shared mold-asset lock after the upload is fully available, then recheck
+	// the parent mold inside the lock to avoid racing with mold deletion.
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
+	if err := h.ensureMold(id); err != nil {
+		return err
 	}
 	item, err := saveDrawing(h.StorageRoot, h.DB, header, id, auth.GetCurrentUser(c).ID)
 	if err != nil {
@@ -145,20 +151,21 @@ func (h *Handler) DeleteDrawing(c *echo.Context) error {
 	if err != nil || drawingID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "图纸 ID 无效")
 	}
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
 	var item model.MoldDrawing
 	if err := h.DB.Where("id = ? AND mold_id = ?", drawingID, moldID).First(&item).Error; err != nil {
 		return drawingHTTPError(err)
 	}
-	if err := h.DB.Transaction(func(tx *gorm.DB) error { return tx.Unscoped().Delete(&item).Error }); err != nil {
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Delete(&item).Error; err != nil {
+			return err
+		}
+		return filemodule.QueueCleanupTasks(tx, []string{item.StoragePath})
+	}); err != nil {
 		return err
 	}
-	path, err := drawingPath(h.StorageRoot, item.StoragePath)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+	filemodule.CleanupStoredPaths(h.StorageRoot, h.DB, []string{item.StoragePath})
 	return c.NoContent(http.StatusNoContent)
 }
 

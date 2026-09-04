@@ -10,7 +10,8 @@ import type {FileSaveResult, ServerIdentity} from '../../web/src/platform/types'
 const serverUrlKey = 'bb_erp_server_url'
 const defaultServerUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080'
 const defaultRequestTimeoutMs = 8000
-const fileRequestTimeoutMs = 60000
+// 高清图转换可能需要较长时间；与原生拖放上传保持一致，避免服务端已入库而桌面端在 60 秒先报失败。
+const fileRequestTimeoutMs = 2 * 60 * 60 * 1000
 // 比服务端默认 10 分钟下载超时多留 2 分钟，确保桌面端能收到服务端的具体校验错误。
 const serverUpdateDownloadTimeoutMs = 12 * 60 * 1000
 

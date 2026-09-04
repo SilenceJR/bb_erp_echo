@@ -471,5 +471,6 @@ func AllModels() []any {
 		&DepartmentTask{},
 		&WorkOrderFlowLog{},
 		&ImageFile{},
+		&FileCleanupTask{},
 	}
 }

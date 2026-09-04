@@ -1,6 +1,6 @@
 # Go 后端状态
 
-> 基准日期：2026-09-04
+> 基准日期：2026-09-05
 
 Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当前按全新内网部署实现，不为旧数据库、旧 API 或旧客户端保留迁移/兼容分支。
 
@@ -18,7 +18,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 任务单 | 已完成 | 生产/通用任务、部门任务、部分完成、待结案、暂停/恢复、加急和强制完成 |
 | 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 已完成 | 统计聚合、成本权限与审计查询 |
-| 文件图片 | 已完成 | 受保护上传、批量图片、替换和删除 |
+| 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
 | 客户端更新 | 已完成 | Windows full-only 更新、内网同源代理、签名、哈希、临时文件与失败恢复 |
 | 局域网发现 | 已完成 | SQLite 稳定身份、匿名身份接口、UDP 39080、启动预检和 responder 生命周期 |
 
@@ -79,7 +79,8 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 库存幂等键绑定接口范围、账号、组织、规范化请求和操作员工；不匹配返回 `409`。
 - 数量使用四位定点整数，金额/单价使用分；禁止把前端浮点值直接作为库存或金额事实。
 - 图片权限继承业务对象权限；身份发现接口不得返回组织、账号、业务数据、更新地址或凭据。
-- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、DWG 与位置字典；导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。
+- 图片上传支持 JPG/JFIF、PNG、GIF、WebP、HEIC/HEIF、AVIF、BMP、TIFF、SVG；动画只取静态封面，JPEG 应用 EXIF 方向。服务端保存原图并派生受保护 JPEG 预览，SVG 原图只允许附件下载。已取消 20 MiB 业务上限，但保留单批 100 张、单批预览 256 MiB、3200 万像素、HEIC/HEIF/AVIF 128 MiB、SVG 8 MiB、全局两个并发转换任务和全局请求上限等运行安全边界；Windows 正式服务构建固定使用 `nodynamic`，不探测外部图片解码 DLL。
+- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、预览文件、DWG 与位置字典；最多 2000 个源条目、共模复制后 5000 个资产，声明解压总量与实际落盘总量均限制为 4 GiB，工作簿/位置/修正参数另有 64/4/4 MiB 边界。导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。资料包图片与图库共用扩展格式、预览阶段真实解码和静态预览规则，大小写扩展名均可识别，系统导出的新格式可回导；图片、DWG、整模删除和全量导入使用同一资产互斥边界。
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
@@ -113,6 +114,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。
 - 本轮前端弹层显示整改不改变 API、权限或数据契约；客户导入/导出、客户资料和任务操作弹层已移除 Teleport 内不可靠的 Motion 正文包装，待 Web/Tauri 与 Windows 真机完成首帧可见性复验。
 - 启动重复排查确认属于开发 Vite 依赖发现重载现象，不涉及 Go 服务或认证续期；Tauri `--bundles app` 生产 `.app` 构建成功，完整 DMG 仅受当前 macOS 挂载脚本环境限制。
+- 本轮扩展图片静态预览：`go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/file ./internal/mold`、`go test -tags nodynamic -count=1 ./internal/file ./internal/mold ./internal/app`、Web 测试、Web/Client 生产构建、Windows amd64 `CGO_ENABLED=0` + `nodynamic` 服务端跨编译、`git diff --check` 和 Swagger 三份产物同步均通过；HEIC、AVIF 真实编解码器样本已在当前 macOS 环境生成 JPEG 预览。当前 macOS 未安装 Rust 工具链，因此本机未执行 Tauri Rust 检查或 Windows NSIS 打包；正式安装包仍由 `windows-latest` 作业按 `nodynamic` 构建 Go 服务端、Tauri 客户端并组装，打包结果和 Windows 真机上传/解码、极端高清图、磁盘不足、真实业务权限在 Windows 环境验收。
 
 ## 5. 待完成
 

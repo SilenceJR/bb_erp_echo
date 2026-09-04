@@ -1,5 +1,6 @@
 import type { ApiErrorBody } from '../types'
 import {activeTransport, desktopBridge} from './transport'
+import type {DesktopFileUploadResult} from './transport'
 import type {FileSaveResult} from '../platform/types'
 
 export interface AuthSessionHooks {
@@ -36,6 +37,22 @@ export class ApiError extends Error {
   }
 }
 
+// RequestTransportError 表示没有收到可解析 HTTP 响应的传输失败。
+// resultMayBeUnknown=true 时，请求可能已到达服务器，页面应刷新核对后再允许用户重试。
+export class RequestTransportError extends Error {
+  resultMayBeUnknown: boolean
+
+  constructor(message: string, resultMayBeUnknown: boolean) {
+    super(message)
+    this.name = 'RequestTransportError'
+    this.resultMayBeUnknown = resultMayBeUnknown
+  }
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback
+}
+
 // request 统一封装 JSON 请求、Bearer Token 和错误解析。
 //
 // 参数说明：
@@ -59,18 +76,31 @@ export async function request<T>(
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetchWithAuthRetry(path, {
-    ...options,
-    headers,
-    body,
-  }, token)
+  let response: Response
+  try {
+    response = await fetchWithAuthRetry(path, {
+      ...options,
+      headers,
+      body,
+    }, token)
+  } catch (error) {
+    throw new RequestTransportError(errorMessage(error, '网络请求失败'), true)
+  }
 
   if (response.status === 204) {
     return undefined as T
   }
 
   const contentType = response.headers.get('content-type') || ''
-  const data = contentType.includes('application/json') ? await response.json() : await response.text()
+  let data: any
+  try {
+    data = contentType.includes('application/json') ? await response.json() : await response.text()
+  } catch (error) {
+    throw new RequestTransportError(
+      errorMessage(error, '读取服务器响应失败'),
+      response.ok,
+    )
+  }
 
   if (!response.ok) {
     const fallback: ApiErrorBody = {
@@ -93,7 +123,14 @@ export async function uploadNativeFiles<T>(
 ): Promise<T> {
   const desktop = desktopBridge()
   if (!desktop) throw new Error('当前环境不支持原生文件拖放上传')
-  const response = await desktop.uploadFiles(paths, path, fields, token)
+  let response: DesktopFileUploadResult
+  try {
+    response = await desktop.uploadFiles(paths, path, fields, token)
+  } catch (error) {
+    const message = errorMessage(error, '原生文件上传失败')
+    const mayBeUnknown = message.includes('拖放上传失败') || message.includes('读取上传响应失败')
+    throw new RequestTransportError(message, mayBeUnknown)
+  }
   let data: unknown = null
   try { data = response.body ? JSON.parse(response.body) : null } catch { data = response.body }
   if (response.status < 200 || response.status >= 300) {
@@ -131,21 +168,22 @@ export async function requestBlob(
 }
 
 async function fetchWithAuthRetry(path: string, init: RequestInit, token: string): Promise<Response> {
-  let response = await activeTransport().fetch(path, init)
-  if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
+	let response = await activeTransport().fetch(path, init)
+	if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
 
-  try {
-    const currentToken = authSessionHooks!.getToken()
-    const refreshedToken = currentToken && currentToken !== token
-      ? currentToken
-      : await authSessionHooks!.refresh()
-    const retryHeaders = new Headers(init.headers)
-    retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
-    response = await activeTransport().fetch(path, {...init, headers: retryHeaders})
-  } catch {
-    authSessionHooks!.onFailure()
-  }
-  return response
+	let refreshedToken: string
+	try {
+		const currentToken = authSessionHooks!.getToken()
+		refreshedToken = currentToken && currentToken !== token
+			? currentToken
+			: await authSessionHooks!.refresh()
+	} catch {
+		authSessionHooks!.onFailure()
+		return response
+	}
+	const retryHeaders = new Headers(init.headers)
+	retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
+	return await activeTransport().fetch(path, {...init, headers: retryHeaders})
 }
 
 function shouldRefreshAfterUnauthorized(path: string, token: string, response: Response): boolean {

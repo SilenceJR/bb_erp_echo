@@ -1266,7 +1266,13 @@ const docTemplate = `{
                     "image/jpeg",
                     "image/png",
                     "image/webp",
-                    "image/gif"
+                    "image/gif",
+                    "image/heic",
+                    "image/heif",
+                    "image/avif",
+                    "image/bmp",
+                    "image/tiff",
+                    "image/svg+xml"
                 ],
                 "tags": [
                     "files"
@@ -1363,6 +1369,69 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/file.ImageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/file.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/file.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/file.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/file.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/file.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/preview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "读取业务图片静态预览",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "图片 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
                         }
                     },
                     "400": {
@@ -5838,6 +5907,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "owner_type": {
+                    "type": "string"
+                },
+                "preview_url": {
                     "type": "string"
                 },
                 "replaces_id": {

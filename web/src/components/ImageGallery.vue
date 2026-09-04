@@ -3,10 +3,10 @@
     <div class="image-gallery-heading">
       <div>
         <h3>{{ title }}</h3>
-        <small>可一次选择多张；支持 JPG、PNG、WebP、GIF，单张不超过 20 MiB</small>
+        <small>单次最多选择 100 张；支持 JPG、JFIF、PNG、GIF、WebP、HEIC、HEIF、AVIF、BMP、TIFF、SVG；仅生成静态预览，GIF/动态照片只显示封面；支持高清大图，实际可处理范围以服务器安全校验为准</small>
       </div>
       <div class="image-gallery-actions">
-        <el-button :loading="loading" :disabled="saving" @click="loadImages()">刷新</el-button>
+        <el-button :loading="loading" :disabled="saving" @click="refreshImages">刷新</el-button>
         <el-button
           v-if="canWrite"
           type="primary"
@@ -23,7 +23,7 @@
       ref="uploadInput"
       class="image-gallery-input"
       type="file"
-      accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+      accept="image/*,.jpg,.jpeg,.jfif,.png,.gif,.webp,.heic,.heif,.avif,.bmp,.tif,.tiff,.svg"
       aria-label="选择要批量上传的图片"
       multiple
       @change="uploadSelected"
@@ -32,7 +32,7 @@
       ref="replaceInput"
       class="image-gallery-input"
       type="file"
-      accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+      accept="image/*,.jpg,.jpeg,.jfif,.png,.gif,.webp,.heic,.heif,.avif,.bmp,.tif,.tiff,.svg"
       aria-label="选择用于替换的单张图片"
       @change="replaceSelected"
     />
@@ -126,7 +126,7 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
-import {request, requestBlob, uploadNativeFiles} from '../api/http'
+import {ApiError, RequestTransportError, request, requestBlob, uploadNativeFiles} from '../api/http'
 import {appMessageBox} from '../composables/useAppMessageBox'
 import {useDirtyGuard} from '../composables/useDirtyGuard'
 import type {ImageFile, NativeFileDragDetail} from '../types'
@@ -142,9 +142,12 @@ const props = defineProps<{
 
 const title = props.title || '图片资料'
 
-const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
-const allowedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
-const maxImageSize = 20 * 1024 * 1024
+const allowedExtensions = new Set([
+  'jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp',
+  'heic', 'heif', 'avif', 'bmp', 'tif', 'tiff', 'svg',
+])
+const maxImageBatch = 100
+const allowedFormatMessage = '仅支持 JPG、JFIF、PNG、GIF、WebP、HEIC、HEIF、AVIF、BMP、TIFF、SVG 静态图片（客户端仅按文件扩展名预检查，文件内容由服务器校验）'
 
 const images = ref<ImageFile[]>([])
 const previewUrls = ref<Record<number, string>>({})
@@ -185,49 +188,126 @@ function releasePreviewUrls() {
   previewUrls.value = {}
 }
 
-async function loadImages(allowDuringSave = false): Promise<boolean> {
+type LoadResult = 'complete' | 'partial' | 'failed'
+
+async function loadImages(allowDuringSave = false): Promise<LoadResult> {
   if (saving.value && !allowDuringSave) {
-    return false
+    return 'failed'
   }
   const sequence = ++loadSequence
   loading.value = true
   errorMessage.value = ''
+  if (!allowDuringSave) statusMessage.value = ''
   try {
     const result = await request<ImageFile[]>(queryPath(), {}, props.token)
+    const previewFailures: Array<{item: ImageFile, error: unknown}> = []
     const loaded = await Promise.all(result.map(async (item) => {
       try {
-        const blob = await requestBlob(item.content_url, {}, props.token)
+        const blob = await requestBlob(item.preview_url || item.content_url, {}, props.token)
         return [item.id, URL.createObjectURL(blob)] as const
-      } catch {
+      } catch (error) {
+        previewFailures.push({item, error})
         return [item.id, ''] as const
       }
     }))
     if (sequence !== loadSequence) {
       for (const [, url] of loaded) if (url) URL.revokeObjectURL(url)
-      return false
+      return 'failed'
     }
     releasePreviewUrls()
     images.value = result
     previewUrls.value = Object.fromEntries(loaded)
-    return true
+    if (previewFailures.length) {
+      const examples = previewFailures.slice(0, 3).map(({item, error}) => {
+        const reason = operationErrorMessage(error, '静态预览读取失败')
+        const requestId = error instanceof ApiError && error.requestId.trim() ? `，请求编号：${error.requestId}` : ''
+        return `“${item.original_name}”：${reason}${requestId}`
+      })
+      const omitted = previewFailures.length - examples.length
+      errorMessage.value = `图片列表已载入，但有 ${previewFailures.length} 张静态预览无法显示：${examples.join('；')}${omitted > 0 ? `；另有 ${omitted} 张失败` : ''}。请点击“刷新”重试；若仍失败，请将请求编号提供给管理员。本次没有改用高清原图，避免大文件占用页面内存。`
+      return 'partial'
+    }
+    return 'complete'
   } catch (error) {
-    if (sequence !== loadSequence) return false
+    if (sequence !== loadSequence) return 'failed'
     // 刷新失败保留已渲染图片，避免临时网络错误误显示为空图库。
     errorMessage.value = error instanceof Error ? error.message : '图片加载失败'
-    return false
+    return 'failed'
   } finally {
     if (sequence === loadSequence) loading.value = false
   }
 }
 
+async function refreshImages() {
+  statusMessage.value = ''
+  const result = await loadImages()
+  if (result === 'complete') {
+    statusTone.value = 'success'
+    statusMessage.value = '图片列表已刷新。'
+  }
+}
+
 function validateFile(file: File): string {
   const extension = file.name.split('.').pop()?.toLowerCase() || ''
-  if (!allowedMimeTypes.has(file.type) || !allowedExtensions.has(extension)) {
-    return '仅支持 JPG、PNG、WebP、GIF 图片'
-  }
+  // Windows WebView 等运行环境可能不给 File.type，或给出不可靠的 MIME。
+  // 客户端只按扩展名做选择前提示，真实图片内容统一交给服务器校验。
+  if (!allowedExtensions.has(extension)) return allowedFormatMessage
   if (file.size <= 0) return '图片文件不能为空'
-  if (file.size > maxImageSize) return '图片大小不能超过 20 MiB'
   return ''
+}
+
+function operationErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  return fallback
+}
+
+function imageFileName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() || path
+}
+
+function fileNamesForMessage(names: string[]): string {
+  const visibleNames = names.slice(0, 3).map((name) => `“${imageFileName(name)}”`)
+  const omittedCount = names.length - visibleNames.length
+  return `${visibleNames.join('、')}${omittedCount > 0 ? `等 ${names.length} 个文件` : ''}`
+}
+
+function uploadFailureSuggestion(error: unknown): string {
+  if (error instanceof RequestTransportError && error.resultMayBeUnknown) {
+    return '请先核对刷新后的图片列表；确认没有这些文件后再重试'
+  }
+  if (error instanceof ApiError) {
+    if (error.status === 401) return '请重新登录后再试'
+    if (error.status === 403) return '请确认当前账号具有对应业务的写入权限'
+    if (error.status === 404 || error.status === 409) return '请刷新当前业务资料后重新选择图片'
+    if (error.status === 400 || error.status === 413 || error.status === 415 || error.status === 422) {
+      return '请按原因移除异常文件，或将其转换为受支持的静态图片后重试；不要只修改文件扩展名'
+    }
+    if (error.status >= 500) return '请稍后重试；若仍失败，请将请求编号提供给管理员排查服务器存储或转换服务'
+  }
+  return '请检查网络连接后重试；若仍失败，请将错误详情提供给管理员'
+}
+
+function uploadFailureMessage(error: unknown, fallback: string, names: string[]): string {
+  const reason = operationErrorMessage(error, fallback)
+  const requestId = error instanceof ApiError && error.requestId.trim() ? `；请求编号：${error.requestId}` : ''
+  return `文件：${fileNamesForMessage(names)}；原因：${reason}；建议：${uploadFailureSuggestion(error)}${requestId}。`
+}
+
+function uploadResultMayBeUnknown(error: unknown): boolean {
+  return error instanceof RequestTransportError && error.resultMayBeUnknown
+}
+
+async function reconcileUnknownUpload(error: unknown, names: string[], fallback: string): Promise<boolean> {
+  if (!uploadResultMayBeUnknown(error)) return false
+  const refreshed = await loadImages(true)
+  const refreshText = refreshed === 'failed'
+    ? '图片列表也未能刷新'
+    : '图片列表已重新载入'
+  errorMessage.value = `${uploadFailureMessage(error, fallback, names)} 由于连接中断，服务器是否已完成入库暂时无法确认；${refreshText}，请先核对这些文件是否已出现，再决定是否重试。`
+  statusTone.value = 'error'
+  statusMessage.value = ''
+  return true
 }
 
 function openUpload() {
@@ -285,7 +365,7 @@ function handleNativeFileDrag(event: Event) {
   if (detail.phase !== 'drop' || !props.canWrite || saving.value) return
   if (detail.error) {
     errorMessage.value = detail.error
-    ElMessage.error(detail.error)
+    statusMessage.value = ''
     return
   }
   if (detail.paths.length) void uploadNativePaths(detail.paths)
@@ -294,6 +374,11 @@ function handleNativeFileDrag(event: Event) {
 
 async function uploadSelectedFiles(files: File[]) {
   if (!files.length || !props.canWrite || saving.value) return
+  if (files.length > maxImageBatch) {
+    errorMessage.value = `本次选择了 ${files.length} 张图片，一次最多上传 ${maxImageBatch} 张，请分批上传。本次未发起上传。`
+    statusMessage.value = ''
+    return
+  }
   const validationErrors = files
     .map((file) => ({file, message: validateFile(file)}))
     .filter((result) => result.message)
@@ -302,9 +387,8 @@ async function uploadSelectedFiles(files: File[]) {
       .slice(0, 3)
       .map(({file, message}) => `“${file.name}”：${message}`)
     const omittedCount = validationErrors.length - details.length
-    errorMessage.value = `已检查所选 ${files.length} 张图片，其中 ${validationErrors.length} 张未通过校验：${details.join('；')}${omittedCount > 0 ? `；另有 ${omittedCount} 张未通过` : ''}。本次未发起上传。`
+    errorMessage.value = `已检查所选 ${files.length} 张图片，其中 ${validationErrors.length} 张未通过校验：${details.join('；')}${omittedCount > 0 ? `；另有 ${omittedCount} 张未通过` : ''}。建议移除空文件，或转换为受支持的静态图片后重试；不要只修改文件扩展名。本次未发起上传。`
     statusMessage.value = ''
-    ElMessage.warning('批量上传未开始，请检查文件格式和大小')
     return
   }
   await uploadFiles(files)
@@ -347,20 +431,18 @@ async function uploadFiles(files: File[]) {
     const uploadedCount = uploaded.length
     statusMessage.value = `已上传 ${uploadedCount} 张图片，正在刷新图片列表。`
     const refreshed = await loadImages(true)
-    statusTone.value = refreshed ? 'success' : 'error'
-    statusMessage.value = refreshed
+    statusTone.value = refreshed === 'complete' ? 'success' : 'error'
+    statusMessage.value = refreshed === 'complete'
       ? `已成功上传 ${uploadedCount} 张图片，图片列表已刷新。`
-      : `已成功上传 ${uploadedCount} 张图片，但列表刷新失败，请稍后手动刷新。`
-    if (refreshed) {
+      : ''
+    if (refreshed === 'complete') {
       ElMessage.success(`已成功上传 ${uploadedCount} 张图片`)
-    } else {
-      ElMessage.warning(`已上传 ${uploadedCount} 张图片，但图片列表刷新失败`)
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : `批量上传 ${files.length} 张图片失败`
+    if (await reconcileUnknownUpload(error, files.map((file) => file.name), `批量上传 ${files.length} 张图片失败`)) return
+    errorMessage.value = uploadFailureMessage(error, `批量上传 ${files.length} 张图片失败`, files.map((file) => file.name))
     statusTone.value = 'error'
-    statusMessage.value = `本次 ${files.length} 张图片未能完成上传。`
-    ElMessage.error(errorMessage.value)
+    statusMessage.value = ''
   } finally {
     operation.value = null
   }
@@ -368,6 +450,11 @@ async function uploadFiles(files: File[]) {
 
 async function uploadNativePaths(paths: string[]) {
   if (!paths.length || !props.canWrite || saving.value) return
+  if (paths.length > maxImageBatch) {
+    errorMessage.value = `本次拖入了 ${paths.length} 张图片，一次最多上传 ${maxImageBatch} 张，请分批上传。本次未发起上传。`
+    statusMessage.value = ''
+    return
+  }
   operation.value = 'upload'
   errorMessage.value = ''
   statusTone.value = 'success'
@@ -378,15 +465,14 @@ async function uploadNativePaths(paths: string[]) {
     const uploaded = await uploadNativeFiles<ImageFile[]>('/api/v1/files/images', paths, fields, props.token)
     statusMessage.value = `已上传 ${uploaded.length} 张图片，正在刷新图片列表。`
     const refreshed = await loadImages(true)
-    statusTone.value = refreshed ? 'success' : 'error'
-    statusMessage.value = refreshed ? `已成功上传 ${uploaded.length} 张图片，图片列表已刷新。` : `已成功上传 ${uploaded.length} 张图片，但列表刷新失败，请稍后手动刷新。`
-    if (refreshed) ElMessage.success(`已成功上传 ${uploaded.length} 张图片`)
-    else ElMessage.warning(`已上传 ${uploaded.length} 张图片，但列表刷新失败`)
+    statusTone.value = refreshed === 'complete' ? 'success' : 'error'
+    statusMessage.value = refreshed === 'complete' ? `已成功上传 ${uploaded.length} 张图片，图片列表已刷新。` : ''
+    if (refreshed === 'complete') ElMessage.success(`已成功上传 ${uploaded.length} 张图片`)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : `批量上传 ${paths.length} 张图片失败`
+    if (await reconcileUnknownUpload(error, paths, `批量上传 ${paths.length} 张图片失败`)) return
+    errorMessage.value = uploadFailureMessage(error, `批量上传 ${paths.length} 张图片失败`, paths)
     statusTone.value = 'error'
-    statusMessage.value = `本次 ${paths.length} 张图片未能完成上传。`
-    ElMessage.error(errorMessage.value)
+    statusMessage.value = ''
   } finally {
     operation.value = null
   }
@@ -397,7 +483,6 @@ async function replaceFile(file: File, target: ImageFile) {
   if (validationMessage) {
     errorMessage.value = `“${file.name}”：${validationMessage}。本次未发起替换。`
     statusMessage.value = ''
-    ElMessage.warning('图片替换未开始，请检查文件格式和大小')
     return
   }
   const body = new FormData()
@@ -414,14 +499,14 @@ async function replaceFile(file: File, target: ImageFile) {
       body,
     }, props.token)
     const refreshed = await loadImages(true)
-    statusTone.value = refreshed ? 'success' : 'error'
-    statusMessage.value = refreshed ? '图片已替换，图片列表已刷新。' : '图片已替换，但列表刷新失败，请稍后手动刷新。'
-    ElMessage.success('图片已替换')
+    statusTone.value = refreshed === 'complete' ? 'success' : 'error'
+    statusMessage.value = refreshed === 'complete' ? '图片已替换，图片列表已刷新。' : ''
+    if (refreshed === 'complete') ElMessage.success('图片已替换')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '图片替换失败'
+    if (await reconcileUnknownUpload(error, [file.name], '图片替换失败')) return
+    errorMessage.value = uploadFailureMessage(error, '图片替换失败', [file.name])
     statusTone.value = 'error'
-    statusMessage.value = '图片未能完成替换。'
-    ElMessage.error(errorMessage.value)
+    statusMessage.value = ''
   } finally {
     operation.value = null
   }
@@ -446,14 +531,13 @@ async function deleteImage(item: ImageFile) {
   try {
     await request<void>(`/api/v1/files/${item.id}`, {method: 'DELETE'}, props.token)
     const refreshed = await loadImages(true)
-    statusTone.value = refreshed ? 'success' : 'error'
-    statusMessage.value = refreshed ? '图片已删除，图片列表已刷新。' : '图片已删除，但列表刷新失败，请稍后手动刷新。'
+    statusTone.value = refreshed === 'complete' ? 'success' : 'error'
+    statusMessage.value = refreshed === 'complete' ? '图片已删除，图片列表已刷新。' : ''
     ElMessage.success('图片已删除')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '图片删除失败'
     statusTone.value = 'error'
-    statusMessage.value = '图片未能完成删除。'
-    ElMessage.error(errorMessage.value)
+    statusMessage.value = ''
   } finally {
     operation.value = null
   }

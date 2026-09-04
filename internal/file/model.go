@@ -19,9 +19,14 @@ type ImageResponse struct {
 	Extension    string    `json:"extension"`
 	ReplacesID   *uint     `json:"replaces_id,omitempty"`
 	ContentURL   string    `json:"content_url"`
+	PreviewURL   string    `json:"preview_url,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 func toResponse(asset *model.ImageFile) ImageResponse {
-	return ImageResponse{ID: asset.ID, OwnerType: asset.OwnerType, OwnerID: asset.OwnerID, UploadedBy: asset.UploadedBy, Category: asset.Category, OriginalName: asset.OriginalName, Size: asset.Size, MimeType: asset.MimeType, Extension: asset.Extension, ReplacesID: asset.ReplacesID, ContentURL: "/api/v1/files/" + idString(asset.ID) + "/content", CreatedAt: asset.CreatedAt}
+	result := ImageResponse{ID: asset.ID, OwnerType: asset.OwnerType, OwnerID: asset.OwnerID, UploadedBy: asset.UploadedBy, Category: asset.Category, OriginalName: asset.OriginalName, Size: asset.Size, MimeType: asset.MimeType, Extension: asset.Extension, ReplacesID: asset.ReplacesID, ContentURL: "/api/v1/files/" + idString(asset.ID) + "/content", CreatedAt: asset.CreatedAt}
+	if asset.PreviewPath != "" {
+		result.PreviewURL = "/api/v1/files/" + idString(asset.ID) + "/preview"
+	}
+	return result
 }
