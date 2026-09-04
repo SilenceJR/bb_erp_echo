@@ -18,6 +18,7 @@ type User struct {
 	DepartmentID    *uint      `json:"department_id" gorm:"index"`
 	TerminalID      *uint      `json:"terminal_id" gorm:"index"`
 	Status          string     `json:"status" gorm:"size:30;not null;default:active"`
+	SystemManaged   bool       `json:"-" gorm:"not null;default:false;index"`
 	PasswordHash    string     `json:"-" gorm:"size:255;not null"`
 	PasswordVersion int        `json:"-" gorm:"not null;default:1"`
 	LastLoginAt     *time.Time `json:"last_login_at"`

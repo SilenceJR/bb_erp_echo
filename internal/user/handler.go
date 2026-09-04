@@ -91,6 +91,9 @@ func (h *Handler) UpdateUserAffiliation(c *echo.Context) error {
 			}
 			return err
 		}
+		if target.SystemManaged {
+			return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+		}
 		if target.OrganizationID != current.OrganizationID {
 			return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
 		}
@@ -122,7 +125,7 @@ func (h *Handler) UpdateUserAffiliation(c *echo.Context) error {
 func (h *Handler) ListUsers(c *echo.Context) error {
 	var items []model.User
 	pageQuery := pagination.FromEcho(c)
-	query := h.DB.Model(&model.User{})
+	query := h.DB.Model(&model.User{}).Where("system_managed = ?", false)
 	if current := auth.GetCurrentUser(c); current != nil {
 		query = query.Where("organization_id = ?", current.OrganizationID)
 	}
@@ -203,25 +206,36 @@ func (h *Handler) CreateUser(c *echo.Context) error {
 		if err := tx.Create(&item).Error; err != nil {
 			return err
 		}
-		if req.AccountType == model.AccountTypeDepartmentTerminal {
-			if err := h.RoleService.AssignRoleCodesTx(tx, item.ID, []string{role.TerminalOperatorCode}); err != nil {
-				return err
-			}
-		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	if req.AccountType == model.AccountTypeDepartmentTerminal {
-		if err := h.RoleService.ReloadPolicies(); err != nil {
-			return echo.NewHTTPError(http.StatusServiceUnavailable, "账号已创建，但权限策略刷新失败，请稍后重试").Wrap(err)
-		}
-	}
 	return c.JSON(http.StatusCreated, item)
+}
+
+func mapUserStatusError(err error) error {
+	switch {
+	case errors.Is(err, role.ErrAssignmentActorRequired):
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	case errors.Is(err, role.ErrAssignmentPermissionDenied), errors.Is(err, role.ErrAssignmentOrganizationDenied):
+		return echo.NewHTTPError(http.StatusForbidden, "无权修改该账号状态")
+	case errors.Is(err, role.ErrInvalidUserID):
+		return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+	case errors.Is(err, role.ErrLastSuperAdmin):
+		return echo.NewHTTPError(http.StatusConflict, "至少需要保留一个启用中的超级管理员")
+	case errors.Is(err, role.ErrAssignmentConflict):
+		return echo.NewHTTPError(http.StatusConflict, "用户状态已发生变化，请刷新后重试")
+	default:
+		return err
+	}
 }
 
 // UpdateUserStatus 启用或停用账号。
 func (h *Handler) UpdateUserStatus(c *echo.Context) error {
+	current := auth.GetCurrentUser(c)
+	if current == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	}
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -232,7 +246,57 @@ func (h *Handler) UpdateUserStatus(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	if err := h.DB.Model(&model.User{}).Where("id = ?", id).Update("status", req.Status).Error; err != nil {
+	db := h.DB.WithContext(c.Request().Context())
+	if authorized, ok := h.RoleService.(role.AuthorizedUserStatusService); ok {
+		if err := authorized.UpdateUserStatusForActor(current, id, req.Status); err != nil {
+			return mapUserStatusError(err)
+		}
+		return c.NoContent(http.StatusNoContent)
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		var target model.User
+		if err := tx.First(&target, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+			}
+			return err
+		}
+		if target.OrganizationID != current.OrganizationID {
+			return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
+		}
+		if target.Status == model.StatusActive && req.Status == model.StatusDisabled {
+			var isSuper int64
+			if err := tx.Table("user_roles").
+				Joins("JOIN roles ON roles.id = user_roles.role_id").
+				Where("user_roles.user_id = ? AND roles.code = ?", target.ID, role.SuperAdminCode).
+				Count(&isSuper).Error; err != nil {
+				return err
+			}
+			if isSuper > 0 {
+				var activeSuper int64
+				if err := tx.Table("user_roles").
+					Joins("JOIN users ON users.id = user_roles.user_id").
+					Joins("JOIN roles ON roles.id = user_roles.role_id").
+					Where("users.status = ? AND roles.code = ?", model.StatusActive, role.SuperAdminCode).
+					Count(&activeSuper).Error; err != nil {
+					return err
+				}
+				if activeSuper <= 1 {
+					return echo.NewHTTPError(http.StatusConflict, "至少需要保留一个启用中的超级管理员")
+				}
+			}
+		}
+		result := tx.Model(&model.User{}).
+			Where("id = ? AND organization_id = ? AND status = ?", target.ID, target.OrganizationID, target.Status).
+			Update("status", req.Status)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return echo.NewHTTPError(http.StatusConflict, "用户状态已发生变化，请刷新后重试")
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)
@@ -270,6 +334,9 @@ func (h *Handler) ResetUserPassword(c *echo.Context) error {
 	if target.OrganizationID != current.OrganizationID {
 		return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
 	}
+	if target.SystemManaged {
+		return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+	}
 	if target.ID == current.ID {
 		return echo.NewHTTPError(http.StatusForbidden, "不能通过重置密码接口修改自己的密码")
 	}
@@ -302,6 +369,10 @@ func (h *Handler) ResetUserPassword(c *echo.Context) error {
 
 // AssignUserRoles 为用户重新绑定角色。
 func (h *Handler) AssignUserRoles(c *echo.Context) error {
+	current := auth.GetCurrentUser(c)
+	if current == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	}
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -313,17 +384,49 @@ func (h *Handler) AssignUserRoles(c *echo.Context) error {
 		return err
 	}
 	var item model.User
-	if err := h.DB.First(&item, id).Error; err != nil {
-		return err
-	}
-	allowSuperAdmin := item.AccountType != model.AccountTypeDepartmentTerminal
-	if err := h.RoleService.ReplaceUserRoles(id, *req.RoleIDs, allowSuperAdmin); err != nil {
-		if errors.Is(err, role.ErrSuperAdminNotAllowed) {
-			return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号不能授予系统管理权限")
+	if err := h.DB.WithContext(c.Request().Context()).First(&item, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusBadRequest, "用户 ID 无效")
 		}
 		return err
 	}
+	if item.SystemManaged {
+		return echo.NewHTTPError(http.StatusNotFound, "用户不存在")
+	}
+	if item.ID == current.ID {
+		return echo.NewHTTPError(http.StatusForbidden, "不能修改自己的角色")
+	}
+	if item.OrganizationID != current.OrganizationID {
+		return echo.NewHTTPError(http.StatusForbidden, "无权访问该组织数据")
+	}
+	allowSuperAdmin := item.AccountType != model.AccountTypeDepartmentTerminal
+	var assignmentErr error
+	if authorized, ok := h.RoleService.(role.AuthorizedUserRoleService); ok {
+		assignmentErr = authorized.ReplaceUserRolesForActor(current, id, *req.RoleIDs)
+	} else {
+		assignmentErr = h.RoleService.ReplaceUserRoles(id, *req.RoleIDs, allowSuperAdmin)
+	}
+	if assignmentErr != nil {
+		return mapUserAssignmentError(assignmentErr)
+	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+func mapUserAssignmentError(err error) error {
+	switch {
+	case errors.Is(err, role.ErrAssignmentActorRequired):
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	case errors.Is(err, role.ErrAssignmentPermissionDenied), errors.Is(err, role.ErrAssignmentOrganizationDenied), errors.Is(err, role.ErrAssignmentSelfDenied), errors.Is(err, role.ErrManagerCannotGrant):
+		return echo.NewHTTPError(http.StatusForbidden, "无权执行该授权操作")
+	case errors.Is(err, role.ErrInvalidRoleID), errors.Is(err, role.ErrInvalidUserID), errors.Is(err, role.ErrDuplicateAssignmentID):
+		return echo.NewHTTPError(http.StatusBadRequest, "用户或角色 ID 无效")
+	case errors.Is(err, role.ErrLastSuperAdmin):
+		return echo.NewHTTPError(http.StatusConflict, "至少需要保留一个启用中的超级管理员")
+	case errors.Is(err, role.ErrSuperAdminNotAllowed):
+		return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号不能授予超级管理员角色")
+	default:
+		return err
+	}
 }
 
 func (h *Handler) canAccessOrg(c *echo.Context, orgID uint) bool {

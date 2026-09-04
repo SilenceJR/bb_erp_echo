@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/config"
@@ -16,10 +17,13 @@ import (
 const (
 	// SuperAdminCode 是系统内置超级管理员角色编码。
 	SuperAdminCode = "super_admin"
-	// BossCode 是老板角色编码，默认拥有成本查看权限。
+	// BossCode 是升级兼容用的历史老板角色编码。新数据库不会创建它。
 	BossCode = "boss"
-	// TerminalOperatorCode 是部门公共终端账号默认角色编码。
+	// TerminalOperatorCode 是升级兼容用的历史部门终端角色编码。新数据库
+	// 不会创建它，新建终端账号也不会自动绑定它。
 	TerminalOperatorCode = "department_terminal_operator"
+	// SilenceUsername 是全新数据库额外注入的超级管理员账号名。
+	SilenceUsername = "Silence"
 	// CostViewCode 是成本字段查看权限编码。
 	CostViewCode = "cost:view"
 	// TemporaryProductWriteCode 是生产单内临时建立仓库产品档案的权限编码。
@@ -41,6 +45,10 @@ type Service struct {
 	DB *gorm.DB
 	// Authorizer 是统一的权限快照 provider。
 	Authorizer Authorizer
+	// assignmentMu 串行化本进程内的角色/权限替换和最后超级管理员检查。
+	// SQLite 本身只允许串行写入，但显式互斥可以避免两个事务在检查后
+	// 同时删除最后一个超级管理员角色。
+	assignmentMu sync.Mutex
 }
 
 // AssignmentService 描述角色与权限、用户与角色的分配能力。
@@ -50,6 +58,13 @@ type AssignmentService interface {
 	ReplaceRolePermissions(roleID uint, permissionIDs []uint) error
 }
 
+// AuthorizedAssignmentService 是角色权限管理接口的带操作者安全边界版本。
+// 保留 AssignmentService 的旧方法用于初始化和内部兼容，HTTP 管理接口会
+// 优先使用本接口，在事务内重新读取操作者和目标对象。
+type AuthorizedAssignmentService interface {
+	ReplaceRolePermissionsForActor(actor *auth.CurrentUser, roleID uint, permissionIDs []uint) error
+}
+
 // UserRoleService 是用户模块所需的最小角色服务接口。
 type UserRoleService interface {
 	UserRoleIDs(userIDs []uint) (map[uint][]uint, error)
@@ -57,6 +72,17 @@ type UserRoleService interface {
 	AssignRoleCodes(userID uint, codes []string) error
 	AssignRoleCodesTx(tx *gorm.DB, userID uint, codes []string) error
 	ReloadPolicies() error
+}
+
+// AuthorizedUserRoleService 是用户角色管理接口的带操作者安全边界版本。
+type AuthorizedUserRoleService interface {
+	ReplaceUserRolesForActor(actor *auth.CurrentUser, userID uint, roleIDs []uint) error
+}
+
+// AuthorizedUserStatusService 将账号启停与角色替换放进同一串行边界，
+// 保证并发操作也不能停用最后一个有效超级管理员。
+type AuthorizedUserStatusService interface {
+	UpdateUserStatusForActor(actor *auth.CurrentUser, userID uint, status string) error
 }
 
 // NewService 创建角色权限服务。
@@ -73,6 +99,24 @@ func NewService(db *gorm.DB, authorizer Authorizer) *Service {
 // 参数说明：
 // - cfg：系统配置，读取默认管理员账号。
 func (s *Service) SeedSystemData(cfg *config.Config) error {
+	if cfg == nil {
+		return errors.New("system seed config is nil")
+	}
+	freshDatabase, err := s.isFreshDatabase()
+	if err != nil {
+		return err
+	}
+	silencePassword := ""
+	if freshDatabase {
+		silencePassword = strings.TrimSpace(cfg.Silence.Password)
+		if silencePassword == "" {
+			return errors.New("BB_ERP_SILENCE_PASSWORD must be configured to create the additional Silence administrator")
+		}
+		if err := auth.ValidatePassword(silencePassword); err != nil {
+			return fmt.Errorf("validate Silence administrator password: %w", err)
+		}
+	}
+
 	org := model.Organization{Name: "博邦", Code: "BOBANG", Status: model.StatusActive}
 	if err := s.DB.FirstOrCreate(&org, model.Organization{Code: org.Code}).Error; err != nil {
 		return err
@@ -88,11 +132,6 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 
-	warehouse := model.Warehouse{Name: "默认仓库", Code: "MAIN", Status: model.StatusActive}
-	if err := s.DB.FirstOrCreate(&warehouse, model.Warehouse{Code: warehouse.Code}).Error; err != nil {
-		return err
-	}
-
 	for _, permission := range DefaultPermissions() {
 		if err := s.DB.FirstOrCreate(&permission, model.Permission{Code: permission.Code}).Error; err != nil {
 			return err
@@ -102,47 +141,125 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 
-	super := model.Role{Name: "超级管理员", Code: SuperAdminCode, Description: "系统内置管理员角色", System: true}
-	if err := s.DB.FirstOrCreate(&super, model.Role{Code: super.Code}).Error; err != nil {
+	var super model.Role
+	result := s.DB.Where("code = ?", SuperAdminCode).First(&super)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		super = model.Role{Name: "超级管理员", Code: SuperAdminCode, Description: "系统内置管理员角色", System: true}
+		if err := s.DB.Create(&super).Error; err != nil {
+			return err
+		}
+	} else if result.Error != nil {
+		return result.Error
+	} else if !super.System {
+		// super_admin 是唯一锁定系统角色；升级旧库时强制恢复锁定。
+		if err := s.DB.Model(&super).Update("system", true).Error; err != nil {
+			return err
+		}
+		super.System = true
+	}
+
+	// 老的 boss 和部门终端系统角色只解除锁定，不删除角色或关联，保留
+	// 升级库中的用户授权；重复启动时该更新天然幂等。
+	if err := s.unlockLegacySystemRoles(); err != nil {
 		return err
 	}
-	boss := model.Role{Name: "老板", Code: BossCode, Description: "默认拥有成本查看权限", System: true}
-	if err := s.DB.FirstOrCreate(&boss, model.Role{Code: boss.Code}).Error; err != nil {
-		return err
-	}
-	terminalRole := model.Role{Name: "部门终端操作员", Code: TerminalOperatorCode, Description: "公共部门终端账号使用", System: true}
-	if err := s.DB.FirstOrCreate(&terminalRole, model.Role{Code: terminalRole.Code}).Error; err != nil {
+	// 超级管理员必须拥有完整权限，包括成本查看权限。这里只追加缺失
+	// 绑定，不移除历史额外绑定。
+	if err := s.AttachAllPermissions(super.ID); err != nil {
 		return err
 	}
 
-	if err := s.AttachAllExcept(super.ID, []string{CostViewCode}); err != nil {
-		return err
-	}
-	if err := s.AttachPermissionCodes(boss.ID, []string{CostViewCode}); err != nil {
-		return err
-	}
-	if err := s.AttachPermissionCodes(terminalRole.ID, []string{"workorder:read", "workorder:write", "warehouse:read"}); err != nil {
-		return err
-	}
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		var admin model.User
+		result := tx.Where("username = ?", cfg.Admin.Username).First(&admin)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			adminHash, err := auth.HashPassword(cfg.Admin.Password)
+			if err != nil {
+				return err
+			}
+			admin = model.User{
+				Username:        cfg.Admin.Username,
+				AccountType:     model.AccountTypePersonal,
+				Name:            cfg.Admin.Name,
+				OrganizationID:  org.ID,
+				DepartmentID:    &dept.ID,
+				Status:          model.StatusActive,
+				PasswordHash:    adminHash,
+				PasswordVersion: auth.InitialPasswordVersion,
+			}
+			if err := tx.Create(&admin).Error; err != nil {
+				return err
+			}
+			if err := s.AssignRoleCodesTx(tx, admin.ID, []string{SuperAdminCode}); err != nil {
+				return err
+			}
+		} else if result.Error != nil {
+			return result.Error
+		}
+		if !freshDatabase {
+			// Existing accounts, including a pre-existing admin or Silence, are
+			// never reset or rebound. A missing original admin is still created by
+			// the historical FirstOrCreate-compatible initialization behavior.
+			return nil
+		}
 
-	hash, err := auth.HashPassword(cfg.Admin.Password)
-	if err != nil {
-		return err
+		silenceHash, err := auth.HashPassword(silencePassword)
+		if err != nil {
+			return err
+		}
+		silence := model.User{
+			Username:        SilenceUsername,
+			AccountType:     model.AccountTypePersonal,
+			Name:            SilenceUsername,
+			OrganizationID:  org.ID,
+			DepartmentID:    &dept.ID,
+			Status:          model.StatusActive,
+			SystemManaged:   true,
+			PasswordHash:    silenceHash,
+			PasswordVersion: auth.InitialPasswordVersion,
+		}
+		if err := tx.Create(&silence).Error; err != nil {
+			return err
+		}
+		return s.AssignRoleCodesTx(tx, silence.ID, []string{SuperAdminCode})
+	})
+}
+
+// isFreshDatabase only treats completely empty core identity data as fresh.
+// Unscoped user counting prevents a database containing only soft-deleted
+// historical accounts from receiving initialization credentials again.
+func (s *Service) isFreshDatabase() (bool, error) {
+	checks := []struct {
+		model    any
+		unscoped bool
+	}{
+		{model: &model.User{}, unscoped: true},
+		{model: &model.Organization{}},
+		{model: &model.Role{}},
+		{model: &model.Permission{}},
 	}
-	admin := model.User{
-		Username:        cfg.Admin.Username,
-		AccountType:     model.AccountTypePersonal,
-		Name:            cfg.Admin.Name,
-		OrganizationID:  org.ID,
-		DepartmentID:    &dept.ID,
-		Status:          model.StatusActive,
-		PasswordHash:    hash,
-		PasswordVersion: auth.InitialPasswordVersion,
+	for _, check := range checks {
+		query := s.DB.Model(check.model)
+		if check.unscoped {
+			query = query.Unscoped()
+		}
+		var count int64
+		if err := query.Count(&count).Error; err != nil {
+			return false, err
+		}
+		if count > 0 {
+			return false, nil
+		}
 	}
-	if err := s.DB.FirstOrCreate(&admin, model.User{Username: admin.Username}).Error; err != nil {
-		return err
-	}
-	return s.AssignRoleCodes(admin.ID, []string{SuperAdminCode})
+	return true, nil
+}
+
+// unlockLegacySystemRoles converts the historical boss and terminal roles to
+// ordinary custom roles while retaining all role and user associations.
+func (s *Service) unlockLegacySystemRoles() error {
+	return s.DB.Model(&model.Role{}).
+		Where("code IN ? AND code <> ?", []string{BossCode, TerminalOperatorCode}, SuperAdminCode).
+		Update("system", false).Error
 }
 
 // backfillUpdateReadPermission 为升级前已拥有更新维护权限的角色补充只读权限。
@@ -382,15 +499,11 @@ func (s *Service) UserRoleIDs(userIDs []uint) (map[uint][]uint, error) {
 
 // ReplaceRolePermissions 原子替换角色权限并刷新运行时策略。
 func (s *Service) ReplaceRolePermissions(roleID uint, permissionIDs []uint) error {
-	if err := s.replaceAssociations(
-		&model.RolePermission{},
-		"role_id",
-		roleID,
-		len(permissionIDs),
-		func(index int) any {
-			return &model.RolePermission{RoleID: roleID, PermissionID: permissionIDs[index]}
-		},
-	); err != nil {
+	s.assignmentMu.Lock()
+	defer s.assignmentMu.Unlock()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		return s.replaceRolePermissionsTx(tx, roleID, permissionIDs)
+	}); err != nil {
 		return err
 	}
 	return s.ReloadPolicies()
@@ -398,36 +511,473 @@ func (s *Service) ReplaceRolePermissions(roleID uint, permissionIDs []uint) erro
 
 // ReplaceUserRoles 原子替换用户角色并刷新运行时策略。
 func (s *Service) ReplaceUserRoles(userID uint, roleIDs []uint, allowSuperAdmin bool) error {
-	if !allowSuperAdmin && s.IncludesSystemRole(roleIDs) {
-		return ErrSuperAdminNotAllowed
-	}
-	if err := s.replaceAssociations(
-		&model.UserRole{},
-		"user_id",
-		userID,
-		len(roleIDs),
-		func(index int) any {
-			return &model.UserRole{UserID: userID, RoleID: roleIDs[index]}
-		},
-	); err != nil {
+	s.assignmentMu.Lock()
+	defer s.assignmentMu.Unlock()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var item model.User
+		if err := tx.First(&item, userID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidUserID
+			}
+			return err
+		}
+		if !allowSuperAdmin && s.includesSuperAdminTx(tx, roleIDs) {
+			return ErrSuperAdminNotAllowed
+		}
+		if err := s.validateRoleIDsTx(tx, roleIDs); err != nil {
+			return err
+		}
+		if err := s.ensureSuperAdminLifecycleTx(tx, item, roleIDs); err != nil {
+			return err
+		}
+		return s.replaceUserRolesTx(tx, userID, roleIDs)
+	}); err != nil {
 		return err
 	}
 	return s.ReloadPolicies()
 }
 
-func (s *Service) replaceAssociations(modelValue any, ownerColumn string, ownerID uint, count int, rowAt func(int) any) error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		// 关联表有唯一索引；软删除会留下占位记录，导致重新绑定同一项时冲突。
-		if err := tx.Unscoped().Where(ownerColumn+" = ?", ownerID).Delete(modelValue).Error; err != nil {
+// ReplaceRolePermissionsForActor 在事务内重新确认操作者的角色权限，防止
+// 仅凭前端快照越权修改角色。超级管理员角色是唯一锁定系统角色，不能被
+// 该接口直接改写。
+func (s *Service) ReplaceRolePermissionsForActor(actor *auth.CurrentUser, roleID uint, permissionIDs []uint) error {
+	s.assignmentMu.Lock()
+	defer s.assignmentMu.Unlock()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		effective, err := s.validateAssignmentActorTx(tx, actor, "system:roles:write")
+		if err != nil {
 			return err
 		}
-		for index := 0; index < count; index++ {
-			if err := tx.Create(rowAt(index)).Error; err != nil {
+		isSuper, err := s.userHasRoleCodeTx(tx, actor.ID, SuperAdminCode)
+		if err != nil {
+			return err
+		}
+		if !isSuper {
+			var foreignUsers int64
+			if err := tx.Table("user_roles").
+				Joins("JOIN users ON users.id = user_roles.user_id").
+				Where("user_roles.role_id = ? AND users.organization_id <> ?", roleID, actor.OrganizationID).
+				Count(&foreignUsers).Error; err != nil {
 				return err
 			}
+			if foreignUsers > 0 {
+				return ErrAssignmentOrganizationDenied
+			}
+		}
+		requested, err := s.permissionCodesByIDsTx(tx, permissionIDs)
+		if err != nil {
+			return err
+		}
+		for code := range requested {
+			if _, ok := effective[code]; !ok {
+				return ErrManagerCannotGrant
+			}
+		}
+		return s.replaceRolePermissionsTx(tx, roleID, permissionIDs)
+	}); err != nil {
+		return err
+	}
+	return s.ReloadPolicies()
+}
+
+// ReplaceUserRolesForActor 在单一事务内完成组织、自身账号、权限边界和
+// 最后超级管理员检查，再替换目标用户角色。
+func (s *Service) ReplaceUserRolesForActor(actor *auth.CurrentUser, userID uint, roleIDs []uint) error {
+	s.assignmentMu.Lock()
+	defer s.assignmentMu.Unlock()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		actorPermissions, err := s.validateAssignmentActorTx(tx, actor, "system:users:write")
+		if err != nil {
+			return err
+		}
+		var target model.User
+		if err := tx.First(&target, userID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidUserID
+			}
+			return err
+		}
+		if target.SystemManaged {
+			return ErrInvalidUserID
+		}
+		if actor == nil || target.ID == actor.ID {
+			return ErrAssignmentSelfDenied
+		}
+		if actor.OrganizationID != 0 && target.OrganizationID != actor.OrganizationID {
+			return ErrAssignmentOrganizationDenied
+		}
+		if err := s.validateRoleIDsTx(tx, roleIDs); err != nil {
+			return err
+		}
+		var actorRoleIDs []uint
+		if err := tx.Model(&model.UserRole{}).Where("user_id = ?", actor.ID).Pluck("role_id", &actorRoleIDs).Error; err != nil {
+			return err
+		}
+		actorRoles := make(map[uint]struct{}, len(actorRoleIDs))
+		for _, roleID := range actorRoleIDs {
+			actorRoles[roleID] = struct{}{}
+		}
+		isSuper, err := s.userHasRoleCodeTx(tx, actor.ID, SuperAdminCode)
+		if err != nil {
+			return err
+		}
+		if !isSuper {
+			for _, roleID := range roleIDs {
+				if _, ok := actorRoles[roleID]; !ok {
+					return ErrManagerCannotGrant
+				}
+			}
+		}
+		roles, err := s.rolesByIDsTx(tx, roleIDs)
+		if err != nil {
+			return err
+		}
+		includesSuper := false
+		for _, item := range roles {
+			if item.Code == SuperAdminCode {
+				includesSuper = true
+				if !s.hasAllPermissionsTx(tx, actorPermissions) {
+					return ErrManagerCannotGrant
+				}
+			} else {
+				rolePermissions, err := s.permissionCodesForRoleTx(tx, item.ID)
+				if err != nil {
+					return err
+				}
+				for code := range rolePermissions {
+					if _, ok := actorPermissions[code]; !ok {
+						return ErrManagerCannotGrant
+					}
+				}
+			}
+		}
+		if target.AccountType == model.AccountTypeDepartmentTerminal && includesSuper {
+			return ErrSuperAdminNotAllowed
+		}
+		if err := s.ensureSuperAdminLifecycleTx(tx, target, roleIDs); err != nil {
+			return err
+		}
+		return s.replaceUserRolesTx(tx, userID, roleIDs)
+	}); err != nil {
+		return err
+	}
+	return s.ReloadPolicies()
+}
+
+func (s *Service) userHasRoleCodeTx(tx *gorm.DB, userID uint, code string) (bool, error) {
+	var count int64
+	err := tx.Table("user_roles").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.code = ?", userID, code).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// UpdateUserStatusForActor 在事务内重新确认操作者写权限和组织边界，随后
+// 与角色替换共用 assignmentMu 检查并维护最后一个有效超级管理员约束。
+func (s *Service) UpdateUserStatusForActor(actor *auth.CurrentUser, userID uint, status string) error {
+	s.assignmentMu.Lock()
+	defer s.assignmentMu.Unlock()
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := s.validateAssignmentActorTx(tx, actor, "system:users:write"); err != nil {
+			return err
+		}
+		var target model.User
+		if err := tx.First(&target, userID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidUserID
+			}
+			return err
+		}
+		if target.SystemManaged {
+			return ErrInvalidUserID
+		}
+		if actor == nil || target.OrganizationID != actor.OrganizationID {
+			return ErrAssignmentOrganizationDenied
+		}
+		if target.Status == model.StatusActive && status == model.StatusDisabled {
+			var isSuper int64
+			if err := tx.Table("user_roles").
+				Joins("JOIN roles ON roles.id = user_roles.role_id").
+				Where("user_roles.user_id = ? AND roles.code = ?", target.ID, SuperAdminCode).
+				Count(&isSuper).Error; err != nil {
+				return err
+			}
+			if isSuper > 0 {
+				var activeSuper int64
+				if err := tx.Table("user_roles").
+					Joins("JOIN users ON users.id = user_roles.user_id").
+					Joins("JOIN roles ON roles.id = user_roles.role_id").
+					Where("users.status = ? AND roles.code = ?", model.StatusActive, SuperAdminCode).
+					Count(&activeSuper).Error; err != nil {
+					return err
+				}
+				if activeSuper <= 1 {
+					return ErrLastSuperAdmin
+				}
+			}
+		}
+		result := tx.Model(&model.User{}).
+			Where("id = ? AND organization_id = ? AND status = ?", target.ID, target.OrganizationID, target.Status).
+			Update("status", status)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrAssignmentConflict
 		}
 		return nil
 	})
+}
+
+func (s *Service) replaceRolePermissionsTx(tx *gorm.DB, roleID uint, permissionIDs []uint) error {
+	var item model.Role
+	if err := tx.First(&item, roleID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrInvalidRoleID
+		}
+		return err
+	}
+	if item.Code == SuperAdminCode || item.System {
+		return ErrSystemRoleLocked
+	}
+	if err := s.validatePermissionIDsTx(tx, permissionIDs); err != nil {
+		return err
+	}
+	return s.replaceAssociationsTx(tx, &model.RolePermission{}, "role_id", roleID, len(permissionIDs), func(index int) any {
+		return &model.RolePermission{RoleID: roleID, PermissionID: permissionIDs[index]}
+	})
+}
+
+func (s *Service) replaceUserRolesTx(tx *gorm.DB, userID uint, roleIDs []uint) error {
+	return s.replaceAssociationsTx(tx, &model.UserRole{}, "user_id", userID, len(roleIDs), func(index int) any {
+		return &model.UserRole{UserID: userID, RoleID: roleIDs[index]}
+	})
+}
+
+func (s *Service) replaceAssociationsTx(tx *gorm.DB, modelValue any, ownerColumn string, ownerID uint, count int, rowAt func(int) any) error {
+	// 关联表有唯一索引；软删除会留下占位记录，导致重新绑定同一项时冲突。
+	if err := tx.Unscoped().Where(ownerColumn+" = ?", ownerID).Delete(modelValue).Error; err != nil {
+		return err
+	}
+	for index := 0; index < count; index++ {
+		if err := tx.Create(rowAt(index)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateRoleIDsTx(tx *gorm.DB, roleIDs []uint) error {
+	if err := validateAssignmentIDs(roleIDs, ErrInvalidRoleID); err != nil {
+		return err
+	}
+	if len(roleIDs) == 0 {
+		return nil
+	}
+	var count int64
+	if err := tx.Model(&model.Role{}).Where("id IN ?", roleIDs).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != int64(len(roleIDs)) {
+		return ErrInvalidRoleID
+	}
+	return nil
+}
+
+func (s *Service) validatePermissionIDsTx(tx *gorm.DB, permissionIDs []uint) error {
+	if err := validateAssignmentIDs(permissionIDs, ErrInvalidPermissionID); err != nil {
+		return err
+	}
+	if len(permissionIDs) == 0 {
+		return nil
+	}
+	var count int64
+	if err := tx.Model(&model.Permission{}).Where("id IN ?", permissionIDs).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != int64(len(permissionIDs)) {
+		return ErrInvalidPermissionID
+	}
+	return nil
+}
+
+func validateAssignmentIDs(ids []uint, invalid error) error {
+	seen := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			return invalid
+		}
+		if _, ok := seen[id]; ok {
+			return ErrDuplicateAssignmentID
+		}
+		seen[id] = struct{}{}
+	}
+	return nil
+}
+
+func (s *Service) rolesByIDsTx(tx *gorm.DB, roleIDs []uint) ([]model.Role, error) {
+	if len(roleIDs) == 0 {
+		return []model.Role{}, nil
+	}
+	var roles []model.Role
+	if err := tx.Where("id IN ?", roleIDs).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	if len(roles) != len(roleIDs) {
+		return nil, ErrInvalidRoleID
+	}
+	return roles, nil
+}
+
+func (s *Service) permissionCodesByIDsTx(tx *gorm.DB, permissionIDs []uint) (map[string]struct{}, error) {
+	result := make(map[string]struct{}, len(permissionIDs))
+	if err := s.validatePermissionIDsTx(tx, permissionIDs); err != nil {
+		return nil, err
+	}
+	if len(permissionIDs) == 0 {
+		return result, nil
+	}
+	var permissions []model.Permission
+	if err := tx.Where("id IN ?", permissionIDs).Find(&permissions).Error; err != nil {
+		return nil, err
+	}
+	for _, permission := range permissions {
+		result[permission.Code] = struct{}{}
+	}
+	return result, nil
+}
+
+func (s *Service) permissionCodesForRoleTx(tx *gorm.DB, roleID uint) (map[string]struct{}, error) {
+	var codes []string
+	if err := tx.Table("role_permissions").
+		Select("permissions.code").
+		Joins("JOIN permissions ON permissions.id = role_permissions.permission_id").
+		Where("role_permissions.role_id = ?", roleID).
+		Scan(&codes).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]struct{}, len(codes))
+	for _, code := range codes {
+		result[code] = struct{}{}
+	}
+	return result, nil
+}
+
+func (s *Service) hasAllPermissionsTx(tx *gorm.DB, effective map[string]struct{}) bool {
+	var codes []string
+	if err := tx.Model(&model.Permission{}).Pluck("code", &codes).Error; err != nil {
+		return false
+	}
+	for _, code := range codes {
+		if _, ok := effective[code]; !ok {
+			return false
+		}
+	}
+	return len(codes) > 0
+}
+
+// validateAssignmentActorTx loads the actor by ID inside the mutation
+// transaction. CurrentUser is only a request hint; the database snapshot is
+// authoritative so a stale JWT cannot retain management rights after a role
+// change.
+func (s *Service) validateAssignmentActorTx(tx *gorm.DB, actor *auth.CurrentUser, requiredPermission string) (map[string]struct{}, error) {
+	if actor == nil || actor.ID == 0 {
+		return nil, ErrAssignmentActorRequired
+	}
+	var current model.User
+	if err := tx.First(&current, actor.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAssignmentPermissionDenied
+		}
+		return nil, err
+	}
+	if current.Status != model.StatusActive {
+		return nil, ErrAssignmentPermissionDenied
+	}
+	if actor.OrganizationID != 0 && current.OrganizationID != actor.OrganizationID {
+		return nil, ErrAssignmentOrganizationDenied
+	}
+
+	var rows []struct {
+		Code string
+	}
+	if err := tx.Table("user_roles").
+		Select("DISTINCT permissions.code").
+		Joins("JOIN role_permissions ON role_permissions.role_id = user_roles.role_id").
+		Joins("JOIN permissions ON permissions.id = role_permissions.permission_id").
+		Where("user_roles.user_id = ?", current.ID).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	effective := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		effective[row.Code] = struct{}{}
+	}
+	var isSuper int64
+	if err := tx.Table("user_roles").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.code = ?", current.ID, SuperAdminCode).
+		Count(&isSuper).Error; err != nil {
+		return nil, err
+	}
+	if isSuper > 0 {
+		// Keep the invariant true even if an old database had an incomplete
+		// super_admin binding before startup reconciliation.
+		var all []string
+		if err := tx.Model(&model.Permission{}).Pluck("code", &all).Error; err != nil {
+			return nil, err
+		}
+		for _, code := range all {
+			effective[code] = struct{}{}
+		}
+	}
+	if _, ok := effective[requiredPermission]; !ok {
+		return nil, ErrAssignmentPermissionDenied
+	}
+	return effective, nil
+}
+
+func (s *Service) includesSuperAdminTx(tx *gorm.DB, roleIDs []uint) bool {
+	if len(roleIDs) == 0 {
+		return false
+	}
+	var count int64
+	if err := tx.Model(&model.Role{}).Where("id IN ? AND code = ?", roleIDs, SuperAdminCode).Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
+func (s *Service) ensureSuperAdminLifecycleTx(tx *gorm.DB, target model.User, roleIDs []uint) error {
+	var currentCount int64
+	if err := tx.Table("user_roles").
+		Joins("JOIN users ON users.id = user_roles.user_id").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("users.status = ? AND roles.code = ?", model.StatusActive, SuperAdminCode).
+		Count(&currentCount).Error; err != nil {
+		return err
+	}
+	var targetCurrent int64
+	if err := tx.Table("user_roles").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.code = ?", target.ID, SuperAdminCode).
+		Count(&targetCurrent).Error; err != nil {
+		return err
+	}
+	targetNext := s.includesSuperAdminTx(tx, roleIDs)
+	if target.Status == model.StatusActive {
+		switch {
+		case targetCurrent > 0 && !targetNext:
+			currentCount--
+		case targetCurrent == 0 && targetNext:
+			currentCount++
+		}
+	}
+	if currentCount < 1 {
+		return ErrLastSuperAdmin
+	}
+	return nil
 }
 
 // ReloadPolicies 从数据库重新加载 Casbin 分组策略和权限策略。

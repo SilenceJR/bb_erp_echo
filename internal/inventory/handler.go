@@ -10,6 +10,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/operator"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/request"
@@ -48,19 +49,32 @@ func NewHandler(db *gorm.DB) *Handler {
 
 // RegisterRoutes 注册库存模块路由。
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
+	deferred := moduleavailability.Middleware(h.DB, "库存", inventoryModuleRequirements()...)
 	docs := v1.Group("/inventory-documents", audit)
-	docs.GET("", h.ListDocuments, require("/api/v1/inventory-documents", "read"))
-	docs.POST("", h.CreateDocument, require("/api/v1/inventory-documents", "write"))
-	docs.POST("/:id/post", h.PostDocument, require("/api/v1/inventory-documents", "write"))
-	docs.POST("/:id/reverse", h.ReverseDocument, require("/api/v1/inventory-documents", "write"))
+	docs.GET("", h.ListDocuments, require("/api/v1/inventory-documents", "read"), deferred)
+	docs.POST("", h.CreateDocument, require("/api/v1/inventory-documents", "write"), deferred)
+	docs.POST("/:id/post", h.PostDocument, require("/api/v1/inventory-documents", "write"), deferred)
+	docs.POST("/:id/reverse", h.ReverseDocument, require("/api/v1/inventory-documents", "write"), deferred)
 
-	v1.GET("/inventory-balances", h.ListBalances, require("/api/v1/inventory-balances", "read"))
-	v1.GET("/inventory-ledgers", h.ListLedgers, require("/api/v1/inventory-ledgers", "read"))
+	v1.GET("/inventory-balances", h.ListBalances, require("/api/v1/inventory-balances", "read"), deferred)
+	v1.GET("/inventory-ledgers", h.ListLedgers, require("/api/v1/inventory-ledgers", "read"), deferred)
 
 	items := v1.Group("/warehouse/items")
-	items.GET("/:itemType/:itemID", h.GetItemDetail, require("/api/v1/warehouse", "read"))
-	items.GET("/:itemType/:itemID/movements", h.ListItemMovements, require("/api/v1/inventory-documents", "read"))
-	items.POST("/:itemType/:itemID/movements", h.CreateItemMovement, audit, require("/api/v1/inventory-documents", "write"))
+	items.GET("/:itemType/:itemID", h.GetItemDetail, require("/api/v1/warehouse", "read"), deferred)
+	items.GET("/:itemType/:itemID/movements", h.ListItemMovements, require("/api/v1/inventory-documents", "read"), deferred)
+	items.POST("/:itemType/:itemID/movements", h.CreateItemMovement, audit, require("/api/v1/inventory-documents", "write"), deferred)
+}
+
+func inventoryModuleRequirements() []moduleavailability.Requirement {
+	return []moduleavailability.Requirement{
+		{Model: &model.Supplier{}, Name: "suppliers"},
+		{Model: &model.Warehouse{}, Name: "warehouses"},
+		{Model: &model.Location{}, Name: "locations"},
+		{Model: &model.InventoryDocument{}, Name: "inventory_documents"},
+		{Model: &model.InventoryDocumentLine{}, Name: "inventory_document_lines"},
+		{Model: &model.InventoryBalance{}, Name: "inventory_balances"},
+		{Model: &model.InventoryLedger{}, Name: "inventory_ledgers"},
+	}
 }
 
 type lineRequest struct {
@@ -103,6 +117,7 @@ type reverseDocumentRequest struct {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-documents [get]
 func (h *Handler) ListDocuments(c *echo.Context) error {
@@ -127,6 +142,7 @@ func (h *Handler) ListDocuments(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-documents [post]
 func (h *Handler) CreateDocument(c *echo.Context) error {
@@ -252,6 +268,7 @@ func (h *Handler) CreateDocument(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-documents/{id}/post [post]
 func (h *Handler) PostDocument(c *echo.Context) error {
@@ -353,6 +370,7 @@ func (h *Handler) PostDocument(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-documents/{id}/reverse [post]
 func (h *Handler) ReverseDocument(c *echo.Context) error {
@@ -445,6 +463,7 @@ func (h *Handler) ReverseDocument(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-balances [get]
 func (h *Handler) ListBalances(c *echo.Context) error {
@@ -469,6 +488,7 @@ func (h *Handler) ListBalances(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/inventory-ledgers [get]
 func (h *Handler) ListLedgers(c *echo.Context) error {

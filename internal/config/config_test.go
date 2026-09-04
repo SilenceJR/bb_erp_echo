@@ -34,6 +34,9 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.Web.DistDir != "web/dist" {
 		t.Fatalf("web dist dir = %q", cfg.Web.DistDir)
 	}
+	if cfg.Silence.Password != "" {
+		t.Fatal("Silence password must not have a source-code default")
+	}
 	if cfg.JWT.ExpiresIn != 2*time.Hour || cfg.JWT.RefreshExpiresIn != 30*24*time.Hour {
 		t.Fatalf("unexpected jwt durations: expires=%s refresh=%s", cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
 	}
@@ -70,6 +73,7 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_DISCOVERY_SCAN_TIMEOUT", "150ms")
 	t.Setenv("BB_ERP_DISCOVERY_PREFLIGHT_TIMEOUT", "250ms")
 	t.Setenv("BB_ERP_DISCOVERY_HTTP_TIMEOUT", "400ms")
+	t.Setenv("BB_ERP_SILENCE_PASSWORD", "configured-silence-password")
 
 	cfg, err := Load()
 	if err != nil {
@@ -108,6 +112,9 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Discovery.ScanTimeout != 150*time.Millisecond || cfg.Discovery.PreflightTimeout != 250*time.Millisecond || cfg.Discovery.HTTPTimeout != 400*time.Millisecond {
 		t.Fatalf("discovery env durations: %+v", cfg.Discovery)
+	}
+	if cfg.Silence.Password != "configured-silence-password" {
+		t.Fatal("Silence password was not loaded from BB_ERP_SILENCE_PASSWORD")
 	}
 }
 

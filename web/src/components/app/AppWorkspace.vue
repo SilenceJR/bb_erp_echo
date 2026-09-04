@@ -1,34 +1,75 @@
 <template>
-  <section class="workspace">
+  <section
+    class="workspace"
+    :class="[`sidebar-${sidebarMode}`, {'has-docked-detail': detailPanelDocked}]"
+    :style="{'--bb-detail-panel-width': `${detailPanelWidth}px`}"
+  >
+    <aside
+      ref="sidebarElement"
+      id="app-navigation"
+      class="sidebar"
+      :class="{'is-mobile-open': mobileNavOpen}"
+      aria-label="系统导航"
+      :aria-hidden="navigationInactive"
+      :inert="navigationInactive"
+      :role="isNarrow ? 'dialog' : undefined"
+      :aria-modal="isNarrow && mobileNavOpen ? 'true' : undefined"
+      :tabindex="isNarrow ? -1 : undefined"
+    >
+      <div class="sidebar-brand">
+        <img src="/bobang-logo-hd.png" alt="" />
+        <div v-if="isNarrow || sidebarMode !== 'icon'"><strong>博邦光电</strong><span>ERP 业务工作台</span></div>
+        <span v-else class="brand-mark" aria-label="博邦光电">BB</span>
+      </div>
+      <AppNavigation
+        :active-key="activeKey"
+        :business-items="businessItems"
+        :system-items="systemItems"
+        :mode="isNarrow ? 'full' : sidebarMode"
+        @select="handleModuleSelect"
+        @settings="openSettings"
+      />
+    </aside>
+    <button v-if="mobileNavOpen" class="mobile-nav-backdrop" type="button" tabindex="-1" aria-hidden="true" @click="closeMobileNavigation(true)"></button>
+
     <header class="topbar">
-      <div class="brand">
-        <img src="/bobang-logo-hd.png" alt="博邦光电" />
-        <span class="brand-mark" aria-label="博邦光电">BB</span>
-        <div><strong>博邦光电</strong><span>业务工作台</span></div>
+      <div class="topbar-leading">
+        <el-button
+          ref="sidebarToggle"
+          class="sidebar-mode-toggle"
+          circle
+          :aria-label="sidebarToggleLabel"
+          :title="sidebarToggleLabel"
+          aria-controls="app-navigation"
+          :aria-expanded="isNarrow ? mobileNavOpen : undefined"
+          :tabindex="mobileNavOpen ? -1 : 0"
+          @click="toggleSidebar"
+        >
+          <el-icon aria-hidden="true"><Menu /></el-icon>
+        </el-button>
+        <div class="topbar-title" :inert="mobileNavOpen"><strong>{{ activeModule?.title || '首页' }}</strong></div>
       </div>
-      <el-button
-        class="mobile-nav-toggle"
-        :aria-expanded="mobileNavOpen"
-        aria-controls="app-navigation"
-        @click="mobileNavOpen = !mobileNavOpen"
+
+      <button
+        v-if="healthStatus !== 'healthy'"
+        class="service-notice"
+        :class="`is-${healthStatus}`"
+        type="button"
+        :inert="mobileNavOpen"
+        aria-live="polite"
+        @click="openSettings"
       >
-        {{ mobileNavOpen ? '关闭菜单' : '打开菜单' }}
-      </el-button>
-      <div class="server-indicator" aria-live="polite">
-        <span class="server-indicator__dot" :class="`is-${healthStatus}`" aria-hidden="true"></span>
-        <div>
-          <strong>{{ currentServer?.server_name || 'ERP 服务器' }}</strong>
-          <small>{{ currentServer?.origin || '当前站点' }} · {{ healthStatusLabel }}</small>
-        </div>
-        <el-button v-if="canChangeServer" link type="primary" @click="changeServer">切换</el-button>
-      </div>
-      <div class="user-chip">
+        <span aria-hidden="true"></span>
+        {{ healthStatusLabel }}
+      </button>
+
+      <div class="user-chip" :inert="mobileNavOpen">
         <div class="user-copy"><span>{{ currentUser?.name || currentUser?.username }}</span><small>{{ accountTypeText }}</small></div>
         <el-dropdown trigger="click" @command="handleUserCommand">
           <el-button circle class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item v-if="canChangeServer" command="change-server">更换服务器</el-dropdown-item>
+              <el-dropdown-item command="settings">设置</el-dropdown-item>
               <el-dropdown-item command="change-password">修改密码</el-dropdown-item>
               <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
@@ -37,36 +78,84 @@
       </div>
     </header>
 
-    <aside id="app-navigation" class="sidebar" :class="{ 'is-mobile-open': mobileNavOpen }" aria-label="系统导航">
-      <AppNavigation :active-key="activeKey" :business-items="businessItems" :system-items="systemItems" @select="handleModuleSelect" />
-    </aside>
-    <button v-if="mobileNavOpen" class="mobile-nav-backdrop" type="button" aria-label="关闭导航菜单" @click="mobileNavOpen = false"></button>
-
     <ChangePasswordDialog v-model="passwordDialogVisible" :token="token" @changed="handlePasswordChanged" />
-    <section class="content"><slot name="page" /></section>
+    <SettingsPanel v-model="settingsVisible" />
+    <section class="content" :inert="mobileNavOpen"><slot name="page" /></section>
+    <div
+      id="workspace-detail-host"
+      class="workspace-detail-host"
+      :aria-hidden="detailPanelDocked ? undefined : 'true'"
+      :inert="!detailPanelDocked || mobileNavOpen"
+    ></div>
     <slot name="overlays" />
   </section>
 </template>
 
 <script setup lang="ts">
-import {ref} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
-import {useStartupConnectionContext, useWorkspaceContext} from '../../composables/workspaceContext'
+import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {nextSidebarMode, normalizeSidebarMode, sidebarStorageKey, type SidebarMode} from '../../platform/appearance'
+import {resolveFocusLoopTarget} from '../../platform/focusLoop'
 import AppNavigation from '../ui/AppNavigation.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
+import SettingsPanel from './SettingsPanel.vue'
+import {Menu} from '@element-plus/icons-vue'
 
-const {token, currentUser, activeKey, businessItems, systemItems, userInitial, accountTypeText, healthStatus, healthStatusLabel, switchModule, logout, loginForm} = useWorkspaceContext()
-const {canChangeServer, changeServer, currentServer} = useStartupConnectionContext()
+const {
+  token, currentUser, activeKey, activeModule, businessItems, systemItems, userInitial,
+  accountTypeText, healthStatus, healthStatusLabel, switchModule, logout, loginForm,
+  warehouseDrawerVisible, workorderDrawerVisible, pageDetailPanelVisible,
+} = useWorkspaceContext()
 const passwordDialogVisible = ref(false)
+const settingsVisible = ref(false)
 const mobileNavOpen = ref(false)
+const restoreFocusAfterMobileClose = ref(true)
+const sidebarElement = ref<HTMLElement | null>(null)
+const sidebarToggle = ref<{ref?: HTMLElement; $el?: HTMLElement} | null>(null)
+const viewportWidth = ref(window.innerWidth)
+const sidebarMode = ref<SidebarMode>(normalizeSidebarMode(localStorage.getItem(sidebarStorageKey)))
+const isNarrow = computed(() => viewportWidth.value <= 1023)
+const navigationInactive = computed(() => isNarrow.value ? !mobileNavOpen.value : sidebarMode.value === 'hidden')
+const effectiveSidebarWidth = computed(() => isNarrow.value || sidebarMode.value === 'hidden' ? 0 : sidebarMode.value === 'icon' ? 64 : 224)
+const detailPanelVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value || pageDetailPanelVisible.value)
+const imageDetailVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value)
+const detailPanelWidth = computed(() => imageDetailVisible.value && viewportWidth.value >= 1464 && viewportWidth.value - effectiveSidebarWidth.value - 520 >= 720 ? 520 : 420)
+const detailPanelDocked = computed(() => detailPanelVisible.value && viewportWidth.value >= 1440 && viewportWidth.value - effectiveSidebarWidth.value - detailPanelWidth.value >= 720)
+const sidebarToggleLabel = computed(() => isNarrow.value
+  ? mobileNavOpen.value ? '关闭业务导航' : '打开业务导航'
+  : sidebarMode.value === 'full' ? '切换为图标导航' : sidebarMode.value === 'icon' ? '隐藏业务导航' : '展开完整业务导航')
+
+function syncViewport() {
+  viewportWidth.value = window.innerWidth
+  if (!isNarrow.value) mobileNavOpen.value = false
+}
+
+function toggleSidebar() {
+  if (isNarrow.value) {
+    if (mobileNavOpen.value) closeMobileNavigation(true)
+    else {
+      restoreFocusAfterMobileClose.value = true
+      mobileNavOpen.value = true
+    }
+    return
+  }
+  sidebarMode.value = nextSidebarMode(sidebarMode.value)
+  localStorage.setItem(sidebarStorageKey, sidebarMode.value)
+}
 
 function handleModuleSelect(key: string) {
-  mobileNavOpen.value = false
+  closeMobileNavigation(true)
   switchModule(key)
 }
 
+function openSettings() {
+  closeMobileNavigation(false)
+  settingsVisible.value = true
+}
+
 function handleUserCommand(command: string) {
-  if (command === 'change-server') return void changeServer()
+  if (command === 'settings') openSettings()
   if (command === 'change-password') passwordDialogVisible.value = true
   if (command === 'logout') void logout()
 }
@@ -76,4 +165,90 @@ function handlePasswordChanged() {
   void logout()
   ElMessage.success('密码修改成功，请使用新密码重新登录')
 }
+
+function closeMobileNavigation(restoreFocus = true) {
+  restoreFocusAfterMobileClose.value = restoreFocus
+  mobileNavOpen.value = false
+}
+
+function focusSidebarToggle() {
+  const candidate = sidebarToggle.value?.ref || sidebarToggle.value?.$el
+  candidate?.focus?.()
+}
+
+function handleNavigationKeydown(event: KeyboardEvent) {
+  if (!mobileNavOpen.value || event.defaultPrevented || eventBelongsToElementLayer(event)) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMobileNavigation(true)
+    return
+  }
+  if (event.key !== 'Tab') return
+  const focusable = navigationFocusableElements()
+  if (!focusable.length) {
+    event.preventDefault()
+    sidebarElement.value?.focus()
+    return
+  }
+  const currentIndex = focusable.indexOf(document.activeElement as HTMLElement)
+  const targetIndex = resolveFocusLoopTarget(focusable.length, currentIndex, event.shiftKey)
+  if (targetIndex === null) return
+  event.preventDefault()
+  focusable[targetIndex]?.focus()
+}
+
+const navigationFocusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[contenteditable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function navigationFocusableElements() {
+  if (!sidebarElement.value) return []
+  return [...sidebarElement.value.querySelectorAll<HTMLElement>(navigationFocusableSelector)].filter((element) => {
+    if (element.closest('[inert]') || element.getAttribute('aria-hidden') === 'true') return false
+    const style = window.getComputedStyle(element)
+    return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0
+  })
+}
+
+function eventBelongsToElementLayer(event: KeyboardEvent) {
+  return event.target instanceof Element
+    && Boolean(event.target.closest('.el-overlay:not([inert]), .el-popper:not([inert])'))
+}
+
+watch(mobileNavOpen, async (open, wasOpen) => {
+  if (open) {
+    await nextTick()
+    document.querySelectorAll<HTMLElement>('.el-overlay').forEach((element) => {
+      element.dataset.bbNavigationInert = 'true'
+      element.inert = true
+    })
+    const firstFocusable = navigationFocusableElements()[0]
+    if (firstFocusable) firstFocusable.focus()
+    else sidebarElement.value?.focus()
+  } else if (wasOpen) {
+    document.querySelectorAll<HTMLElement>('[data-bb-navigation-inert="true"]').forEach((element) => {
+      element.inert = false
+      delete element.dataset.bbNavigationInert
+    })
+  }
+  if (!open && wasOpen && isNarrow.value && restoreFocusAfterMobileClose.value) {
+    await nextTick()
+    focusSidebarToggle()
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('resize', syncViewport)
+  document.addEventListener('keydown', handleNavigationKeydown)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncViewport)
+  document.removeEventListener('keydown', handleNavigationKeydown)
+})
 </script>

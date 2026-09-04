@@ -11,6 +11,7 @@
     <div v-if="assignmentTarget" class="assignment-panel">
       <div class="assignment-heading"><div><strong>{{ assignmentTarget.name || assignmentTarget.username || assignmentTarget.code }}</strong><span>已选择 {{ selectedAssignmentIDs.length }} 项</span></div></div>
       <p class="assignment-tip">{{ assignmentConfig?.tip }}</p>
+      <el-alert v-if="assignmentScopeBlockedReason" :title="assignmentScopeBlockedReason" type="warning" :closable="false" show-icon />
       <el-alert v-if="assignmentSaveError" :title="assignmentSaveError" type="error" :closable="false" show-icon />
       <PageState v-if="assignmentOptionsLoading" kind="loading" title="正在加载完整配置项" />
       <PageState v-else-if="assignmentOptionsError" kind="error" title="配置项加载失败" :description="assignmentOptionsError" action-label="重新加载" @action="retryAssignmentOptions" />
@@ -18,15 +19,19 @@
         <section v-for="group in assignmentOptionGroups" :key="group.key" class="assignment-option-group">
           <div class="assignment-option-group__heading"><strong>{{ group.label }}</strong><small>{{ group.items.length }} 项</small></div>
           <div class="assignment-options">
-            <el-checkbox v-for="option in group.items" :key="option.id" :value="option.id" :disabled="isAssignmentOptionDisabled(option)" class="check-option">
-              <span class="check-option-copy"><strong>{{ option.name || option.code }}</strong><small>{{ option.description || option.code }}</small></span>
+            <el-checkbox v-for="option in group.items" :key="option.id" :value="option.id" :disabled="isAssignmentOptionDisabled(option)" :title="assignmentOptionDisabledReason(option)" class="check-option">
+              <span class="check-option-copy">
+                <strong>{{ option.name || option.code }}</strong>
+                <small>{{ option.description || option.code }}</small>
+                <small v-if="!assignmentScopeBlockedReason && assignmentOptionDisabledReason(option)" class="check-option-scope-hint">{{ assignmentOptionDisabledReason(option) }}</small>
+              </span>
             </el-checkbox>
           </div>
         </section>
       </el-checkbox-group>
       <span v-if="assignmentOptionsReady && !assignmentOptions.length" class="assignment-empty">暂无可配置项</span>
     </div>
-    <template #footer><div class="assignment-actions"><el-button :disabled="assignmentSaving" @click="requestAssignmentClose">取消</el-button><el-button type="primary" :loading="assignmentSaving" :disabled="!assignmentOptionsReady || assignmentSaving" @click="saveAssignment">保存配置</el-button></div></template>
+    <template #footer><div class="assignment-actions"><el-button :disabled="assignmentSaving" @click="requestAssignmentClose">取消</el-button><el-button type="primary" :loading="assignmentSaving" :disabled="!assignmentOptionsReady || assignmentSaving || !!assignmentScopeBlockedReason" @click="saveAssignment">保存配置</el-button></div></template>
   </el-dialog>
 
   <el-dialog :model-value="!!affiliationTarget" title="修正账号归属" width="min(520px, 92vw)" :close-on-click-modal="!affiliationSaving" :close-on-press-escape="!affiliationSaving" :before-close="closeUserAffiliation">
@@ -50,6 +55,7 @@ const {
   assignmentTarget, assignmentConfig, selectedAssignmentIDs, assignmentSaveError,
   assignmentOptionsLoading, assignmentOptionsError, retryAssignmentOptions,
   assignmentOptionGroups, isAssignmentOptionDisabled, assignmentOptionsReady,
+  assignmentOptionDisabledReason, assignmentScopeBlockedReason,
   assignmentOptions, assignmentSaving, closeAssignment, saveAssignment,
   affiliationTarget, affiliationSaving, affiliationError, affiliationDepartmentID,
   affiliationTerminalID, affiliationTerminalOptions, rowsFor,

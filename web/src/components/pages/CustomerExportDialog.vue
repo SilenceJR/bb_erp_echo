@@ -176,7 +176,7 @@ function reset() { generation.value++; scope.value = 'current'; previewReady.val
 .export-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--bb-space-4); }
 .export-preview-toolbar > div { display: flex; align-items: center; gap: var(--bb-space-2); }
 .export-preview-toolbar small { color: var(--bb-text-secondary); }
-.worksheet-chip { border-radius: var(--bb-radius-pill); background: var(--bb-brand-50); padding: var(--bb-space-1) var(--bb-space-2); color: var(--bb-brand-700); font-weight: var(--bb-font-weight-bold); }
+.worksheet-chip { border-radius: var(--bb-radius-pill); background: var(--bb-accent-selected-bg); padding: var(--bb-space-1) var(--bb-space-2); color: var(--bb-accent-selected-text); font-weight: var(--bb-font-weight-bold); }
 .worksheet-shell { max-width: 100%; max-height: min(56vh, 560px); overflow: auto; border: 1px solid var(--bb-border-strong); border-radius: var(--bb-radius-lg); background: var(--bb-bg-surface); outline: none; }
 .worksheet-shell:focus-visible { box-shadow: var(--bb-focus-ring); }
 .worksheet-table { width: max-content; min-width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; color: var(--bb-text-primary); font-size: var(--bb-font-size-13); }

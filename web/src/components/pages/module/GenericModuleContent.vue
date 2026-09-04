@@ -7,7 +7,9 @@
         </el-table-column>
         <el-table-column v-if="hasAssignmentAction || (activeKey === 'users' && canWriteActive)" label="配置操作" width="150" fixed="right">
           <template #default="{row}">
-            <el-button v-if="hasAssignmentAction" link type="primary" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+            <span v-if="hasAssignmentAction" :title="assignmentTargetHint(row)">
+              <el-button link type="primary" :disabled="assignmentTargetDisabled(row)" @click="openAssignment(row)">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
+            </span>
             <span v-if="activeKey === 'users' && canWriteActive" :title="canEditUserAffiliation ? '修正账号部门和终端归属' : '需要部门查看和终端查看权限'"><el-button link type="primary" :disabled="!canEditUserAffiliation" @click="openUserAffiliation(row)">账号归属</el-button></span>
           </template>
         </el-table-column>
@@ -22,6 +24,6 @@ import {useWorkspaceContext} from '../../../composables/workspaceContext'
 import DataTableShell from '../../ui/DataTableShell.vue'
 import StatusTag from '../../ui/StatusTag.vue'
 
-const {rows, columns, loading, listError, pageTotal, page, pageSize, filteredEmptyTitle, filteredEmptyDescription, activeModule, loadActiveModule, handlePageChange, handlePageSizeChange, columnLabel, isGenericStatusColumn, genericStatusLabel, genericStatusTone, formatGenericCell, hasAssignmentAction, activeKey, canWriteActive, assignmentConfigs, openAssignment, canEditUserAffiliation, openUserAffiliation} = useWorkspaceContext()
+const {rows, columns, loading, listError, pageTotal, page, pageSize, filteredEmptyTitle, filteredEmptyDescription, activeModule, loadActiveModule, handlePageChange, handlePageSizeChange, columnLabel, isGenericStatusColumn, genericStatusLabel, genericStatusTone, formatGenericCell, hasAssignmentAction, activeKey, canWriteActive, assignmentConfigs, openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint} = useWorkspaceContext()
 const tableState = computed(() => ({loading: loading.value, error: listError.value, rowsCount: rows.value.length, total: pageTotal.value, page: page.value, pageSize: pageSize.value, emptyTitle: filteredEmptyTitle.value, emptyDescription: filteredEmptyDescription.value}))
 </script>

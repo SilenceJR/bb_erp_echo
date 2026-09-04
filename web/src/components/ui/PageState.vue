@@ -10,7 +10,7 @@
       <el-skeleton :rows="4" animated />
     </template>
     <template v-else>
-      <span class="ui-page-state__icon" aria-hidden="true">{{ icon }}</span>
+      <el-icon class="ui-page-state__icon" aria-hidden="true"><component :is="icon" /></el-icon>
       <strong>{{ title }}</strong>
       <p v-if="description">{{ description }}</p>
       <el-button v-if="actionLabel" :type="kind === 'error' ? 'primary' : undefined" @click="emit('action')">
@@ -22,6 +22,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue'
+import {CircleClose, FolderOpened, InfoFilled, Lock} from '@element-plus/icons-vue'
 
 export type PageStateKind = 'loading' | 'empty' | 'error' | 'permission' | 'readonly'
 
@@ -42,11 +43,11 @@ const emit = defineEmits<{
 }>()
 
 const icon = computed(() => ({
-  empty: '—',
-  error: '!',
-  permission: '×',
-  readonly: 'i',
-  loading: '',
+  empty: FolderOpened,
+  error: CircleClose,
+  permission: Lock,
+  readonly: InfoFilled,
+  loading: InfoFilled,
 })[props.kind])
 </script>
 
@@ -57,9 +58,9 @@ const icon = computed(() => ({
   place-items: center;
   align-content: center;
   gap: var(--bb-space-2);
-  border: 1px dashed var(--bb-border-strong);
-  border-radius: var(--bb-radius-xl);
-  background: var(--bb-bg-surface);
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-md);
+  background: transparent;
   padding: var(--bb-space-8);
   color: var(--bb-text-secondary);
   text-align: center;
@@ -81,20 +82,17 @@ const icon = computed(() => ({
   width: 48px;
   height: 48px;
   place-items: center;
-  border-radius: 50%;
-  background: var(--bb-info-bg);
+  background: transparent;
   color: var(--bb-info);
-  font-size: var(--bb-font-size-20);
+  font-size: var(--bb-font-size-24);
   font-weight: var(--bb-font-weight-bold);
 }
 
 .ui-page-state.is-error .ui-page-state__icon {
-  background: var(--bb-danger-bg);
   color: var(--bb-danger);
 }
 
 .ui-page-state.is-permission .ui-page-state__icon {
-  background: var(--bb-warning-bg);
   color: var(--bb-warning);
 }
 

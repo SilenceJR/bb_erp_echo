@@ -1,6 +1,6 @@
 # Windows Client / Web 状态
 
-> 基准日期：2026-09-04
+> 基准日期：2026-09-05
 > 范围：`web/` 共用 Vue 业务、`client/` Windows Tauri 壳与平台能力
 
 当前按全新内网部署实现。Windows 10/11 Tauri 是正式产品，桌面 Web 是共用代码的备用入口；不维护公网、系统代理、macOS、旧页面、旧 API 或旧客户端双轨。
@@ -23,15 +23,18 @@
 | API canonical 收敛 | 已完成 | 共用客户端仅使用 `/api/v1/workorder`、`/api/v1/materials`、`/api/v1/products`、`/api/v1/molds` 与 inventory-documents/balances/ledgers；不依赖旧任务、单数资料或旧 inventory 别名 |
 | 模块页拆分 | 已完成 | `ModulePage.vue` 只做注册表分发；统计、仓库、任务、模具、供应商和通用目录使用独立内容组件 |
 | 模具重构 | 已完成，待运行态验收 | 新页面支持筛选、表格/卡片详情 Drawer、图片分组、DWG 文件、位置管理、跨页批量移位、ZIP 预览/人工修正/导入导出，以及 ZIP、图片、DWG 拖拽添加；不迁移旧生命周期 UI |
-| 应用壳拆分 | 已完成 | `AppWorkspace.vue` 只消费导航、账号、连接和更新等壳层字段 |
-| 推荐导航架构 | 已完成 | 首页独立一级入口；业务按业务办理、基础资料、数据与报表分组；系统能力收进系统设置；仍由模块注册表按权限过滤 |
+| 三栏客户端壳 | 已完成，本地浏览器已验收 | 左侧业务导航支持完整/图标/隐藏并本机持久化；中央保留 ERP 业务区；1440px 右侧详情停靠为 420px，1280px 使用覆盖式 Drawer，同一详情不会重复出现 |
+| 主题与设置 | 已完成，本地浏览器已验收 | 默认博邦蓝亮色，可切换暗色及青绿/紫色；主题在 Vue 挂载前应用，连接与服务移入设置，健康状态不再长期占用首页顶部 |
+| 管理权限体验 | 已完成，本地管理员流程已验收 | 用户写权限可读取角色选项，角色写权限可读取权限选项；前端不再额外要求冗余读取权限，并禁用修改自己的角色；系统托管 Silence 不出现在账号列表 |
+| 暂缓模块状态 | 已完成，待真实旧库验收 | 任务单、仓库、供应商和统计入口保留；新库缺表时显示待重构说明并禁用写操作，统计不把不可用来源显示成真实零值 |
+| 应用壳拆分 | 已完成 | `AppWorkspace.vue` 组合业务导航、中央工作区、设置和响应式详情面板 |
 | 工作台控制器 | 已完成 | 配置、展示、DirtyGuard、模具、仓库、任务和通用目录均已下沉，3314 行降至 1516 行；根层负责会话、导航和领域组合 |
 | 任务窄域接口 | 已完成 | 控制器内部直接由任务 state/operations 构造四切片 `workorderContext`，根只返回该单一对象；任务组件不再注入全量 `WorkspaceContext` |
 | 样式治理 | 已完成 | `styles.css` 仅为分层入口；共享消费点全部使用 `--bb-*`，旧 `--brand/--muted/--line/--ink` 等兼容别名已删除 |
 | 桌面单模板 | 已完成 | 固定侧栏、桌面表格和 1024×680 最小窗口使用单一实现，不保留并行页面模板 |
-| CSS/Motion 分层 | 已整改，待运行态复验 | 高频 hover/focus/颜色反馈使用 CSS；启动/工作台、首页/业务页和模块页保留 `motion-v`；Element Plus Dialog/Drawer（客户导入/导出、客户资料、客户编码、替代默认资料、任务操作）正文移除嵌套 Motion，首帧由 Element Plus 保证可见；全局尊重 reduced motion |
-| 平板/手机 Web | 低频适配已完成，待验收 | Web 窄屏使用可收起导航、单列内容和表格横向滚动；Tauri 仍为桌面优先 |
-| Terra UX 设计包 | 已完成 | `gpt-5.6-terra/high` 只读审查启动、首页、客户资料和设置；UI 最终验收由用户执行 |
+| CSS/Motion 分层 | 已完成，本地浏览器已复验 | 高频 hover/focus/颜色反馈使用 CSS；停靠详情用 160ms 网格与轻位移形成空间连续性，首帧不透明度不低于 `.92`；覆盖式 Drawer 由 Element Plus 管理遮罩、焦点和开闭；全局尊重 reduced motion |
+| 平板/手机 Web | 低频适配已完成，本地窄屏已验收 | 1023px 以下使用覆盖导航、单列内容和表格横向滚动；导航具备 dialog 语义、焦点进入、Esc 关闭及焦点回归；Tauri 仍为桌面优先 |
+| UI/UX 设计与独立审查 | 已完成 | 只读设计阶段按现代工业客户端原则约束外观；实现后由独立 UI 审查复验。Figma 因无可写个人 Draft 未写入，Eagle 素材只读筛选后未强制引入 |
 | Windows 真机 | 待完成 | 需在 Windows 10/11、1920×1080、100%/125%/150% 缩放验收 |
 
 ## 2. 目录职责
@@ -54,6 +57,8 @@ web/src/composables/
   useModuleConfiguration.ts           表单/动作配置
   workspacePresentation.ts            展示格式化与纯计算
 web/src/platform/
+  appearance.ts                       主题、品牌色和左栏状态的本机持久化
+  moduleAvailability.ts               暂缓模块错误识别与用户提示
   connection.ts                       Web/Tauri 连接与发现适配
   dirtyGuard.ts                       未保存离开注册表
   types.ts                            平台能力契约
@@ -73,6 +78,7 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - 所有离开路径必须经过 DirtyGuardRegistry；保存中禁止离开，有未保存内容时默认保留。
 - Tauri 文件保存只有 `saved` 可提示成功；`cancelled` 不提示成功，`error` 显示具体原因。
 - Web 与 Tauri API、权限和错误语义保持一致，Go 服务端始终是最终裁决者。
+- 外观本地键固定为 `bb_erp_theme_mode`、`bb_erp_theme_accent` 和 `bb_erp_sidebar_mode`；不与账号同步。
 
 ## 4. 历史基线验证与本轮验证
 
@@ -90,8 +96,14 @@ client/src-tauri/src/save.rs           原生安全文件保存
 - `cargo check --locked`
 - `cargo test --locked`（26 项，包含 RFC1918 HTTP scope 回归测试）
 - `git diff --check`
-- 本轮 `web/npm run build`：通过；Vue 类型检查、Vite 生产构建通过，最大入口约 176.73 kB。
-- 本轮 `client/npm run build`：通过；Tauri 前端类型检查、Vite 生产构建通过；仅有既有 `@vueuse/core` Rollup 注释警告。
+- 本轮客户端壳、主题、错误语义、对齐、焦点循环和详情交互：Web `npm test` 27 项通过，Web `npm run build` 通过，Client `npm run build` 通过。
+- 本轮隔离 SQLite + 本地浏览器已完成真实登录与已认证页面检查：新库管理员登录、客户资料新增与详情、系统账号列表隐藏托管 Silence、仓库暂缓状态、统计数据源降级、设置与暗色切换均通过。
+- 本轮桌面浏览器尺寸检查：1440×900 为 `224px / 796px / 420px` 三栏且停靠详情无遮罩；1280×800 自动改为覆盖式 Drawer；1024×680 保持桌面导航；1023×680 改为 dialog 导航。左栏三档实测 224/64/0，窄屏焦点进入、Esc 关闭和焦点回归通过。
+- 本轮详情关闭与焦点：覆盖式 Drawer 点击遮罩空白区和 Esc 均可关闭；停靠态使用关闭按钮或 Esc，不将中央表格、筛选和文本区域绑定为关闭热区；查看切编辑会进入首个字段，关闭恢复触发点。真实 Tauri 窗口、Windows/WebView2 和 Windows 缩放仍未验收。
+- 本轮 `web/npm run build`：通过；Vue 类型检查、Vite 生产构建通过，最大异步脚本约 159.67 kB。
+- 本轮 `client/npm run build`：通过；Tauri 前端类型检查、Vite 生产构建通过；最大入口脚本约 409.60 kB，仅有既有 `@vueuse/core` Rollup 注释警告。
+- 本轮 Tauri Rust 与打包验证：`cargo fmt --check`、`cargo check --locked`、`cargo test --locked` 全部通过，26 项 Rust 测试通过；`npx tauri build --bundles app` 成功生成 macOS `.app`。构建成功不能替代真实窗口流程和 Windows/WebView2 验收。
+- 本轮打包后 Tauri 窗口：macOS `.app` 已实际启动到 `tauri://localhost`，启动页、品牌信息、未发现服务降级说明、手动服务器输入和重新发现入口均在原生窗口首帧可见；本次未在该窗口完成已认证业务流程，因此只记录为启动显示验证，不替代 Windows 或完整 Tauri 业务验收。
 - 本轮模具页面：Web 与 Client `npm run build` 均通过；Windows 10/11、图片大批量上传、ZIP 导入和 DWG 下载仍需运行态验收。
 - 本轮模具交互：图片组、ZIP 导入和 DWG 区域增加键盘可达的拖拽/点击入口；客户 Excel 导入同样提供拖放区，顶部按钮只打开弹窗，点击区域才打开系统文件选择器；Tauri 原生文件拖放路径已桥接为 WebView `File`，Windows 不依赖 HTML5 `dataTransfer.files`；详情加载失败、未保存关闭、编辑入口和窄屏 Drawer/空态显示已整改；Web/Tauri 生产构建与真实 Finder/资源管理器拖入仍需运行态验收。
 - 本轮 `web/npm test`：通过，4 项启动连接/身份隔离回归测试通过。

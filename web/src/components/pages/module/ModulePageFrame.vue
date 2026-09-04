@@ -7,21 +7,21 @@
       @back="switchModule('dashboard')"
     >
       <template #actions>
-        <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive" class="add-button" type="primary" @click="toggleCreateForm">
+        <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive && !moduleUnavailable" class="add-button" type="primary" :disabled="loading" @click="toggleCreateForm">
           {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
         </el-button>
       </template>
     </PageHeader>
 
-    <div v-if="activeKey === 'warehouses'" class="warehouse-tabs" aria-label="仓库分类">
+    <div v-if="activeKey === 'warehouses' && !moduleUnavailable" class="warehouse-tabs" aria-label="仓库分类">
       <el-segmented v-model="activeWarehouseTab" :options="warehouseTabOptions" @change="switchWarehouseTab" />
     </div>
 
-    <ModuleCreateForm v-if="activeKey !== 'molds'" />
+    <ModuleCreateForm v-if="activeKey !== 'molds' && !moduleUnavailable" />
     <ModuleAssignmentDialogs />
 
     <FilterBar
-      v-if="activeKey !== 'updates' && activeKey !== 'molds'"
+      v-if="activeKey !== 'updates' && activeKey !== 'molds' && !moduleUnavailable"
       :message="panelMessage"
       :loading="loading"
       :resettable="hasActiveFilters"
@@ -44,11 +44,19 @@
       </template>
     </FilterBar>
 
-    <section v-if="activeKey !== 'molds' && operationalSummaryCards.length && !loading && rows.length" class="operational-summary-grid" :aria-label="`${activeModule?.title || '业务'}当前页摘要`">
+    <section v-if="activeKey !== 'molds' && !moduleUnavailable && operationalSummaryCards.length && !loading && rows.length" class="operational-summary-grid" :aria-label="`${activeModule?.title || '业务'}当前页摘要`">
       <MetricCard v-for="card in operationalSummaryCards" :key="card.label" v-bind="card" />
     </section>
 
-    <PageState v-if="skeletonResult" kind="readonly" :title="skeletonResult.name" :description="skeletonResult.message" />
+    <PageState
+      v-if="moduleUnavailable"
+      kind="readonly"
+      title="数据结构待后续重构"
+      :description="`${moduleUnavailable.message}。当前保留客户端页面入口，新增、编辑和业务办理操作已暂停。`"
+      action-label="重新检查"
+      @action="loadActiveModule"
+    />
+    <PageState v-else-if="skeletonResult" kind="readonly" :title="skeletonResult.name" :description="skeletonResult.message" />
     <UpdateCenter v-else-if="activeKey === 'updates'" :token="token" :can-check="hasPermission('system:updates:write')" />
     <PageState v-else-if="listError && !hasRenderableData" kind="error" title="数据加载失败" :description="listError" action-label="重新加载" @action="loadActiveModule" />
     <AnimatePresence v-else mode="wait" :initial="false">
@@ -87,7 +95,7 @@ const {
   warehouseTabOptions, switchWarehouseTab, panelMessage, loading,
   hasActiveFilters, applySearch, resetFilters, loadActiveModule, searchKeyword,
   listSearchPlaceholder, operationalSummaryCards, rows, skeletonResult,
-  token, hasPermission, listError, hasRenderableData, switchModule,
+  token, hasPermission, listError, hasRenderableData, switchModule, moduleUnavailable,
 } = useWorkspaceContext()
 const {
   workorderStatusFilter, workorderTypeFilter, workorderPriorityFilter,

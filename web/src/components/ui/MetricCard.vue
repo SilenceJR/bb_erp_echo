@@ -41,16 +41,15 @@ withDefaults(defineProps<{
   gap: var(--bb-space-2);
   overflow: hidden;
   border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-xl);
+  border-radius: var(--bb-radius-md);
   background: var(--bb-bg-surface);
   padding: var(--bb-space-4);
-  box-shadow: var(--bb-shadow-xs);
 }
 
 .ui-metric-card::before {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 2px;
   background: var(--bb-brand-500);
   content: '';
 }

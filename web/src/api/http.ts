@@ -2,6 +2,8 @@ import type { ApiErrorBody } from '../types'
 import {activeTransport, desktopBridge} from './transport'
 import type {DesktopFileUploadResult} from './transport'
 import type {FileSaveResult} from '../platform/types'
+import {normalizeApiErrorBody} from '../platform/apiError'
+import {moduleUnavailableEvent} from '../platform/moduleAvailability'
 
 export interface AuthSessionHooks {
   getToken: () => string
@@ -103,12 +105,9 @@ export async function request<T>(
   }
 
   if (!response.ok) {
-    const fallback: ApiErrorBody = {
-      code: `HTTP_${response.status}`,
-      message: typeof data === 'string' ? data : data?.message || '请求失败',
-      request_id: data?.request_id || '',
-    }
-    throw new ApiError(response.status, fallback)
+    const error = new ApiError(response.status, normalizeApiErrorBody(response.status, data))
+    notifyModuleUnavailable(path, error)
+    throw error
   }
 
   return data as T
@@ -135,11 +134,13 @@ export async function uploadNativeFiles<T>(
   try { data = response.body ? JSON.parse(response.body) : null } catch { data = response.body }
   if (response.status < 200 || response.status >= 300) {
     const body = data && typeof data === 'object' ? data as Partial<ApiErrorBody> : null
-    throw new ApiError(response.status, {
+    const error = new ApiError(response.status, {
       code: body?.code || `HTTP_${response.status}`,
       message: typeof data === 'string' ? data : body?.message || '请求失败',
       request_id: body?.request_id || '',
     })
+    notifyModuleUnavailable(path, error)
+    throw error
   }
   return data as T
 }
@@ -157,14 +158,16 @@ export async function requestBlob(
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || ''
     const data = contentType.includes('application/json') ? await response.json() : await response.text()
-    const fallback: ApiErrorBody = {
-      code: `HTTP_${response.status}`,
-      message: typeof data === 'string' ? data : data?.message || '请求失败',
-      request_id: data?.request_id || '',
-    }
-    throw new ApiError(response.status, fallback)
+    const error = new ApiError(response.status, normalizeApiErrorBody(response.status, data))
+    notifyModuleUnavailable(path, error)
+    throw error
   }
   return response.blob()
+}
+
+function notifyModuleUnavailable(path: string, error: ApiError): void {
+  if (error.code !== 'module_not_initialized' || typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(moduleUnavailableEvent, {detail: {path, message: error.message}}))
 }
 
 async function fetchWithAuthRetry(path: string, init: RequestInit, token: string): Promise<Response> {

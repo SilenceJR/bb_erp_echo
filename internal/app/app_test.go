@@ -59,7 +59,7 @@ func TestInitializationHealthReadyAndSQLiteWAL(t *testing.T) {
 	}
 }
 
-func TestCanonicalWarehouseRoutesDoNotExposeRootAlias(t *testing.T) {
+func TestCanonicalWarehouseRoutesReportDeferredSchemaWithoutRestoringRootAlias(t *testing.T) {
 	erp := newTestApp(t)
 	token := erp.login(t, "admin", "admin123456")
 	for _, test := range []struct {
@@ -75,15 +75,15 @@ func TestCanonicalWarehouseRoutesDoNotExposeRootAlias(t *testing.T) {
 		}
 	}
 
-	if rec := erp.request(http.MethodGet, "/api/v1/warehouses", token, nil); rec.Code != http.StatusOK {
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouses", token, nil); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "module_not_initialized") {
 		t.Fatalf("canonical warehouse management route status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/tabs", token, nil); rec.Code != http.StatusOK {
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/tabs", token, nil); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "module_not_initialized") {
 		t.Fatalf("warehouse tabs route status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestCreateDepartmentTerminalRefreshesPoliciesBeforeUse(t *testing.T) {
+func TestCreateDepartmentTerminalStartsWithoutAutomaticRole(t *testing.T) {
 	erp := newTestApp(t)
 	adminToken := erp.login(t, "admin", "admin123456")
 	var terminal model.Terminal
@@ -120,24 +120,13 @@ func TestCreateDepartmentTerminalRefreshesPoliciesBeforeUse(t *testing.T) {
 		t.Fatalf("create department terminal status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	// The test intentionally does not call ReloadPolicies: login and every
-	// protected request must observe the policy refresh performed by CreateUser.
+	// 新建部门终端不再自动绑定历史角色，必须由管理员显式授权。
 	terminalSession := erp.loginSession(t, username, password)
-	if rec = erp.request(http.MethodGet, "/api/v1/workorder", terminalSession.AccessToken, nil); rec.Code != http.StatusOK {
-		t.Fatalf("new terminal workorder read status = %d body=%s", rec.Code, rec.Body.String())
+	if rec = erp.request(http.MethodGet, "/api/v1/workorder", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("new terminal workorder read status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
-	if rec = erp.request(http.MethodGet, "/api/v1/warehouse/items?tab=product", terminalSession.AccessToken, nil); rec.Code != http.StatusOK {
-		t.Fatalf("new terminal warehouse read status = %d body=%s", rec.Code, rec.Body.String())
-	}
-
-	if rec = erp.request(http.MethodPost, "/api/v1/workorder", terminalSession.AccessToken, map[string]any{
-		"type":                  "general",
-		"title":                 "终端写权限测试",
-		"description":           "验证默认终端角色允许创建任务单",
-		"target_department_ids": []uint{terminal.DepartmentID},
-		"operator_employee_id":  operator.ID,
-	}); rec.Code != http.StatusCreated {
-		t.Fatalf("new terminal workorder write status = %d body=%s", rec.Code, rec.Body.String())
+	if rec = erp.request(http.MethodGet, "/api/v1/warehouse/items?tab=product", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("new terminal warehouse read status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 	if rec = erp.request(http.MethodPost, "/api/v1/warehouse/items", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("new terminal warehouse write status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
@@ -466,6 +455,32 @@ func TestJWTCasbinAndSingleOrganizationDepartmentCreate(t *testing.T) {
 	}
 }
 
+func TestSystemManagedSilenceCanLoginButIsHiddenFromAccountManagement(t *testing.T) {
+	erp := newTestApp(t)
+	_ = erp.login(t, "Silence", "silence-test-password")
+	adminToken := erp.login(t, "admin", "admin123456")
+	rec := erp.request(http.MethodGet, "/api/v1/system/users?q=Silence", adminToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list users status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Items []model.User `json:"items"`
+		Total int64        `json:"total"`
+	}
+	decodeJSON(t, rec, &page)
+	if page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("system managed Silence leaked into account list: %+v", page)
+	}
+	var silence model.User
+	if err := erp.DB.Where("username = ? AND system_managed = ?", "Silence", true).First(&silence).Error; err != nil {
+		t.Fatalf("load system managed Silence: %v", err)
+	}
+	rec = erp.request(http.MethodPost, "/api/v1/system/users/"+strconv.FormatUint(uint64(silence.ID), 10)+"/reset-password", adminToken, map[string]any{"password": "replacement-password"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("managed Silence reset status=%d want=%d body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
 // TestAuditPersonalAndDepartmentTerminalAccounts 验证两类账号的审计差异：
 // 个人账号记录具体人员，部门终端账号记录部门和终端且人员为“未知”。
 func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
@@ -489,35 +504,35 @@ func TestAuditPersonalAndDepartmentTerminalAccounts(t *testing.T) {
 		t.Fatalf("personal audit person = %q", personalAudit.PersonName)
 	}
 
-	product := model.Product{
-		Name:   "审计测试产品",
-		Code:   "AUDIT-PRODUCT-001",
-		Unit:   "个",
-		Status: model.StatusActive,
-	}
-	if err := erp.DB.Create(&product).Error; err != nil {
-		t.Fatalf("create audit product: %v", err)
-	}
-	birth := time.Date(1990, 1, 1, 0, 0, 0, 0, time.Local)
-	operator := model.Employee{OrganizationID: 1, Name: "审计操作员工", HireDate: birth, BirthDate: birth, Status: model.StatusActive}
-	if err := erp.DB.Create(&operator).Error; err != nil {
-		t.Fatalf("create audit operator: %v", err)
-	}
-	if err := erp.DB.Create(&model.EmployeeDepartment{EmployeeID: operator.ID, DepartmentID: 1}).Error; err != nil {
-		t.Fatalf("link audit operator: %v", err)
-	}
-
 	terminalToken := erp.createTerminalUserAndLogin(t)
-	rec = erp.request(http.MethodPost, "/api/v1/workorder", terminalToken, map[string]any{
-		"code":                  "AUDIT-TASK-001",
-		"type":                  "production",
-		"product_id":            product.ID,
-		"planned_quantity":      int64(10000),
-		"target_department_ids": []uint{1},
-		"operator_employee_id":  operator.ID,
+	var terminalUser model.User
+	if err := erp.DB.Where("username = ?", "injection-terminal-01").First(&terminalUser).Error; err != nil {
+		t.Fatalf("find terminal user: %v", err)
+	}
+	var departmentWrite model.Permission
+	if err := erp.DB.Where("code = ?", "system:departments:write").First(&departmentWrite).Error; err != nil {
+		t.Fatalf("find department write permission: %v", err)
+	}
+	terminalRole := model.Role{Name: "终端审计测试", Code: "terminal_audit_test"}
+	if err := erp.DB.Create(&terminalRole).Error; err != nil {
+		t.Fatalf("create terminal audit role: %v", err)
+	}
+	if err := erp.DB.Create(&model.RolePermission{RoleID: terminalRole.ID, PermissionID: departmentWrite.ID}).Error; err != nil {
+		t.Fatalf("bind terminal audit permission: %v", err)
+	}
+	if err := erp.DB.Create(&model.UserRole{UserID: terminalUser.ID, RoleID: terminalRole.ID}).Error; err != nil {
+		t.Fatalf("bind terminal audit role: %v", err)
+	}
+	if err := erp.RoleService.ReloadPolicies(); err != nil {
+		t.Fatalf("reload terminal audit policy: %v", err)
+	}
+	rec = erp.request(http.MethodPost, "/api/v1/system/departments", terminalToken, map[string]any{
+		"organization_id": uint(1),
+		"name":            "终端审计部门",
+		"code":            "TERMINAL-AUDIT",
 	})
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("terminal task create status = %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("terminal department create status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	var terminalAudit model.AuditLog
@@ -602,6 +617,7 @@ func newTestApp(t *testing.T) *testApp {
 	t.Setenv("BB_ERP_LOG_CONSOLE", "false")
 	t.Setenv("BB_ERP_WEB_DIST_DIR", webDir)
 	t.Setenv("BB_ERP_JWT_SECRET", "test-secret")
+	t.Setenv("BB_ERP_SILENCE_PASSWORD", "silence-test-password")
 	t.Setenv("BB_ERP_HTTP_ALLOWED_ORIGINS", "http://localhost")
 	// Each test uses an in-process Echo handler; keep the real UDP discovery
 	// listener disabled so parallel packages never contend for port 39080.

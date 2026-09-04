@@ -588,7 +588,13 @@ GET http://127.0.0.1:8080/api/v1/workorder/{{workorder_id}}/logs
 Authorization: Bearer {{token}}
 
 ### 查询统计报表
+# 新数据库缺少暂缓数据源时仍返回 200；检查 data_status、unavailable_sources、message，空值不可视为真实零值。
 GET http://127.0.0.1:8080/api/v1/statistics
+Authorization: Bearer {{token}}
+
+### 验证暂缓模块统一错误
+# 全新数据库预期 503，code=module_not_initialized；已有相关表的升级数据库继续返回正常业务响应。
+GET http://127.0.0.1:8080/api/v1/warehouses
 Authorization: Bearer {{token}}
 
 ### 客户导出预览（最终 XLSX 同一九列数据源）

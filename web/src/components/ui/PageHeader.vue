@@ -46,8 +46,8 @@ const emit = defineEmits<{
 <style scoped>
 .ui-page-header {
   display: grid;
-  gap: var(--bb-space-2);
-  margin-bottom: var(--bb-space-6);
+  gap: var(--bb-space-1);
+  margin-bottom: var(--bb-space-4);
 }
 
 .ui-page-header__breadcrumb {
@@ -65,7 +65,7 @@ const emit = defineEmits<{
 
 .ui-page-header__main {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--bb-space-6);
 }
@@ -73,14 +73,14 @@ const emit = defineEmits<{
 .ui-page-header__copy h1 {
   margin: 0;
   color: var(--bb-text-primary);
-  font-size: var(--bb-font-size-30);
+  font-size: var(--bb-font-size-24);
   line-height: var(--bb-line-height-tight);
 }
 
 .ui-page-header__eyebrow {
   display: block;
   margin-bottom: var(--bb-space-1);
-  color: var(--bb-brand-700);
+  color: var(--bb-accent-text);
   font-size: var(--bb-font-size-12);
   font-weight: var(--bb-font-weight-bold);
   letter-spacing: .08em;
@@ -88,7 +88,7 @@ const emit = defineEmits<{
 }
 
 .ui-page-header__copy p {
-  margin: var(--bb-space-2) 0 0;
+  margin: var(--bb-space-1) 0 0;
   color: var(--bb-text-secondary);
   font-size: var(--bb-font-size-14);
 }
@@ -102,5 +102,18 @@ const emit = defineEmits<{
 
 .ui-page-header__actions :deep(.el-button) {
   margin: 0;
+}
+
+@media (max-width: 1023px) {
+  .ui-page-header__main {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--bb-space-4);
+  }
+
+  .ui-page-header__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 </style>

@@ -1,8 +1,10 @@
 package role
 
 import (
+	"errors"
 	"net/http"
 
+	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
@@ -80,7 +82,10 @@ func (h *Handler) CreateRole(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	item := model.Role{Name: req.Name, Code: req.Code, Description: req.Description}
+	if req.Code == SuperAdminCode {
+		return echo.NewHTTPError(http.StatusBadRequest, "超级管理员角色由系统维护，不能重复创建")
+	}
+	item := model.Role{Name: req.Name, Code: req.Code, Description: req.Description, System: false}
 	if err := h.DB.Create(&item).Error; err != nil {
 		return err
 	}
@@ -99,8 +104,14 @@ func (h *Handler) AssignRolePermissions(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
 	}
-	if err := h.Service.ReplaceRolePermissions(id, *req.PermissionIDs); err != nil {
-		return err
+	var assignmentErr error
+	if authorized, ok := h.Service.(AuthorizedAssignmentService); ok {
+		assignmentErr = authorized.ReplaceRolePermissionsForActor(auth.GetCurrentUser(c), id, *req.PermissionIDs)
+	} else {
+		assignmentErr = h.Service.ReplaceRolePermissions(id, *req.PermissionIDs)
+	}
+	if assignmentErr != nil {
+		return mapAssignmentError(assignmentErr)
 	}
 	return c.NoContent(http.StatusNoContent)
 }
@@ -115,4 +126,25 @@ func (h *Handler) ListPermissions(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, result)
+}
+
+func mapAssignmentError(err error) error {
+	switch {
+	case errors.Is(err, ErrAssignmentActorRequired):
+		return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
+	case errors.Is(err, ErrAssignmentPermissionDenied):
+		return echo.NewHTTPError(http.StatusForbidden, "没有权限管理角色或权限")
+	case errors.Is(err, ErrAssignmentOrganizationDenied), errors.Is(err, ErrAssignmentSelfDenied), errors.Is(err, ErrManagerCannotGrant):
+		return echo.NewHTTPError(http.StatusForbidden, "无权执行该授权操作")
+	case errors.Is(err, ErrSystemRoleLocked):
+		return echo.NewHTTPError(http.StatusForbidden, "超级管理员系统角色已锁定，不能修改")
+	case errors.Is(err, ErrInvalidRoleID), errors.Is(err, ErrInvalidPermissionID), errors.Is(err, ErrDuplicateAssignmentID):
+		return echo.NewHTTPError(http.StatusBadRequest, "角色或权限 ID 无效")
+	case errors.Is(err, ErrLastSuperAdmin):
+		return echo.NewHTTPError(http.StatusConflict, "至少需要保留一个启用中的超级管理员")
+	case errors.Is(err, ErrSuperAdminNotAllowed):
+		return echo.NewHTTPError(http.StatusBadRequest, "部门终端账号不能授予超级管理员角色")
+	default:
+		return err
+	}
 }

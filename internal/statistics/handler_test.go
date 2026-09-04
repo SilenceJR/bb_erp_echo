@@ -44,6 +44,35 @@ func TestDashboardAggregatesAndCostTrim(t *testing.T) {
 	}
 }
 
+func TestDashboardReportsDeferredSourcesWithoutQueryingMissingTables(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&model.CustomerCode{}, &model.Product{}, &model.Material{}, &model.Mold{}, &model.MoldLocation{}, &model.AuditLog{}); err != nil {
+		t.Fatalf("migrate available statistics sources: %v", err)
+	}
+	if err := db.Create(&model.Product{Name: "可用产品", Code: "P-READY", Unit: "个", Status: model.StatusActive}).Error; err != nil {
+		t.Fatalf("seed available product: %v", err)
+	}
+
+	rec := performStatisticsRequest(t, &Handler{DB: db}, []string{role.CostViewCode})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("deferred dashboard status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var result DashboardResponse
+	decodeStatisticsJSON(t, rec, &result)
+	if result.DataStatus != "sources_unavailable" || len(result.UnavailableSources) != 3 {
+		t.Fatalf("deferred source status = %q sources=%v", result.DataStatus, result.UnavailableSources)
+	}
+	if result.Message == "" {
+		t.Fatal("deferred dashboard must explain that zero values are not real metrics")
+	}
+	if result.Summary.WarehouseItems != 1 || len(result.RecentWorkOrders) != 0 || len(result.Inventory.ByItemType) != 0 {
+		t.Fatalf("available/deferred values were mixed incorrectly: %+v", result)
+	}
+}
+
 func openStatisticsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

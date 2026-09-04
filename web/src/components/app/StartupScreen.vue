@@ -171,9 +171,7 @@ watch(focusRevision, focusResult)
   display: grid;
   min-height: 100vh;
   place-items: center;
-  background:
-    radial-gradient(circle at 18% 15%, var(--bb-brand-100), transparent 34%),
-    var(--bb-bg-page);
+  background: var(--bb-bg-page);
   padding: var(--bb-space-8);
 }
 .startup-card {
@@ -184,17 +182,15 @@ watch(focusRevision, focusResult)
   border-radius: var(--bb-radius-xl);
   background: var(--bb-bg-surface);
   padding: var(--bb-space-10);
-  box-shadow: var(--bb-shadow-md);
 }
 .startup-brand { display: flex; align-items: center; gap: var(--bb-space-5); }
 .startup-brand img {
   width: 148px;
   border: 1px solid var(--bb-border-subtle);
   border-radius: var(--bb-radius-md);
-  animation: startup-logo-in var(--bb-duration-slow) var(--bb-ease-standard) both;
 }
 .startup-brand div, .startup-progress, .startup-result, .server-list { display: grid; gap: var(--bb-space-3); }
-.startup-brand span, .startup-result__heading span { color: var(--bb-brand-700); font-size: var(--bb-font-size-12); font-weight: var(--bb-font-weight-bold); letter-spacing: .06em; }
+.startup-brand span, .startup-result__heading span { color: var(--bb-accent-text); font-size: var(--bb-font-size-12); font-weight: var(--bb-font-weight-bold); letter-spacing: .06em; }
 .startup-brand h1, .startup-result__heading h2 { margin: 0; color: var(--bb-text-primary); }
 .startup-brand h1 { font-size: var(--bb-font-size-24); }
 .startup-brand small, .startup-progress p, .startup-help { color: var(--bb-text-secondary); }
@@ -224,11 +220,4 @@ watch(focusRevision, focusResult)
 .manual-server-form { display: grid; gap: var(--bb-space-4); }
 .manual-server-form :deep(.el-form-item) { margin-bottom: 0; }
 .startup-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
-@keyframes startup-logo-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .startup-brand img { animation: none; }
-}
 </style>

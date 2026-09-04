@@ -23,7 +23,8 @@ import (
 // - JWT：登录令牌签名、签发方和过期时间。
 // - Log：结构化日志级别。
 // - Web：Web 管理端静态文件配置。
-// - Admin：首次启动时自动创建的管理员账号。
+// - Admin：首次启动时自动创建的原有管理员账号。
+// - Silence：全新数据库首次启动时额外创建的 Silence 管理员配置。
 // - Discovery：局域网服务发现和单服务预检配置。
 type Config struct {
 	App       AppConfig       `koanf:"app"`
@@ -33,6 +34,7 @@ type Config struct {
 	Log       LogConfig       `koanf:"log"`
 	Web       WebConfig       `koanf:"web"`
 	Admin     AdminConfig     `koanf:"admin"`
+	Silence   SilenceConfig   `koanf:"silence"`
 	Update    UpdateConfig    `koanf:"update"`
 	Files     FilesConfig     `koanf:"files"`
 	Discovery DiscoveryConfig `koanf:"discovery"`
@@ -133,6 +135,12 @@ type AdminConfig struct {
 	Name string `koanf:"name"`
 }
 
+// SilenceConfig 描述全新数据库额外管理员的初始化配置。
+// Password 不提供源码默认值，只能通过 BB_ERP_SILENCE_PASSWORD 注入。
+type SilenceConfig struct {
+	Password string `koanf:"password"`
+}
+
 // UpdateConfig 描述 GitHub、Gitee 或内网更新源配置。
 type UpdateConfig struct {
 	// Enabled 表示是否允许服务端主动检查远端更新清单。
@@ -187,6 +195,7 @@ func Load() (*Config, error) {
 		"admin.username":                 "admin",
 		"admin.password":                 "admin123456",
 		"admin.name":                     "系统管理员",
+		"silence.password":               "",
 		"update.enabled":                 false,
 		"update.manifest_url":            "",
 		"update.cache_dir":               "updates",

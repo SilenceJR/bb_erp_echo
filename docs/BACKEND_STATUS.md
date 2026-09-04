@@ -2,7 +2,7 @@
 
 > 基准日期：2026-09-05
 
-Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当前按全新内网部署实现，不为旧数据库、旧 API 或旧客户端保留迁移/兼容分支。
+Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当前按全新内网部署实现；本轮对已有数据库只保留非破坏、幂等的角色与暂缓模块兼容，不恢复旧 API 或旧客户端双轨。
 
 ## 1. 模块状态
 
@@ -13,11 +13,11 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 组织人员 | 已完成 | 单组织、部门、员工多部门关系、终端、账号归属 |
 | 操作责任 | 已完成 | 任务与库存写操作必须显式选择当前部门有效员工，并保存账号/终端/部门快照 |
 | 客户 | 已完成 | 客户编码、多资料、Excel 预览令牌、原子导入、分页导出 |
-| 基础资料 | 已完成 | 供应商、物料、产品、仓库与库位 |
-| 库存 | 已完成 | 定点数量、单据、过账、冲销、禁止负库存、幂等、移动加权平均成本 |
-| 任务单 | 已完成 | 生产/通用任务、部门任务、部分完成、待结案、暂停/恢复、加急和强制完成 |
+| 基础资料 | 部分暂缓 | 物料、产品等共享基础表继续创建；新数据库暂不创建供应商、仓库和库位表，已有表与数据不删除 |
+| 库存 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建库存表，访问返回统一 `503 module_not_initialized`，已有表时继续工作 |
+| 任务单 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建任务/部门任务/流转表，写操作不可用，已有表时继续工作 |
 | 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；资料包上限 2 GiB；不保留旧生命周期 |
-| 统计审计 | 已完成 | 统计聚合、成本权限与审计查询 |
+| 统计审计 | 降级兼容已完成 | 缺少供应商、库存或任务数据源时仍返回 200，并用 `data_status`、`unavailable_sources`、`message` 明确标识；审计查询不受影响 |
 | 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
 | 客户端更新 | 已完成 | Windows full-only 更新、内网同源代理、签名、哈希、临时文件与失败恢复 |
 | 局域网发现 | 已完成 | SQLite 稳定身份、匿名身份接口、UDP 39080、启动预检和 responder 生命周期 |
@@ -75,6 +75,11 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 
 - `/health` 只表示进程存活；`/ready` 同时检查数据库。
 - 前端权限隐藏只用于体验，Handler/Service/事务层仍必须验证权限和业务状态。
+- 管理写权限隐含读取完成管理所必需的数据：用户写可读用户和角色，角色写可读角色与权限；修改用户角色仍需用户写，修改角色权限仍需角色写。
+- 管理员不能修改自己的角色、跨组织授权、授予自己未实际持有的角色或授予自身权限集合之外的权限；实际超级管理员可授予任意合法角色，普通管理员不能修改已被其他组织使用的共享角色。无效 ID 整体失败。部门终端不能成为超级管理员，停用、删除或降权不能使启用中的超级管理员数量归零。
+- `super_admin` 是唯一锁定系统角色并拥有全部权限（含 `cost:view`）。新库不创建 `boss` 或终端操作员角色，新终端账号不自动分配角色；旧库同名历史角色解除系统锁定但保留关联。
+- 全新数据库保留原有 `admin` 初始化规则，并额外创建 `Silence`；额外密码只从 `BB_ERP_SILENCE_PASSWORD` 配置读取且仅保存 bcrypt 哈希。缺少配置时新库初始化失败关闭，已有数据库不会补建或重置 Silence。系统注入的 Silence 带内部托管标记，不出现在账号管理列表、计数、搜索和分页中，账号管理写接口也不能按 ID 修改它；普通同名账号不受影响。
+- 供应商、仓库、库位、库存和任务相关模型已从自动迁移移除；缺表接口返回稳定的 `503 module_not_initialized`，统计接口按可用数据源降级，不能把缺表解释为无引用、库存为零或真实经营零值。客户删除在库存单据或任务单表缺失时同样失败关闭。
 - 任务与仓库/库存写操作必须提交 `operator_employee_id`；服务端在事务内重新验证账号当前部门、组织、部门/员工状态和成员关系。
 - 库存幂等键绑定接口范围、账号、组织、规范化请求和操作员工；不匹配返回 `409`。
 - 数量使用四位定点整数，金额/单价使用分；禁止把前端浮点值直接作为库存或金额事实。
@@ -84,7 +89,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
-- 权限编码绑定采用 fail-closed：任何缺失或拼写错误都会失败，不会把空查询结果解释为全量授权；部门终端账号的用户写入与默认角色绑定同一事务，提交后同步刷新 Casbin 策略，绑定失败完整回滚，策略刷新失败返回 `503` 而不虚报可用；外层 update manifest 拒绝重复 JSON key、未知字段和尾随 JSON。
+- 权限编码绑定采用 fail-closed：任何缺失或拼写错误都会失败，不会把空查询结果解释为全量授权；新建部门终端账号不再自动绑定角色，显式角色修改提交后同步刷新 Casbin 策略，失败不得虚报可用；外层 update manifest 拒绝重复 JSON key、未知字段和尾随 JSON。
 - 权限刷新先在临时 Casbin 引擎中构建数据库完整快照，全部成功后原子切换；HTTP 权限中间件、文件权限和角色服务禁止直接读写当前引擎。并发 `Enforce` 期间不会读到清空或半成品策略，构建失败保留上一份可用快照。
 
 ## 4. 本轮验证
@@ -103,7 +108,8 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - discovery 慢候选并发验证、候选上限、身份 DTO 严格字段/文本校验、`no-store` 和并发 Start/Shutdown 竞态回归测试
 - Tauri RFC1918 HTTP scope 回归测试：允许 loopback、`10/8`、`172.16/12`、`192.168/16`，拒绝公网、超出 `172.16/12` 的地址和 HTTPS。
 - Swagger `docs.go`、JSON、YAML 同步
-- 真实 app 集成验证部门终端账号通过 `POST /api/v1/system/users` 创建后可直接登录；`workorder` 读写和 `warehouse` 读取成功，`warehouse` 写入按默认角色返回 `403`，测试未手工调用 `ReloadPolicies`。
+- 本轮权限与模块过渡测试覆盖：管理写权限读取回退、自身/跨组织/越权授权拒绝、无效 ID 失败关闭、终端禁止超级管理员、最后一个超级管理员保护、新终端无默认角色，以及新库暂缓接口统一 503、统计 200 降级。
+- 本轮初始化测试覆盖：原有 admin 与额外 Silence 同时创建、Silence 密码通过配置注入并以 bcrypt 哈希保存、已有数据库不补建或重置、历史角色幂等解除锁定且保留用户关联。
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
 - `git diff --check`
 - 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
@@ -114,7 +120,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。
 - 本轮前端弹层显示整改不改变 API、权限或数据契约；客户导入/导出、客户资料和任务操作弹层已移除 Teleport 内不可靠的 Motion 正文包装，待 Web/Tauri 与 Windows 真机完成首帧可见性复验。
 - 启动重复排查确认属于开发 Vite 依赖发现重载现象，不涉及 Go 服务或认证续期；Tauri `--bundles app` 生产 `.app` 构建成功，完整 DMG 仅受当前 macOS 挂载脚本环境限制。
-- 本轮扩展图片静态预览：`go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/file ./internal/mold`、`go test -tags nodynamic -count=1 ./internal/file ./internal/mold ./internal/app`、Web 测试、Web/Client 生产构建、Windows amd64 `CGO_ENABLED=0` + `nodynamic` 服务端跨编译、`git diff --check` 和 Swagger 三份产物同步均通过；HEIC、AVIF 真实编解码器样本已在当前 macOS 环境生成 JPEG 预览。当前 macOS 未安装 Rust 工具链，因此本机未执行 Tauri Rust 检查或 Windows NSIS 打包；正式安装包仍由 `windows-latest` 作业按 `nodynamic` 构建 Go 服务端、Tauri 客户端并组装，打包结果和 Windows 真机上传/解码、极端高清图、磁盘不足、真实业务权限在 Windows 环境验收。
+- 本轮扩展图片静态预览：`go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/file ./internal/mold`、`go test -tags nodynamic -count=1 ./internal/file ./internal/mold ./internal/app`、Web 测试、Web/Client 生产构建、Windows amd64 `CGO_ENABLED=0` + `nodynamic` 服务端跨编译、`git diff --check` 和 Swagger 三份产物同步均通过；HEIC、AVIF 真实编解码器样本已在当前 macOS 环境生成 JPEG 预览。本轮最终复核时 Rust 工具链可用，`cargo fmt --check`、`cargo check --locked` 和 26 项 `cargo test --locked` 已通过；Windows NSIS 仍只能由 `windows-latest` 作业组装，Windows 真机上传/解码、极端高清图、磁盘不足和真实业务权限仍在目标环境验收。
 
 ## 5. 待完成
 

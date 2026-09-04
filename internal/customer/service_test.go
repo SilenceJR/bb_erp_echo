@@ -17,6 +17,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/spreadsheet"
 
@@ -35,6 +36,14 @@ func newCustomerTestDB(t *testing.T) *gorm.DB {
 	}
 	if err = db.AutoMigrate(&model.CustomerCode{}, &model.CustomerProfile{}, &model.ImportSession{}); err != nil {
 		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE inventory_documents (id integer primary key, customer_id integer, deleted_at datetime)",
+		"CREATE TABLE work_orders (id integer primary key, customer_id integer, deleted_at datetime)",
+	} {
+		if err = db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -173,14 +182,36 @@ func TestDeleteReferencedProfileReturnsConflict(t *testing.T) {
 	s := NewService(db)
 	code, _ := s.CreateCode("22")
 	profile, _ := s.CreateProfile(ProfileInput{CustomerCodeID: code.ID})
-	if err := db.Exec("CREATE TABLE inventory_documents (id integer primary key, customer_id integer)").Error; err != nil {
-		t.Fatal(err)
-	}
 	if err := db.Exec("INSERT INTO inventory_documents(id,customer_id) VALUES(1,?)", profile.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteProfile(profile.ID, 0); !errors.Is(err, ErrProfileReferenced) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestDeleteProfileFailsClosedWhenReferenceTablesAreUnavailable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s-missing?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.AutoMigrate(&model.CustomerCode{}, &model.CustomerProfile{}); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(db)
+	code, err := s.CreateCode("23")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := s.CreateProfile(ProfileInput{CustomerCodeID: code.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteProfile(profile.ID, 0); !moduleavailability.Is(err) {
+		t.Fatalf("delete error=%v, want module_not_initialized", err)
+	}
+	if _, err = s.GetProfile(profile.ID); err != nil {
+		t.Fatalf("profile was removed after failed reference check: %v", err)
 	}
 }
 

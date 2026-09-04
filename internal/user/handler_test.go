@@ -153,7 +153,7 @@ func TestCreateUserValidatesDepartmentTerminalAffiliations(t *testing.T) {
 	}
 }
 
-func TestCreateDepartmentTerminalRollsBackWhenDefaultRoleAssignmentFails(t *testing.T) {
+func TestCreateDepartmentTerminalDoesNotAssignLegacyDefaultRole(t *testing.T) {
 	db := openUserTestDB(t)
 	expected := errors.New("default terminal role assignment failed")
 	handler := NewHandler(db, failingRoleService{err: expected})
@@ -171,19 +171,19 @@ func TestCreateDepartmentTerminalRollsBackWhenDefaultRoleAssignmentFails(t *test
 		"department_id":   department.ID,
 		"terminal_id":     terminal.ID,
 	})
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusCreated, rec.Body.String())
 	}
 	var userCount int64
 	if err := db.Model(&model.User{}).Where("username = ?", "terminal-rollback").Count(&userCount).Error; err != nil {
 		t.Fatalf("count rolled-back user: %v", err)
 	}
-	if userCount != 0 {
-		t.Fatalf("user row remained after default role failure: count=%d", userCount)
+	if userCount != 1 {
+		t.Fatalf("terminal account should be created without a default role: count=%d", userCount)
 	}
 }
 
-func TestCreateDepartmentTerminalDoesNotClaimUsableWhenPolicyReloadFails(t *testing.T) {
+func TestCreateDepartmentTerminalDoesNotReloadPoliciesWithoutRoleAssignment(t *testing.T) {
 	db := openUserTestDB(t)
 	handler := NewHandler(db, failingRoleService{reloadErr: errors.New("policy reload failed")})
 	organization := createUserTestOrganization(t, db, "策略刷新组织", "POLICY-RELOAD-ORG")
@@ -200,8 +200,8 @@ func TestCreateDepartmentTerminalDoesNotClaimUsableWhenPolicyReloadFails(t *test
 		"department_id":   department.ID,
 		"terminal_id":     terminal.ID,
 	})
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user status = %d, want %d; body=%s", rec.Code, http.StatusCreated, rec.Body.String())
 	}
 	var created model.User
 	if err := db.Where("username = ?", "policy-reload-failure").First(&created).Error; err != nil {
@@ -381,6 +381,37 @@ func TestUpdateUserAffiliationConcurrentUpdatesKeepDepartmentTerminalPair(t *tes
 	}
 }
 
+func TestUpdateUserStatusProtectsLastActiveSuperAdmin(t *testing.T) {
+	db := openUserTestDB(t)
+	handler := NewHandler(db, testRoleService{})
+	organization := createUserTestOrganization(t, db, "超级管理员组织", "SUPER-STATUS-ORG")
+	manager := model.User{Username: "status-manager", AccountType: model.AccountTypePersonal, Name: "状态管理员", OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash"}
+	first := model.User{Username: "first-super", AccountType: model.AccountTypePersonal, Name: "第一超管", OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash"}
+	second := model.User{Username: "second-super", AccountType: model.AccountTypePersonal, Name: "第二超管", OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash"}
+	if err := db.Create(&[]*model.User{&manager, &first, &second}).Error; err != nil {
+		t.Fatalf("create status users: %v", err)
+	}
+	super := model.Role{Name: "超级管理员", Code: "super_admin", System: true}
+	if err := db.Create(&super).Error; err != nil {
+		t.Fatalf("create super role: %v", err)
+	}
+	if err := db.Create(&model.UserRole{UserID: first.ID, RoleID: super.ID}).Error; err != nil {
+		t.Fatalf("bind first super: %v", err)
+	}
+	current := &auth.CurrentUser{ID: manager.ID, Username: manager.Username, OrganizationID: organization.ID}
+	rec := performUserJSONAtPath(t, handler.UpdateUserStatus, first.ID, current, map[string]any{"status": model.StatusDisabled})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("disable last super status=%d want=%d body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	if err := db.Create(&model.UserRole{UserID: second.ID, RoleID: super.ID}).Error; err != nil {
+		t.Fatalf("bind second super: %v", err)
+	}
+	rec = performUserJSONAtPath(t, handler.UpdateUserStatus, first.ID, current, map[string]any{"status": model.StatusDisabled})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("disable one of two supers status=%d want=%d body=%s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+}
+
 func openUserTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -393,10 +424,56 @@ func openUserTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("get sql database: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Organization{}, &model.Department{}, &model.Terminal{}, &model.User{}, &model.RefreshSession{}); err != nil {
+	if err := db.AutoMigrate(&model.Organization{}, &model.Department{}, &model.Terminal{}, &model.User{}, &model.Role{}, &model.UserRole{}, &model.RefreshSession{}); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 	return db
+}
+
+func TestListUsersHidesOnlySystemManagedAccount(t *testing.T) {
+	db := openUserTestDB(t)
+	organization := createUserTestOrganization(t, db, "博邦", "BOBANG")
+	users := []model.User{
+		{Username: "admin", AccountType: model.AccountTypePersonal, Name: "管理员", OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash"},
+		{Username: "Silence", AccountType: model.AccountTypePersonal, Name: "普通同名账号", OrganizationID: organization.ID, Status: model.StatusActive, PasswordHash: "hash"},
+		{Username: "hidden-silence", AccountType: model.AccountTypePersonal, Name: "系统保底账号", OrganizationID: organization.ID, Status: model.StatusActive, SystemManaged: true, PasswordHash: "hash"},
+	}
+	if err := db.Create(&users).Error; err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(db, testRoleService{})
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/system/users?page=1&page_size=1", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: users[0].ID, Username: users[0].Username, OrganizationID: organization.ID})
+	if err := handler.ListUsers(c); err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Items []model.User `json:"items"`
+		Total int64        `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 2 || len(page.Items) != 1 || page.Items[0].Username != "admin" {
+		t.Fatalf("page=%+v", page)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/system/users?q=Silence", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.Set(auth.ContextUserKey, &auth.CurrentUser{ID: users[0].ID, Username: users[0].Username, OrganizationID: organization.ID})
+	if err := handler.ListUsers(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Name != "普通同名账号" {
+		t.Fatalf("Silence search page=%+v", page)
+	}
 }
 
 func createUserTestOrganization(t *testing.T, db *gorm.DB, name, code string) model.Organization {

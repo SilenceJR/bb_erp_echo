@@ -24,15 +24,18 @@ type Handler struct {
 
 // DashboardResponse 是统计报表首页聚合响应。
 type DashboardResponse struct {
-	GeneratedAt      time.Time           `json:"generated_at"`
-	CanViewCost      bool                `json:"can_view_cost"`
-	Summary          Summary             `json:"summary"`
-	Inventory        InventoryStatistics `json:"inventory"`
-	WorkOrders       WorkOrderStatistics `json:"workorders"`
-	Molds            MoldStatistics      `json:"molds"`
-	Business         BusinessStatistics  `json:"business"`
-	Audit            AuditStatistics     `json:"audit"`
-	RecentWorkOrders []model.WorkOrder   `json:"recent_workorders"`
+	DataStatus         string              `json:"data_status" example:"ready"`
+	UnavailableSources []string            `json:"unavailable_sources"`
+	Message            string              `json:"message,omitempty"`
+	GeneratedAt        time.Time           `json:"generated_at"`
+	CanViewCost        bool                `json:"can_view_cost"`
+	Summary            Summary             `json:"summary"`
+	Inventory          InventoryStatistics `json:"inventory"`
+	WorkOrders         WorkOrderStatistics `json:"workorders"`
+	Molds              MoldStatistics      `json:"molds"`
+	Business           BusinessStatistics  `json:"business"`
+	Audit              AuditStatistics     `json:"audit"`
+	RecentWorkOrders   []model.WorkOrder   `json:"recent_workorders"`
 }
 
 // Summary 是首页顶部关键指标。
@@ -139,27 +142,49 @@ func RegisterRoutes(v1 *echo.Group, db *gorm.DB, require func(string, string) ec
 // @Router /api/v1/statistics [get]
 func (h *Handler) Dashboard(c *echo.Context) error {
 	canViewCost := hasCostView(c)
-	result := DashboardResponse{GeneratedAt: time.Now(), CanViewCost: canViewCost}
-	if err := h.fillSummary(&result); err != nil {
+	supplierAvailable := h.DB.Migrator().HasTable(&model.Supplier{})
+	inventoryAvailable := h.DB.Migrator().HasTable(&model.InventoryBalance{}) && h.DB.Migrator().HasTable(&model.InventoryLedger{})
+	workorderAvailable := h.DB.Migrator().HasTable(&model.WorkOrder{}) && h.DB.Migrator().HasTable(&model.DepartmentTask{})
+	result := newDashboardResponse(canViewCost)
+	if !supplierAvailable {
+		result.UnavailableSources = append(result.UnavailableSources, "suppliers")
+	}
+	if !inventoryAvailable {
+		result.UnavailableSources = append(result.UnavailableSources, "inventory")
+	}
+	if !workorderAvailable {
+		result.UnavailableSources = append(result.UnavailableSources, "workorders")
+	}
+	if len(result.UnavailableSources) > 0 {
+		result.DataStatus = "sources_unavailable"
+		result.Message = "部分统计数据源尚未初始化；空值不代表实际业务数据为零"
+	}
+	if err := h.fillSummary(&result, supplierAvailable, inventoryAvailable, workorderAvailable); err != nil {
 		return err
 	}
-	if err := h.fillInventory(&result, canViewCost); err != nil {
-		return err
+	if inventoryAvailable {
+		if err := h.fillInventory(&result, canViewCost); err != nil {
+			return err
+		}
 	}
-	if err := h.fillWorkOrders(&result); err != nil {
-		return err
+	if workorderAvailable {
+		if err := h.fillWorkOrders(&result); err != nil {
+			return err
+		}
 	}
 	if err := h.fillMolds(&result); err != nil {
 		return err
 	}
-	if err := h.fillBusiness(&result); err != nil {
+	if err := h.fillBusiness(&result, supplierAvailable, workorderAvailable); err != nil {
 		return err
 	}
 	if err := h.fillAudit(&result); err != nil {
 		return err
 	}
-	if err := h.DB.Preload("DepartmentTasks").Order("id desc").Limit(8).Find(&result.RecentWorkOrders).Error; err != nil {
-		return err
+	if workorderAvailable {
+		if err := h.DB.Preload("DepartmentTasks").Order("id desc").Limit(8).Find(&result.RecentWorkOrders).Error; err != nil {
+			return err
+		}
 	}
 	if !canViewCost {
 		result.Summary.InventoryAmount = 0
@@ -176,14 +201,30 @@ func (h *Handler) Dashboard(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) fillSummary(result *DashboardResponse) error {
+func newDashboardResponse(canViewCost bool) DashboardResponse {
+	return DashboardResponse{
+		DataStatus: "ready", UnavailableSources: []string{}, GeneratedAt: time.Now(), CanViewCost: canViewCost,
+		Inventory:  InventoryStatistics{ByItemType: []NameValue{}, ByMaterialType: []NameValue{}, LowStock: []StockItem{}, Trend: []TrendItem{}},
+		WorkOrders: WorkOrderStatistics{ByStatus: []NameValue{}, ByType: []NameValue{}, ByDepartment: []DepartmentStat{}, Trend: []TrendItem{}},
+		Molds:      MoldStatistics{ByType: []NameValue{}, ByLocation: []NameValue{}},
+		Business:   BusinessStatistics{ByMasterData: []NameValue{}}, Audit: AuditStatistics{ByResult: []NameValue{}, Trend: []TrendItem{}},
+		RecentWorkOrders: []model.WorkOrder{},
+	}
+}
+
+func (h *Handler) fillSummary(result *DashboardResponse, supplierAvailable, inventoryAvailable, workorderAvailable bool) error {
 	counts := []struct {
 		model any
 		out   *int64
 	}{
 		{&model.CustomerCode{}, &result.Summary.Customers},
-		{&model.Supplier{}, &result.Summary.Suppliers},
 		{&model.Mold{}, &result.Summary.Molds},
+	}
+	if supplierAvailable {
+		counts = append(counts, struct {
+			model any
+			out   *int64
+		}{&model.Supplier{}, &result.Summary.Suppliers})
 	}
 	for _, item := range counts {
 		if err := h.DB.Model(item.model).Count(item.out).Error; err != nil {
@@ -198,34 +239,38 @@ func (h *Handler) fillSummary(result *DashboardResponse) error {
 		return err
 	}
 	result.Summary.WarehouseItems = products + materials
-	var inventoryTotal struct {
-		InventoryQuantity int64
-		InventoryAmount   int64
+	if inventoryAvailable {
+		var inventoryTotal struct {
+			InventoryQuantity int64
+			InventoryAmount   int64
+		}
+		if err := h.DB.Model(&model.InventoryBalance{}).
+			Select("COALESCE(SUM(quantity), 0) AS inventory_quantity, COALESCE(SUM(amount), 0) AS inventory_amount").
+			Scan(&inventoryTotal).Error; err != nil {
+			return err
+		}
+		result.Summary.InventoryQuantity = inventoryTotal.InventoryQuantity
+		result.Summary.InventoryAmount = inventoryTotal.InventoryAmount
+		lowStock, err := h.lowStockItems(true)
+		if err != nil {
+			return err
+		}
+		result.Summary.LowStockItems = int64(len(lowStock))
 	}
-	if err := h.DB.Model(&model.InventoryBalance{}).
-		Select("COALESCE(SUM(quantity), 0) AS inventory_quantity, COALESCE(SUM(amount), 0) AS inventory_amount").
-		Scan(&inventoryTotal).Error; err != nil {
-		return err
+	if workorderAvailable {
+		if err := h.DB.Model(&model.WorkOrder{}).
+			Where("status IN ?", []string{"draft", "processing", "paused", "pending_close"}).
+			Count(&result.Summary.OpenWorkOrders).Error; err != nil {
+			return err
+		}
+		if err := h.DB.Model(&model.WorkOrder{}).Where("priority = ? AND status IN ?", "urgent", []string{"draft", "processing", "paused", "pending_close"}).
+			Count(&result.Summary.UrgentWorkOrders).Error; err != nil {
+			return err
+		}
+		if err := h.DB.Model(&model.WorkOrder{}).Where("status = ?", "pending_close").Count(&result.Summary.PendingCloseOrders).Error; err != nil {
+			return err
+		}
 	}
-	result.Summary.InventoryQuantity = inventoryTotal.InventoryQuantity
-	result.Summary.InventoryAmount = inventoryTotal.InventoryAmount
-	if err := h.DB.Model(&model.WorkOrder{}).
-		Where("status IN ?", []string{"draft", "processing", "paused", "pending_close"}).
-		Count(&result.Summary.OpenWorkOrders).Error; err != nil {
-		return err
-	}
-	if err := h.DB.Model(&model.WorkOrder{}).Where("priority = ? AND status IN ?", "urgent", []string{"draft", "processing", "paused", "pending_close"}).
-		Count(&result.Summary.UrgentWorkOrders).Error; err != nil {
-		return err
-	}
-	if err := h.DB.Model(&model.WorkOrder{}).Where("status = ?", "pending_close").Count(&result.Summary.PendingCloseOrders).Error; err != nil {
-		return err
-	}
-	lowStock, err := h.lowStockItems(true)
-	if err != nil {
-		return err
-	}
-	result.Summary.LowStockItems = int64(len(lowStock))
 	return nil
 }
 
@@ -286,17 +331,27 @@ func (h *Handler) fillMolds(result *DashboardResponse) error {
 	return h.DB.Model(&model.Mold{}).Joins("LEFT JOIN mold_locations ON mold_locations.id = molds.location_id").Select("mold_locations.code AS name, COUNT(*) AS value").Group("mold_locations.code").Scan(&result.Molds.ByLocation).Error
 }
 
-func (h *Handler) fillBusiness(result *DashboardResponse) error {
+func (h *Handler) fillBusiness(result *DashboardResponse, supplierAvailable, workorderAvailable bool) error {
 	stats := []struct {
 		name  string
 		model any
 	}{
 		{"客户", &model.CustomerCode{}},
-		{"供应商", &model.Supplier{}},
 		{"产品", &model.Product{}},
 		{"物料", &model.Material{}},
 		{"模具", &model.Mold{}},
-		{"任务单", &model.WorkOrder{}},
+	}
+	if supplierAvailable {
+		stats = append(stats, struct {
+			name  string
+			model any
+		}{"供应商", &model.Supplier{}})
+	}
+	if workorderAvailable {
+		stats = append(stats, struct {
+			name  string
+			model any
+		}{"任务单", &model.WorkOrder{}})
 	}
 	for _, stat := range stats {
 		var count int64

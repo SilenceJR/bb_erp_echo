@@ -7,6 +7,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/operator"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/pagination"
@@ -93,9 +94,13 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouses [get]
 func (h *Handler) ListWarehouses(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	item, err := h.defaultWarehouse(h.DB)
 	if err != nil {
 		return err
@@ -116,9 +121,13 @@ func (h *Handler) ListWarehouses(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouses [post]
 func (h *Handler) CreateWarehouse(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	var req createWarehouseRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -155,9 +164,13 @@ func (h *Handler) CreateWarehouse(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouse/tabs [get]
 func (h *Handler) ListTabs(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	return c.JSON(http.StatusOK, catalogTabs)
 }
 
@@ -176,9 +189,16 @@ func (h *Handler) ListTabs(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouse/items [get]
 func (h *Handler) ListItems(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
+	if err := moduleavailability.Check(h.DB, "仓库", moduleavailability.Requirement{Model: &model.InventoryBalance{}, Name: "inventory_balances"}); err != nil {
+		return err
+	}
 	tab := c.QueryParam("tab")
 	if tab == "" {
 		tab = tabProduct
@@ -229,9 +249,13 @@ func (h *Handler) ListItems(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/warehouse/items [post]
 func (h *Handler) CreateItem(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	var req createWarehouseItemRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -266,9 +290,16 @@ func (h *Handler) CreateItem(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/locations [get]
 func (h *Handler) ListLocations(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
+	if err := moduleavailability.Check(h.DB, "仓库", moduleavailability.Requirement{Model: &model.Location{}, Name: "locations"}); err != nil {
+		return err
+	}
 	var items []model.Location
 	query := h.DB.Order("id desc")
 	if warehouseID := c.QueryParam("warehouse_id"); warehouseID != "" {
@@ -293,9 +324,16 @@ func (h *Handler) ListLocations(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/locations [post]
 func (h *Handler) CreateLocation(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
+	if err := moduleavailability.Check(h.DB, "仓库", moduleavailability.Requirement{Model: &model.Location{}, Name: "locations"}); err != nil {
+		return err
+	}
 	var req createLocationRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -321,6 +359,9 @@ func (h *Handler) CreateLocation(c *echo.Context) error {
 }
 
 func (h *Handler) defaultWarehouse(db *gorm.DB) (model.Warehouse, error) {
+	if err := moduleavailability.Check(db, "仓库", warehouseModuleRequirements()...); err != nil {
+		return model.Warehouse{}, err
+	}
 	var item model.Warehouse
 	if err := db.Where("code = ?", model.DefaultWarehouseCode).First(&item).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -329,6 +370,16 @@ func (h *Handler) defaultWarehouse(db *gorm.DB) (model.Warehouse, error) {
 		return model.Warehouse{}, err
 	}
 	return item, nil
+}
+
+func warehouseModuleRequirements() []moduleavailability.Requirement {
+	return []moduleavailability.Requirement{
+		{Model: &model.Warehouse{}, Name: "warehouses"},
+	}
+}
+
+func (h *Handler) ensureReady() error {
+	return moduleavailability.Check(h.DB, "仓库", warehouseModuleRequirements()...)
 }
 
 func warehouseCostView(c *echo.Context) bool {

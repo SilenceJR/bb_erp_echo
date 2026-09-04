@@ -1,5 +1,16 @@
 <template>
-      <el-drawer v-model="workorderDrawerVisible" size="min(720px, 100%)" title="任务单详情" :with-header="false" :before-close="handleWorkOrderBeforeClose" destroy-on-close @closed="resetWorkOrder">
+      <ResponsiveDetailCarrier
+        v-model="workorderDrawerVisible"
+        drawer-class="workspace-detail-drawer"
+        :docked="detailPanelDocked"
+        :size="detailPanelSize"
+        title="任务单详情"
+        :with-header="false"
+        :before-close="handleWorkOrderBeforeClose"
+        docked-auto-focus="panel"
+        destroy-on-close
+        @closed="resetWorkOrder"
+      >
         <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
           <div class="drawer-heading">
             <div>
@@ -7,7 +18,7 @@
               <h2>{{ selectedWorkOrder.title }}</h2>
               <span>{{ selectedWorkOrder.product_name || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
             </div>
-            <el-button circle aria-label="关闭任务单详情" @click="closeWorkOrder">×</el-button>
+            <el-button circle aria-label="关闭任务单详情" @click="closeWorkOrder"><el-icon><Close /></el-icon></el-button>
           </div>
 
           <div class="stock-summary">
@@ -114,7 +125,7 @@
             <p v-else class="drawer-empty">暂无流转日志</p>
           </section>
         </div>
-      </el-drawer>
+      </ResponsiveDetailCarrier>
       <WorkorderActionDialog />
 
 </template>
@@ -126,6 +137,9 @@ import StatusTag from '../ui/StatusTag.vue'
 import WorkorderStockCard from './WorkorderStockCard.vue'
 import WorkorderActionDialog from './WorkorderActionDialog.vue'
 import {useWorkorderContext} from '../../composables/workorderContext'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {Close} from '@element-plus/icons-vue'
 
 const {
   token, selectedWorkOrder, workorderDrawerVisible, workorderLogs,
@@ -142,4 +156,5 @@ const {
   loadWorkorderDrawerProductStock, loadWorkOrderLogs, closeWorkOrder,
   handleWorkOrderBeforeClose, resetWorkOrder,
 } = useWorkorderContext().detail
+const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(workorderDrawerVisible, true)
 </script>

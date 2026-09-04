@@ -333,7 +333,7 @@ async function submit() {
 }
 
 .password-visibility-toggle:hover { background: var(--bb-brand-50); }
-.password-visibility-toggle:focus-visible { outline: 2px solid var(--bb-brand-500); outline-offset: 1px; }
+.password-visibility-toggle:focus-visible { outline: 2px solid var(--bb-focus-color); outline-offset: 1px; }
 
 .change-password-dialog__footer {
   display: flex;

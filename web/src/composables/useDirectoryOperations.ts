@@ -4,6 +4,7 @@ import {request} from '../api/http'
 import {modules, type ModuleItem} from '../data/modules'
 import type {BasicItem, CurrentUser, PaginatedResponse, SkeletonResponse} from '../types'
 import {appMessageBox} from './useAppMessageBox'
+import {isModuleNotInitialized} from '../platform/moduleAvailability'
 
 type Dependencies = Record<string, any>
 
@@ -78,6 +79,7 @@ export function useDirectoryOperations(d: Dependencies) {
     d.loading.value = true
     d.panelMessage.value = ''
     d.listError.value = ''
+    d.moduleUnavailable.value = null
     d.skeletonResult.value = null
     try {
       if (['customers', 'updates'].includes(item.key)) {
@@ -86,6 +88,15 @@ export function useDirectoryOperations(d: Dependencies) {
       else await loadList(item.key, true)
       d.panelMessage.value = '已同步'
     } catch (error) {
+      if (isModuleNotInitialized(error)) {
+        d.moduleUnavailable.value = {module: item.key, message: error.message || '该模块的数据结构待后续重构'}
+        d.rows.value = []
+        d.columns.value = []
+        d.pageTotal.value = 0
+        d.showCreateForm.value = false
+        d.panelMessage.value = '数据结构待后续重构'
+        return
+      }
       d.listError.value = error instanceof Error ? error.message : '加载失败'
       d.panelMessage.value = d.listError.value
     } finally { d.loading.value = false }
@@ -204,6 +215,7 @@ export function useDirectoryOperations(d: Dependencies) {
 
   async function createItem() {
     const item = d.activeModule.value as ModuleItem | undefined
+    if (d.moduleUnavailable.value) { d.panelMessage.value = '数据结构待后续重构，当前不能新增或修改数据'; d.showCreateForm.value = false; return }
     if (!item?.path || !d.canWriteModule(item)) { d.panelMessage.value = '你的账号只有查看权限，不能新增数据'; d.showCreateForm.value = false; return }
     d.formError.value = validateActiveForm()
     if (d.formError.value) {

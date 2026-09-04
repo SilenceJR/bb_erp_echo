@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
@@ -344,13 +345,14 @@ func (s *Service) DeleteProfile(id uint, replacementID uint) error {
 }
 
 func profileReferenced(db *gorm.DB, id uint) (bool, error) {
+	if err := moduleavailability.Check(db, "客户引用校验",
+		moduleavailability.Requirement{Model: &model.InventoryDocument{}, Name: "inventory_documents"},
+		moduleavailability.Requirement{Model: &model.WorkOrder{}, Name: "work_orders"},
+	); err != nil {
+		return false, err
+	}
 	checks := []any{&model.InventoryDocument{}, &model.WorkOrder{}}
 	for _, table := range checks {
-		// 客户模块单元测试可以只迁移本模块表；完整应用中新业务表存在时
-		// 才执行引用检查。
-		if !db.Migrator().HasTable(table) {
-			continue
-		}
 		var count int64
 		// 历史业务记录即使已软删除仍然保留客户资料引用，因此按 Unscoped
 		// 检查，避免物理删除客户资料后破坏历史展示。

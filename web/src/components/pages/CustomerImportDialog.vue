@@ -67,7 +67,7 @@
     </section>
 
     <section v-else class="import-result" role="status">
-      <span aria-hidden="true">✓</span>
+      <el-icon aria-hidden="true"><CircleCheckFilled /></el-icon>
       <h3>客户资料导入完成</h3>
       <p>已新增 {{ result?.imported_codes || 0 }} 个客户编码、{{ result?.imported_profiles || 0 }} 条客户资料。</p>
     </section>
@@ -88,6 +88,7 @@
 <script setup lang="ts">
 import {computed, ref} from 'vue'
 import {ElMessage} from 'element-plus'
+import {CircleCheckFilled} from '@element-plus/icons-vue'
 import {downloadApiFile, request, uploadNativeFiles} from '../../api/http'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
@@ -196,11 +197,11 @@ async function beforeClose(done: () => void) {
 .import-result h3 { margin: 0; }
 .import-guide p,
 .import-result p { margin: var(--bb-space-1) 0 0; color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
-.step-number { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--bb-brand-50); color: var(--bb-brand-700); font-weight: var(--bb-font-weight-bold); }
+.step-number { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); font-weight: var(--bb-font-weight-bold); }
 .customer-import-dropzone { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); border: 1px dashed var(--bb-border-strong); border-radius: var(--bb-radius-lg); background: var(--bb-bg-subtle); padding: var(--bb-space-3) var(--bb-space-4); color: var(--bb-text-secondary); cursor: pointer; }
 .customer-import-dropzone:hover,
 .customer-import-dropzone:focus-visible,
-.customer-import-dropzone.is-dragging { border-color: var(--bb-brand-500); background: var(--bb-brand-50); color: var(--bb-brand-700); outline: none; }
+.customer-import-dropzone.is-dragging { border-color: var(--bb-accent-icon); background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); outline: none; }
 .customer-import-dropzone strong { color: inherit; }
 .selected-file { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); border-radius: var(--bb-radius-lg); background: var(--bb-bg-subtle); padding: var(--bb-space-3) var(--bb-space-4); }
 .selected-file div { display: grid; gap: var(--bb-space-1); }

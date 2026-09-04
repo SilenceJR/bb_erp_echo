@@ -86,7 +86,7 @@ const emit = defineEmits<{
 .ui-data-table-shell__table {
   overflow: hidden;
   border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-lg);
+  border-radius: var(--bb-radius-md);
   background: var(--bb-bg-surface);
 }
 

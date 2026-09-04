@@ -89,9 +89,46 @@ func RequirePermission(authorizer role.Authorizer, object string, action string)
 				return err
 			}
 			if !allowed {
+				// 管理写权限隐含加载管理所需的只读数据。仅对这三个
+				// 系统管理列表开放回退，避免把所有业务写权限扩大成读权限。
+				for _, fallback := range permissionReadFallbacks(object, action) {
+					allowed, err = authorizer.Enforce(current.Username, fallback.object, fallback.action, org, dept)
+					if err != nil {
+						return err
+					}
+					if allowed {
+						break
+					}
+				}
+			}
+			if !allowed {
 				return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
 			}
 			return next(c)
 		}
+	}
+}
+
+type permissionFallback struct {
+	object string
+	action string
+}
+
+func permissionReadFallbacks(object, action string) []permissionFallback {
+	if action != "read" {
+		return nil
+	}
+	switch object {
+	case "/api/v1/system/users":
+		return []permissionFallback{{object: object, action: "write"}}
+	case "/api/v1/system/roles":
+		return []permissionFallback{
+			{object: object, action: "write"},
+			{object: "/api/v1/system/users", action: "write"},
+		}
+	case "/api/v1/system/permissions":
+		return []permissionFallback{{object: "/api/v1/system/roles", action: "write"}}
+	default:
+		return nil
 	}
 }

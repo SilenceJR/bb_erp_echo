@@ -6,7 +6,7 @@
               <h1>{{ currentUser?.name || currentUser?.username }}，今天要处理什么？</h1>
               <p>从常用功能开始，快速完成手头的工作。</p>
             </div>
-            <div class="service-status" :class="`is-${healthStatus}`" role="status" aria-live="polite">
+            <div v-if="healthStatus !== 'healthy'" class="service-status" :class="`is-${healthStatus}`" role="status" aria-live="polite">
               <span></span> {{ healthStatusLabel }}
             </div>
             <DesktopUpdatePanel v-if="desktopClient" compact />
@@ -46,7 +46,7 @@
                   >
                     <span class="dashboard-focus-card__heading">
                       <StatusTag :label="item.label" :tone="item.tone" />
-                      <span aria-hidden="true">→</span>
+                      <el-icon aria-hidden="true"><ArrowRight /></el-icon>
                     </span>
                     <strong>{{ item.title }}</strong>
                     <small>{{ item.description }}</small>
@@ -60,7 +60,7 @@
             <div class="home-section-title">
               <div>
                 <h2 id="dashboard-overview-title">工作概览</h2>
-                <p>先确认服务与当前账号可用范围，再进入业务办理</p>
+                <p>查看当前账号可用范围和常用业务入口</p>
               </div>
             </div>
             <div class="dashboard-metrics">
@@ -93,12 +93,12 @@
                   :aria-label="`打开${item.title}：${item.description}`"
                   @click="switchModule(item.key)"
               >
-                <span class="quick-icon" aria-hidden="true">{{ item.icon }}</span>
+                <span class="quick-icon" aria-hidden="true"><component :is="item.icon" /></span>
                 <span class="quick-copy">
                   <strong>{{ item.title }}</strong>
                   <small>{{ item.description }}</small>
                 </span>
-                <span class="quick-arrow" aria-hidden="true">→</span>
+                <el-icon class="quick-arrow" aria-hidden="true"><ArrowRight /></el-icon>
               </button>
             </div>
           </section>
@@ -113,7 +113,7 @@
             <div class="business-grid">
               <el-card v-for="group in businessGroups" :key="group.title" class="business-card" shadow="never">
                 <div class="business-card-heading">
-                  <span aria-hidden="true">{{ group.icon }}</span>
+                  <el-icon aria-hidden="true"><component :is="group.icon" /></el-icon>
                   <div>
                     <strong>{{ group.title }}</strong>
                     <small>{{ group.caption }}</small>
@@ -125,7 +125,7 @@
                     link
                     @click="switchModule(item.key)"
                 >
-                  {{ item.title }} <span>→</span>
+                  {{ item.title }} <el-icon><ArrowRight /></el-icon>
                 </el-button>
               </el-card>
             </div>
@@ -147,6 +147,7 @@ import MetricCard from '../ui/MetricCard.vue'
 import PageState from '../ui/PageState.vue'
 import StatusTag from '../ui/StatusTag.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {ArrowRight} from '@element-plus/icons-vue'
 
 const {
   desktopClient,

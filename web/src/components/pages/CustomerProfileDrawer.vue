@@ -1,12 +1,14 @@
 <template>
-  <el-drawer
+  <ResponsiveDetailCarrier
     v-model="visible"
-    class="business-form-drawer customer-profile-drawer"
-    size="min(720px, 100%)"
+    drawer-class="business-form-drawer customer-profile-drawer workspace-detail-drawer"
+    :docked="detailPanelDocked"
+    :size="detailPanelSize"
     :title="drawerTitle"
     :close-on-click-modal="!saving"
     :close-on-press-escape="!saving"
     :before-close="beforeClose"
+    :docked-auto-focus="mode === 'view' ? 'preserve' : 'first-editable'"
     destroy-on-close
     @closed="restoreFocus"
   >
@@ -22,14 +24,14 @@
             <el-tag v-if="profile.is_default" type="success" effect="plain">默认资料</el-tag>
           </div>
 
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="客户简称">{{ display(profile.short_name) }}</el-descriptions-item>
-        <el-descriptions-item label="客户名称">{{ display(profile.name) }}</el-descriptions-item>
-        <el-descriptions-item label="地址">{{ display(profile.address) }}</el-descriptions-item>
-        <el-descriptions-item label="电话"><span class="text-cell">{{ display(profile.phone) }}</span></el-descriptions-item>
-        <el-descriptions-item label="联系人">{{ display(profile.contact_name) }}</el-descriptions-item>
-        <el-descriptions-item label="联系人电话"><span class="text-cell">{{ display(profile.contact_phone) }}</span></el-descriptions-item>
-        <el-descriptions-item label="业务员">{{ display(profile.salesperson) }}</el-descriptions-item>
+      <el-descriptions class="customer-profile-details" :column="1" border>
+        <el-descriptions-item label="客户简称"><span class="customer-detail-value" :class="{'is-empty': !profile.short_name}">{{ display(profile.short_name) }}</span></el-descriptions-item>
+        <el-descriptions-item label="客户名称"><span class="customer-detail-value" :class="{'is-empty': !profile.name}">{{ display(profile.name) }}</span></el-descriptions-item>
+        <el-descriptions-item label="地址"><span class="customer-detail-value" :class="{'is-empty': !profile.address}">{{ display(profile.address) }}</span></el-descriptions-item>
+        <el-descriptions-item label="电话"><span class="customer-detail-value text-cell" :class="{'is-empty': !profile.phone}">{{ display(profile.phone) }}</span></el-descriptions-item>
+        <el-descriptions-item label="联系人"><span class="customer-detail-value" :class="{'is-empty': !profile.contact_name}">{{ display(profile.contact_name) }}</span></el-descriptions-item>
+        <el-descriptions-item label="联系人电话"><span class="customer-detail-value text-cell" :class="{'is-empty': !profile.contact_phone}">{{ display(profile.contact_phone) }}</span></el-descriptions-item>
+        <el-descriptions-item label="业务员"><span class="customer-detail-value" :class="{'is-empty': !profile.salesperson}">{{ display(profile.salesperson) }}</span></el-descriptions-item>
       </el-descriptions>
 
       <section v-if="code" class="sibling-profiles" aria-labelledby="sibling-profile-title">
@@ -113,14 +115,17 @@
       </div>
         </el-form>
     </div>
-  </el-drawer>
+  </ResponsiveDetailCarrier>
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, reactive, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, reactive, ref, toRef, watch} from 'vue'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import type {CustomerCodeItem, CustomerProfile} from '../../types'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import {useWorkspaceContext} from '../../composables/workspaceContext'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
 
 export interface CustomerProfileFormValue {
   customer_code_id: number | undefined
@@ -158,6 +163,8 @@ const emit = defineEmits<{
 }>()
 
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
+const {setPageDetailPanelVisible} = useWorkspaceContext()
+const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(toRef(props, 'modelValue'))
 const codeMode = ref<'existing' | 'new'>('existing')
 const form = reactive<CustomerProfileFormValue>(emptyForm())
 const baseline = ref('')
@@ -191,6 +198,8 @@ watch(() => [props.modelValue, props.mode, props.profile?.id, props.code?.id, pr
   fieldErrors.new_code = ''
   nextTick(() => { baseline.value = JSON.stringify(form) })
 }, {immediate: true})
+watch(() => props.modelValue, setPageDetailPanelVisible, {immediate: true, flush: 'sync'})
+onBeforeUnmount(() => setPageDetailPanelVisible(false))
 
 function emptyForm(): CustomerProfileFormValue {
   return {customer_code_id: undefined, new_code: '', short_name: '', name: '', address: '', phone: '', contact_name: '', contact_phone: '', salesperson: ''}
@@ -198,7 +207,7 @@ function emptyForm(): CustomerProfileFormValue {
 function fromProfile(profile: CustomerProfile): CustomerProfileFormValue {
   return {customer_code_id: profile.customer_code_id, new_code: '', short_name: profile.short_name || '', name: profile.name || '', address: profile.address || '', phone: profile.phone || '', contact_name: profile.contact_name || '', contact_phone: profile.contact_phone || '', salesperson: profile.salesperson || ''}
 }
-function display(value?: string) { return value || '未填写' }
+function display(value?: string) { return value || '—' }
 function codeOptionLabel(item: CustomerCodeItem) { return `${item.code} · ${item.profile_count || item.profiles.length} 条资料` }
 
 function normalizeCodeInput() {
@@ -258,15 +267,21 @@ defineExpose({dirty, requestClose})
 
 <style scoped>
 .customer-drawer-content,
-.customer-profile-form { display: grid; gap: var(--bb-space-5); padding-bottom: 76px; }
+.customer-profile-form { display: grid; gap: var(--bb-space-5); padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 .customer-profile-motion { min-height: 100%; }
 .customer-drawer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-4); }
 .customer-drawer-heading h2 { margin: var(--bb-space-2) 0 0; font-size: var(--bb-font-size-24); }
 .customer-drawer-heading p { margin: var(--bb-space-1) 0 0; color: var(--bb-text-secondary); }
-.customer-code-chip { display: inline-flex; border-radius: var(--bb-radius-pill); background: var(--bb-brand-50); padding: var(--bb-space-1) var(--bb-space-2); color: var(--bb-brand-700); font-family: var(--bb-font-mono); font-size: var(--bb-font-size-13); font-weight: var(--bb-font-weight-bold); }
+.customer-code-chip { display: inline-flex; border-radius: var(--bb-radius-pill); background: var(--bb-accent-selected-bg); padding: var(--bb-space-1) var(--bb-space-2); color: var(--bb-accent-selected-text); font-family: var(--bb-font-mono); font-size: var(--bb-font-size-13); font-weight: var(--bb-font-weight-bold); }
 .text-cell { font-family: var(--bb-font-mono); }
+.customer-profile-details { width: 100%; min-width: 0; --el-descriptions-item-bordered-label-background: var(--bb-bg-subtle); }
+.customer-profile-details :deep(.el-descriptions__table) { width: 100%; table-layout: fixed; }
+.customer-profile-details :deep(.el-descriptions__label.el-descriptions__cell) { width: 116px; min-width: 116px; color: var(--bb-text-secondary); font-weight: var(--bb-font-weight-medium); }
+.customer-profile-details :deep(.el-descriptions__content.el-descriptions__cell) { min-width: 0; overflow-wrap: anywhere; word-break: break-word; color: var(--bb-text-primary); }
+.customer-detail-value { display: inline; white-space: normal; }
+.customer-detail-value.is-empty { color: var(--bb-text-placeholder); }
 .form-section,
-.sibling-profiles { display: grid; gap: var(--bb-space-4); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-xl); background: var(--bb-bg-surface); padding: var(--bb-space-5); }
+.sibling-profiles { display: grid; gap: var(--bb-space-4); border-top: 1px solid var(--bb-border-default); padding: var(--bb-space-5) 0 0; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-3); }
 .section-heading h3 { margin: 0; font-size: var(--bb-font-size-16); }
 .section-heading p { margin: var(--bb-space-1) 0 0; color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
@@ -275,16 +290,19 @@ defineExpose({dirty, requestClose})
 .sibling-profile-list button.active { border-color: var(--bb-brand-300); background: var(--bb-brand-50); }
 .sibling-profile-list span { display: grid; gap: var(--bb-space-1); }
 .sibling-profile-list small { color: var(--bb-text-secondary); }
-.code-mode-switch { width: 100%; }
+.code-mode-switch { display: flex; width: 100%; min-width: 0; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-subtle); padding: 3px; }
 .code-mode-switch :deep(.el-radio-button) { flex: 1 1 50%; }
-.code-mode-switch :deep(.el-radio-button__inner) { width: 100%; min-height: 44px; }
+.code-mode-switch :deep(.el-radio-button__inner) { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: center; border: 1px solid transparent !important; border-radius: var(--bb-radius-sm) !important; background: transparent; padding: 0 var(--bb-space-3); box-shadow: none !important; color: var(--bb-text-regular); }
+.code-mode-switch :deep(.el-radio-button__inner:hover) { color: var(--bb-text-primary); }
+.code-mode-switch :deep(.el-radio-button.is-active .el-radio-button__inner) { border-color: var(--bb-border-default) !important; background: var(--bb-bg-surface); box-shadow: var(--bb-shadow-xs) !important; color: var(--bb-text-primary); font-weight: var(--bb-font-weight-semibold); }
+.code-mode-switch :deep(.el-radio-button__original-radio:focus-visible + .el-radio-button__inner) { outline: 2px solid var(--bb-focus-color); outline-offset: 1px; }
 .customer-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--bb-space-4); }
 .customer-form-grid .span-two { grid-column: 1 / -1; }
-.form-code-summary { display: grid; grid-template-columns: auto 1fr; gap: var(--bb-space-1) var(--bb-space-3); border-radius: var(--bb-radius-lg); background: var(--bb-brand-50); padding: var(--bb-space-4); }
+.form-code-summary { display: grid; grid-template-columns: auto 1fr; gap: var(--bb-space-1) var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-subtle); padding: var(--bb-space-4); }
 .form-code-summary span,
 .form-code-summary small { color: var(--bb-text-secondary); }
 .form-code-summary strong { font-family: var(--bb-font-mono); }
 .form-code-summary small { grid-column: 1 / -1; }
 .field-help { display: block; margin-top: var(--bb-space-1); color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
-.customer-drawer-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
+.customer-drawer-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); margin-top: 0; }
 </style>

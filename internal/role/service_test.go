@@ -9,6 +9,7 @@ import (
 	"bb_erp_echo/internal/config"
 	"bb_erp_echo/internal/model"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -82,12 +83,16 @@ func TestAssignmentServiceRejectsSuperAdminForTerminalAccount(t *testing.T) {
 		t.Fatalf("create super admin role: %v", err)
 	}
 
-	err := service.ReplaceUserRoles(99, []uint{superAdmin.ID}, false)
+	terminal := model.User{Username: "terminal", AccountType: model.AccountTypeDepartmentTerminal, Name: "终端", OrganizationID: 1, Status: model.StatusActive, PasswordHash: "hash"}
+	if err := service.DB.Create(&terminal).Error; err != nil {
+		t.Fatalf("create terminal account: %v", err)
+	}
+	err := service.ReplaceUserRoles(terminal.ID, []uint{superAdmin.ID}, false)
 	if !errors.Is(err, ErrSuperAdminNotAllowed) {
 		t.Fatalf("expected ErrSuperAdminNotAllowed, got %v", err)
 	}
 	var count int64
-	if err := service.DB.Model(&model.UserRole{}).Where("user_id = ?", 99).Count(&count).Error; err != nil {
+	if err := service.DB.Model(&model.UserRole{}).Where("user_id = ?", terminal.ID).Count(&count).Error; err != nil {
 		t.Fatalf("count user roles: %v", err)
 	}
 	if count != 0 {
@@ -250,27 +255,168 @@ func TestAttachPermissionsRequiresExplicitIDsAndAttachAllIsExplicit(t *testing.T
 	}
 }
 
-func TestSeedSystemDataGivesTerminalOperatorWarehouseRead(t *testing.T) {
+func TestSeedSystemDataCreatesAdminAndAdditionalSilenceSuperAdmin(t *testing.T) {
+	service := newAssignmentTestService(t)
+	cfg := &config.Config{Admin: config.AdminConfig{
+		Username: "seed-admin",
+		Password: "seed-password",
+		Name:     "种子管理员",
+	}, Silence: config.SilenceConfig{Password: "silence-password"}}
+	if err := service.SeedSystemData(cfg); err != nil {
+		t.Fatalf("seed system data: %v", err)
+	}
+
+	var users []model.User
+	if err := service.DB.Order("username").Find(&users).Error; err != nil {
+		t.Fatalf("load seeded users: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("seeded users = %d, want admin and Silence", len(users))
+	}
+	byName := map[string]model.User{}
+	for _, item := range users {
+		byName[item.Username] = item
+	}
+	if _, ok := byName[cfg.Admin.Username]; !ok {
+		t.Fatalf("original admin was not preserved: %v", byName)
+	}
+	silence, ok := byName[SilenceUsername]
+	if !ok {
+		t.Fatalf("additional Silence account missing: %v", byName)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(silence.PasswordHash), []byte("silence-password")); err != nil {
+		t.Fatalf("Silence password was not bcrypt hashed: %v", err)
+	}
+	var super model.Role
+	if err := service.DB.Where("code = ?", SuperAdminCode).First(&super).Error; err != nil {
+		t.Fatalf("load super admin role: %v", err)
+	}
+	if !super.System {
+		t.Fatal("super_admin must be the locked system role")
+	}
+	var costPermission model.Permission
+	if err := service.DB.Where("code = ?", CostViewCode).First(&costPermission).Error; err != nil {
+		t.Fatalf("load cost permission: %v", err)
+	}
+	var costBindingCount int64
+	if err := service.DB.Model(&model.RolePermission{}).Where("role_id = ? AND permission_id = ?", super.ID, costPermission.ID).Count(&costBindingCount).Error; err != nil || costBindingCount != 1 {
+		t.Fatalf("super admin cost permission binding count=%d err=%v", costBindingCount, err)
+	}
+	for _, item := range []model.User{byName[cfg.Admin.Username], silence} {
+		var count int64
+		if err := service.DB.Model(&model.UserRole{}).Where("user_id = ? AND role_id = ?", item.ID, super.ID).Count(&count).Error; err != nil || count != 1 {
+			t.Fatalf("user %s super_admin binding count=%d err=%v", item.Username, count, err)
+		}
+	}
+	var legacyRoleCount int64
+	if err := service.DB.Model(&model.Role{}).Where("code IN ?", []string{BossCode, TerminalOperatorCode}).Count(&legacyRoleCount).Error; err != nil {
+		t.Fatalf("count legacy roles: %v", err)
+	}
+	if legacyRoleCount != 0 {
+		t.Fatalf("fresh database created %d legacy roles", legacyRoleCount)
+	}
+	var warehouseCount int64
+	if err := service.DB.Model(&model.Warehouse{}).Count(&warehouseCount).Error; err != nil {
+		t.Fatalf("count warehouses: %v", err)
+	}
+	if warehouseCount != 0 {
+		t.Fatalf("fresh database seeded deferred warehouse rows: %d", warehouseCount)
+	}
+}
+
+func TestSeedSystemDataRequiresConfiguredSilencePasswordForFreshDatabase(t *testing.T) {
 	service := newAssignmentTestService(t)
 	cfg := &config.Config{Admin: config.AdminConfig{
 		Username: "seed-admin",
 		Password: "seed-password",
 		Name:     "种子管理员",
 	}}
-	if err := service.SeedSystemData(cfg); err != nil {
-		t.Fatalf("seed system data: %v", err)
-	}
 
-	var terminalRole model.Role
-	if err := service.DB.Where("code = ?", TerminalOperatorCode).First(&terminalRole).Error; err != nil {
-		t.Fatalf("load terminal operator role: %v", err)
+	err := service.SeedSystemData(cfg)
+	if err == nil || !strings.Contains(err.Error(), "BB_ERP_SILENCE_PASSWORD") {
+		t.Fatalf("missing Silence password error = %v", err)
 	}
-	var warehouseRead model.Permission
-	if err := service.DB.Where("code = ?", "warehouse:read").First(&warehouseRead).Error; err != nil {
-		t.Fatalf("load warehouse read permission: %v", err)
+	var userCount int64
+	if countErr := service.DB.Model(&model.User{}).Count(&userCount).Error; countErr != nil || userCount != 0 {
+		t.Fatalf("fresh database received partial initialization users: count=%d err=%v", userCount, countErr)
 	}
-	var binding model.RolePermission
-	if err := service.DB.Where("role_id = ? AND permission_id = ?", terminalRole.ID, warehouseRead.ID).First(&binding).Error; err != nil {
-		t.Fatalf("terminal operator should have warehouse read permission: %v", err)
+	for name, item := range map[string]any{"organizations": &model.Organization{}, "roles": &model.Role{}, "permissions": &model.Permission{}} {
+		var count int64
+		if countErr := service.DB.Model(item).Count(&count).Error; countErr != nil || count != 0 {
+			t.Fatalf("fresh database received partial %s seed data: count=%d err=%v", name, count, countErr)
+		}
+	}
+}
+
+func TestSeedSystemDataDoesNotAddSilenceOrResetAdminInExistingDatabase(t *testing.T) {
+	service := newAssignmentTestService(t)
+	existingHash := "existing-password-hash"
+	admin := model.User{Username: "admin", AccountType: model.AccountTypePersonal, Name: "已有管理员", OrganizationID: 1, Status: model.StatusActive, PasswordHash: existingHash, PasswordVersion: 7}
+	if err := service.DB.Create(&admin).Error; err != nil {
+		t.Fatalf("create existing admin: %v", err)
+	}
+	legacyRoles := []model.Role{{Name: "老板", Code: BossCode, System: true}, {Name: "终端操作员", Code: TerminalOperatorCode, System: true}}
+	if err := service.DB.Create(&legacyRoles).Error; err != nil {
+		t.Fatalf("create legacy roles: %v", err)
+	}
+	if err := service.DB.Create(&model.UserRole{UserID: admin.ID, RoleID: legacyRoles[0].ID}).Error; err != nil {
+		t.Fatalf("bind legacy boss role: %v", err)
+	}
+	cfg := &config.Config{Admin: config.AdminConfig{Username: "replacement", Password: "replacement-password", Name: "不应创建"}}
+	if err := service.SeedSystemData(cfg); err != nil {
+		t.Fatalf("seed existing database: %v", err)
+	}
+	var reloaded model.User
+	if err := service.DB.First(&reloaded, admin.ID).Error; err != nil {
+		t.Fatalf("reload existing admin: %v", err)
+	}
+	if reloaded.PasswordHash != existingHash || reloaded.PasswordVersion != 7 || reloaded.Name != admin.Name {
+		t.Fatalf("existing admin was changed: %+v", reloaded)
+	}
+	var silenceCount int64
+	if err := service.DB.Model(&model.User{}).Where("username = ?", SilenceUsername).Count(&silenceCount).Error; err != nil {
+		t.Fatalf("count Silence users: %v", err)
+	}
+	if silenceCount != 0 {
+		t.Fatalf("existing database received %d Silence accounts", silenceCount)
+	}
+	var replacement model.User
+	if err := service.DB.Where("username = ?", cfg.Admin.Username).First(&replacement).Error; err != nil {
+		t.Fatalf("configured admin was not created by preserved initialization behavior: %v", err)
+	}
+	var replacementSuper int64
+	if err := service.DB.Table("user_roles").Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ? AND roles.code = ?", replacement.ID, SuperAdminCode).Count(&replacementSuper).Error; err != nil || replacementSuper != 1 {
+		t.Fatalf("configured admin super role count=%d err=%v", replacementSuper, err)
+	}
+	var unlocked []model.Role
+	if err := service.DB.Where("code IN ?", []string{BossCode, TerminalOperatorCode}).Order("code").Find(&unlocked).Error; err != nil {
+		t.Fatalf("load upgraded legacy roles: %v", err)
+	}
+	if len(unlocked) != 2 || unlocked[0].System || unlocked[1].System {
+		t.Fatalf("legacy roles were not converted to custom roles: %+v", unlocked)
+	}
+	var preserved int64
+	if err := service.DB.Model(&model.UserRole{}).Where("user_id = ? AND role_id = ?", admin.ID, legacyRoles[0].ID).Count(&preserved).Error; err != nil || preserved != 1 {
+		t.Fatalf("legacy assignment count=%d err=%v", preserved, err)
+	}
+}
+
+func TestSeedSystemDataDoesNotTreatSoftDeletedUsersAsFresh(t *testing.T) {
+	service := newAssignmentTestService(t)
+	historical := model.User{Username: "historical", AccountType: model.AccountTypePersonal, Name: "历史账号", OrganizationID: 1, Status: model.StatusActive, PasswordHash: "hash"}
+	if err := service.DB.Create(&historical).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DB.Delete(&historical).Error; err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Admin: config.AdminConfig{Username: "admin", Password: "admin-password", Name: "管理员"}}
+	if err := service.SeedSystemData(cfg); err != nil {
+		t.Fatalf("existing database should not require Silence configuration: %v", err)
+	}
+	var silenceCount int64
+	if err := service.DB.Unscoped().Model(&model.User{}).Where("username = ?", SilenceUsername).Count(&silenceCount).Error; err != nil || silenceCount != 0 {
+		t.Fatalf("Silence count=%d err=%v", silenceCount, err)
 	}
 }

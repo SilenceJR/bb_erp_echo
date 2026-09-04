@@ -2,7 +2,7 @@
 
 博邦 ERP 是面向工厂局域网的单组织、单仓库系统。Go/Echo/SQLite 负责业务、权限和数据；Vue/Element Plus 提供共用业务界面；Windows 10/11 Tauri 客户端是正式入口，桌面 Web 是备用入口。
 
-当前按全新部署设计，不迁移或兼容旧数据库、旧 API、旧客户端和旧页面；不支持公网、系统代理、macOS 或移动端原生客户端。Windows/Tauri 与桌面 Web 是主入口，平板和手机仅支持低频 Web 访问适配。主要验收环境为 1920×1080，Tauri 窗口最小尺寸为 1024×680。
+当前以全新部署为主，不恢复旧 API、旧客户端或旧页面双轨；本轮只对已有数据库保留非破坏、幂等的角色转换与暂缓模块兼容，不删除已有业务表或数据。不支持公网、系统代理、macOS 或移动端原生客户端。Windows/Tauri 与桌面 Web 是主入口，平板和手机仅支持低频 Web 访问适配。主要验收环境为 1920×1080，Tauri 窗口最小尺寸为 1024×680。
 
 后端只提供当前 canonical API：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`，库存使用 `/api/v1/inventory-documents`、`/api/v1/inventory-balances` 和 `/api/v1/inventory-ledgers`；旧任务、单数基础资料和 `/api/v1/inventory` 路径不再注册。
 
@@ -10,11 +10,11 @@
 
 - 客户编码与多资料、Excel 预览导入和分页导出。
 - 部门、员工多部门成员关系、终端、账号、角色和权限。
-- 物料、产品、供应商、仓库、库存单据、过账、冲销、幂等和移动加权平均成本。
-- 生产/通用任务、部门处理、部分完成、待结案和强制完成。
+- 物料、产品等共享基础资料；供应商、仓库和库存保留页面/API，相关新库数据结构本阶段暂缓。
+- 任务单保留客户端入口与既有数据库兼容，新库数据结构及后续业务逻辑本阶段暂缓。
 - 模具借出、归还、维修、保养与履历。
 - 操作员工 + 登录账号 + 终端双重责任审计。
-- 统计报表、受保护图片和 Windows 客户端更新。
+- 可用数据源统计、缺失数据源明确降级、受保护图片和 Windows 客户端更新。
 - 客户端启动动画、局域网自动发现、服务身份验证、原生文件保存和未保存离开保护。
 
 ## 客户端优先架构
@@ -88,7 +88,7 @@ npm install
 npm run desktop:dev
 ```
 
-首次登录账号为 `admin` / `admin123456`。登录后应立即修改密码，再创建部门、员工、终端、账号和角色。
+全新数据库首次启动前必须配置 `BB_ERP_SILENCE_PASSWORD`。系统会保留原有 `admin` / `admin123456`，并额外创建 `Silence` 超级管理员；两者登录后都应立即修改初始密码。已有数据库不会补建或重置该额外账号。额外注入的 `Silence` 是系统托管保底账号，不出现在账号管理列表中，只能由该账号本人通过登录后的密码修改流程维护。
 
 服务器 Windows 专用网络需要放行 ERP TCP 端口（默认 `8080`）和发现 UDP 端口 `39080`。UDP 被阻断时仍可手动连接。
 
@@ -100,6 +100,7 @@ npm run desktop:dev
 BB_ERP_HTTP_HOST=0.0.0.0
 BB_ERP_HTTP_PORT=8080
 BB_ERP_DATABASE_PATH=data/erp.db
+BB_ERP_SILENCE_PASSWORD=<请设置独立强密码>
 BB_ERP_LOG_DIR=logs
 BB_ERP_FILES_ROOT_DIR=static/uploads
 BB_ERP_DISCOVERY_ENABLED=true

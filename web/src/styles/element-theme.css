@@ -1,6 +1,6 @@
 /* Element Plus component styling. Variable mappings live with the design tokens. */
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--bb-brand-500);
+  outline: 2px solid var(--bb-focus-color);
   outline-offset: 2px;
 }
 
@@ -9,6 +9,12 @@
 .el-select__wrapper:focus-within,
 .el-textarea__inner:focus-visible {
   box-shadow: var(--bb-focus-ring);
+}
+
+:root[data-theme="dark"] .el-button--primary.is-plain {
+  --el-button-text-color: var(--bb-accent-text);
+  --el-button-bg-color: var(--el-color-primary-light-9);
+  --el-button-border-color: var(--el-color-primary-light-7);
 }
 
 .v-modal {

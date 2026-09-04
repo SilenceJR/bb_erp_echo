@@ -1521,6 +1521,12 @@
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1577,6 +1583,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1651,6 +1663,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1737,6 +1755,12 @@
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1820,6 +1844,12 @@
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1874,6 +1904,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1942,6 +1978,12 @@
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -2006,6 +2048,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -3904,6 +3952,12 @@
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -3968,6 +4022,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4300,6 +4360,12 @@
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4354,6 +4420,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4421,6 +4493,12 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4501,6 +4579,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -4547,6 +4631,12 @@
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4613,6 +4703,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4676,6 +4772,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4736,6 +4838,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4808,6 +4916,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4868,6 +4982,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4934,6 +5054,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4976,6 +5102,12 @@
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -5042,6 +5174,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -5105,6 +5243,12 @@
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -5165,6 +5309,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -7207,11 +7357,18 @@
                 "can_view_cost": {
                     "type": "boolean"
                 },
+                "data_status": {
+                    "type": "string",
+                    "example": "ready"
+                },
                 "generated_at": {
                     "type": "string"
                 },
                 "inventory": {
                     "$ref": "#/definitions/statistics.InventoryStatistics"
+                },
+                "message": {
+                    "type": "string"
                 },
                 "molds": {
                     "$ref": "#/definitions/statistics.MoldStatistics"
@@ -7224,6 +7381,12 @@
                 },
                 "summary": {
                     "$ref": "#/definitions/statistics.Summary"
+                },
+                "unavailable_sources": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "workorders": {
                     "$ref": "#/definitions/statistics.WorkOrderStatistics"

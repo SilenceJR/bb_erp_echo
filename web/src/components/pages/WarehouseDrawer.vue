@@ -1,5 +1,16 @@
 <template>
-      <el-drawer v-model="warehouseDrawerVisible" size="min(620px, 100%)" title="物品详情" :with-header="false" :before-close="handleWarehouseBeforeClose" destroy-on-close @closed="resetWarehouseItem">
+      <ResponsiveDetailCarrier
+        v-model="warehouseDrawerVisible"
+        drawer-class="workspace-detail-drawer"
+        :docked="detailPanelDocked"
+        :size="detailPanelSize"
+        title="物品详情"
+        :with-header="false"
+        :before-close="handleWarehouseBeforeClose"
+        docked-auto-focus="panel"
+        destroy-on-close
+        @closed="resetWarehouseItem"
+      >
         <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
           <div class="drawer-heading">
             <div>
@@ -7,7 +18,7 @@
               <h2>{{ selectedWarehouseItem.name }}</h2>
               <span>{{ selectedWarehouseItem.code }} · {{ selectedWarehouseItem.spec || '无规格' }}</span>
             </div>
-            <el-button circle aria-label="关闭物品详情" @click="closeWarehouseItem">×</el-button>
+            <el-button circle aria-label="关闭物品详情" @click="closeWarehouseItem"><el-icon><Close /></el-icon></el-button>
           </div>
 
           <PageState v-if="warehouseDetailLoading" kind="loading" title="正在加载库存详情" />
@@ -151,7 +162,7 @@
           <el-alert v-else title="出入库记录需要库存单据查看权限。" type="info" :closable="false" show-icon/>
           </template>
         </div>
-      </el-drawer>
+      </ResponsiveDetailCarrier>
 
 </template>
 
@@ -160,6 +171,9 @@ import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
 import OperatorSelect from '../ui/OperatorSelect.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {Close} from '@element-plus/icons-vue'
 
 const {
   operatorDirectory,
@@ -318,4 +332,5 @@ const {
   trendNameLabel,
   trendBarPercentage,
 } = useWorkspaceContext()
+const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(warehouseDrawerVisible, true)
 </script>

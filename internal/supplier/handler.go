@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 
@@ -14,6 +16,7 @@ import (
 
 type Handler struct {
 	Service Service
+	DB      *gorm.DB
 }
 
 type supplierRequest struct {
@@ -26,7 +29,9 @@ type supplierRequest struct {
 }
 
 func NewHandler(db *gorm.DB) *Handler {
-	return NewHandlerWithService(NewService(db))
+	handler := NewHandlerWithService(NewService(db))
+	handler.DB = db
+	return handler
 }
 
 func NewHandlerWithService(service Service) *Handler {
@@ -41,6 +46,9 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 }
 
 func (h *Handler) List(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	result, err := h.Service.List(pagination.FromEcho(c))
 	if err != nil {
 		return err
@@ -49,6 +57,9 @@ func (h *Handler) List(c *echo.Context) error {
 }
 
 func (h *Handler) Create(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	var req supplierRequest
 	if err := request.BindAndValidate(c, &req); err != nil {
 		return err
@@ -61,6 +72,9 @@ func (h *Handler) Create(c *echo.Context) error {
 }
 
 func (h *Handler) Update(c *echo.Context) error {
+	if err := h.ensureReady(); err != nil {
+		return err
+	}
 	id, err := request.ParamID(c)
 	if err != nil {
 		return err
@@ -77,4 +91,11 @@ func (h *Handler) Update(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) ensureReady() error {
+	if h.DB == nil {
+		return nil
+	}
+	return moduleavailability.Check(h.DB, "供应商", moduleavailability.Requirement{Model: &model.Supplier{}, Name: "suppliers"})
 }

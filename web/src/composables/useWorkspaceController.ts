@@ -9,12 +9,14 @@ import {useWarehouseOperations} from './useWarehouseOperations'
 import {useWorkorder} from './useWorkorder'
 import {useWorkorderOperations} from './useWorkorderOperations'
 import {ElMessage} from 'element-plus'
+import {Box, Coin, TrendCharts, Tickets, UserFilled, Van} from '@element-plus/icons-vue'
 import {ApiError, apiBaseUrl, configureAuthSession, request} from '../api/http'
 import type {MetricTone} from '../components/ui/MetricCard.vue'
 import type {StatusTone} from '../components/ui/StatusTag.vue'
 import {type ModuleItem, modules} from '../data/modules'
 import type {BasicItem, CurrentUser, PaginatedResponse, SkeletonResponse} from '../types'
 import {dirtyGuardRegistry} from '../platform/dirtyGuard'
+import {deferredModuleForPath, moduleUnavailableEvent, statisticsSourceIsUnavailable, type StatisticsSource} from '../platform/moduleAvailability'
 import {useDirtyGuard} from './useDirtyGuard'
 import {useDirectoryOperations} from './useDirectoryOperations'
 import {
@@ -71,6 +73,9 @@ type StatisticTrendItem = { date: string; name?: string; value: number; quantity
 type DepartmentStatistic = { department_id: number; name: string; total: number; completed: number; processing: number; partial: number; received: number }
 type StockStatisticItem = { item_type: string; item_id: number; name: string; code: string; category: string; quantity: number; safety_stock: number; amount?: number }
 type StatisticsDashboard = {
+  data_status?: 'ready' | 'sources_unavailable'
+  unavailable_sources?: string[]
+  message?: string
   generated_at: string
   can_view_cost: boolean
   summary: Record<string, number>
@@ -134,6 +139,7 @@ const {
   loading,
   panelMessage,
   listError,
+  moduleUnavailable,
   formState,
   activeWarehouseTab,
   workorderStatusFilter,
@@ -233,6 +239,7 @@ const {
 })
 
 const statisticsData = ref<StatisticsDashboard | null>(null)
+const pageDetailPanelVisible = ref(false)
 const affiliationTarget = ref<BasicItem | null>(null)
 const affiliationDepartmentID = ref<number | undefined>()
 const affiliationTerminalID = ref<number | undefined>()
@@ -266,7 +273,7 @@ const navItems = computed(() => modules.filter(canReadModule))
 const businessItems = computed(() => navItems.value.filter((item) => item.group === 'business'))
 const systemItems = computed(() => navItems.value.filter((item) => item.group === 'system'))
 const activeModule = computed(() => modules.find((item) => item.key === activeKey.value))
-const canWriteActive = computed(() => !!activeModule.value && canWriteModule(activeModule.value))
+const canWriteActive = computed(() => !moduleUnavailable.value && !!activeModule.value && canWriteModule(activeModule.value))
 const canEditUserAffiliation = computed(() => canWriteActive.value && hasPermission('system:departments:read') && hasPermission('system:terminals:read'))
 const canCreateDepartmentTerminalUser = computed(() => hasPermission('system:departments:read') && hasPermission('system:terminals:read'))
 const activePageReadonly = computed(() => {
@@ -349,6 +356,22 @@ const assignmentOptionGroups = computed(() => {
   }
   return [...groups.entries()].map(([key, items]) => ({key, label: permissionDomainLabel(key), items}))
 })
+const assignmentScopeBlockedReason = computed(() => {
+  const config = assignmentConfig.value
+  const target = assignmentTarget.value
+  if (!config || !target || !assignmentOptionsReady.value) return ''
+  const originalIDs = Array.isArray(target[config.selectedKey])
+    ? (target[config.selectedKey] as unknown[]).map(Number)
+    : []
+  const optionsByID = new Map(assignmentOptions.value.map((option) => [Number(option.id), option]))
+  for (const id of originalIDs) {
+    const option = optionsByID.get(id)
+    if (!option) return '目标当前包含无法核验的授权项。为避免误删或越权，当前配置已锁定，请刷新后重试。'
+    const reason = assignmentOptionScopeReason(option, target)
+    if (reason) return `目标当前包含超出你管理范围的授权（${option.name || option.code || `#${id}`}）。为避免越权，不能修改该目标。`
+  }
+  return ''
+})
 const userInitial = computed(() => (currentUser.value?.name || currentUser.value?.username || '用户').slice(0, 1))
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -358,11 +381,11 @@ const greeting = computed(() => {
   return '晚上好'
 })
 const quickActionDefinitions = [
-  {key: 'workorder', title: '任务单', description: '查看当前任务与部门处理进度', icon: '✓'},
-  {key: 'warehouses', title: '仓库', description: '查询库存并办理物品出入库', icon: '▦'},
-  {key: 'customers', title: '客户档案', description: '查找或新增客户资料', icon: '◎'},
-  {key: 'suppliers', title: '供应商', description: '维护采购供应商资料', icon: '↙'},
-  {key: 'molds', title: '模具', description: '查询模具位置与图片资料', icon: '◇'},
+  {key: 'workorder', title: '任务单', description: '查看当前任务与部门处理进度', icon: Tickets},
+  {key: 'warehouses', title: '仓库', description: '查询库存并办理物品出入库', icon: Box},
+  {key: 'customers', title: '客户档案', description: '查找或新增客户资料', icon: UserFilled},
+  {key: 'suppliers', title: '供应商', description: '维护采购供应商资料', icon: Van},
+  {key: 'molds', title: '模具', description: '查询模具位置与图片资料', icon: Coin},
 ]
 const quickActions = computed(() => quickActionDefinitions.filter((item) => {
   const moduleItem = modules.find((candidate) => candidate.key === item.key)
@@ -379,19 +402,19 @@ const businessGroups = computed(() => [
   {
     title: '库存与仓储',
     caption: '物品、库存与出入库',
-    icon: '▣',
+    icon: Box,
     items: businessItems.value.filter((item) => ['warehouses'].includes(item.key)),
   },
   {
     title: '客户与生产',
     caption: '客户资料与生产档案',
-    icon: '◫',
+    icon: UserFilled,
     items: businessItems.value.filter((item) => ['customers', 'suppliers', 'molds', 'workorder'].includes(item.key)),
   },
   {
     title: '数据与报表',
     caption: '经营数据与统计结果',
-    icon: '↗',
+    icon: TrendCharts,
     items: businessItems.value.filter((item) => item.key === 'statistics'),
   },
 ].filter((group) => group.items.length))
@@ -399,6 +422,7 @@ const accountTypeText = computed(() => {
   if (!currentUser.value) return '未登录'
   return currentUser.value.account_type === 'department_terminal' ? '部门终端账号' : '个人账号'
 })
+const lastHealthCheckAt = ref('')
 const healthStatusLabel = computed(() => ({
   checking: '正在检查服务',
   healthy: '服务正常',
@@ -416,14 +440,6 @@ const dashboardMetricCards = computed<MetricCardItem[]>(() => [
     value: `${quickActions.value.length} 个`,
     caption: '按账号类型排序',
     tone: 'neutral',
-  },
-  {
-    label: '业务服务',
-    value: healthStatus.value === 'checking' ? '检查中' : healthStatus.value === 'healthy' ? '运行正常' : '暂不可用',
-    caption: healthStatus.value === 'checking' ? '正在确认服务连接' : healthStatus.value === 'healthy' ? '可以继续办理业务' : '请检查服务连接后重试',
-    tone: healthStatus.value === 'checking' ? 'info' : healthStatus.value === 'healthy' ? 'success' : 'danger',
-    statusLabel: healthStatus.value === 'checking' ? '检查中' : healthStatus.value === 'healthy' ? '在线' : '异常',
-    statusTone: healthStatus.value === 'checking' ? 'info' : healthStatus.value === 'healthy' ? 'success' : 'danger',
   },
   {
     label: '当前账号',
@@ -596,14 +612,22 @@ const statisticsCards = computed<MetricCardItem[]>(() => {
   const urgent = Number(summary.urgent_workorders || 0)
   const pendingClose = Number(summary.pending_close_orders || 0)
   return [
-    {label: '库存总量', value: formatQuantity(summary.inventory_quantity), caption: statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏', tone: 'info'},
-    {label: '低库存', value: String(lowStock), caption: '低于或等于安全库存', tone: lowStock ? 'danger' : 'success', statusLabel: lowStock ? '需处理' : '正常', statusTone: lowStock ? 'danger' : 'success'},
-    {label: '进行中任务', value: String(summary.open_workorders || 0), caption: `加急 ${urgent} · 待确认 ${pendingClose}`, tone: urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
+    {label: '库存总量', value: statisticsSourceUnavailable('inventory') ? '—' : formatQuantity(summary.inventory_quantity), caption: statisticsSourceUnavailable('inventory') ? '库存数据源尚未初始化' : statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏', tone: 'info'},
+    {label: '低库存', value: statisticsSourceUnavailable('inventory') ? '—' : String(lowStock), caption: statisticsSourceUnavailable('inventory') ? '库存数据源尚未初始化' : '低于或等于安全库存', tone: statisticsSourceUnavailable('inventory') ? 'neutral' : lowStock ? 'danger' : 'success', statusLabel: statisticsSourceUnavailable('inventory') ? '不可用' : lowStock ? '需处理' : '正常', statusTone: statisticsSourceUnavailable('inventory') ? 'info' : lowStock ? 'danger' : 'success'},
+    {label: '进行中任务', value: statisticsSourceUnavailable('workorders') ? '—' : String(summary.open_workorders || 0), caption: statisticsSourceUnavailable('workorders') ? '任务数据源尚未初始化' : `加急 ${urgent} · 待确认 ${pendingClose}`, tone: statisticsSourceUnavailable('workorders') ? 'neutral' : urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
     {label: '模具档案', value: String(summary.molds || 0), caption: '模具产品记录总数', tone: 'info'},
     {label: '客户编码', value: String(summary.customers || 0), caption: '稳定关联编码总数', tone: 'neutral'},
-    {label: '仓库物品', value: String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
+    {label: '仓库物品', value: statisticsSourceUnavailable('inventory') ? '—' : String(summary.warehouse_items || 0), caption: statisticsSourceUnavailable('inventory') ? '仓库数据源尚未初始化' : '产品与物资档案', tone: 'neutral'},
   ]
 })
+const statisticsSourcesUnavailable = computed(() => statisticsData.value?.data_status === 'sources_unavailable')
+function statisticsSourceUnavailable(source: StatisticsSource): boolean {
+  return statisticsSourceIsUnavailable(
+    statisticsData.value?.data_status,
+    statisticsData.value?.unavailable_sources,
+    source,
+  )
+}
 const compactTrendItems = computed(() => {
   const inventory = statisticsData.value?.inventory?.trend || []
   const workorders = statisticsData.value?.workorders?.trend || []
@@ -651,7 +675,11 @@ function hasPermission(code?: string): boolean {
 }
 
 function canReadModule(item: ModuleItem): boolean {
-  return item.key === 'dashboard' || hasPermission(item.readPermission)
+  if (item.key === 'dashboard') return true
+  if (item.key === 'users') return hasPermission('system:users:read') || hasPermission('system:users:write')
+  if (item.key === 'roles') return hasPermission('system:roles:read') || hasPermission('system:roles:write') || hasPermission('system:users:write')
+  if (item.key === 'permissions') return hasPermission('system:permissions:read') || hasPermission('system:roles:write')
+  return hasPermission(item.readPermission)
 }
 
 function canWriteModule(item: ModuleItem): boolean {
@@ -663,6 +691,7 @@ directoryOperations = useDirectoryOperations({
   page, pageSize, pageTotal, loading, panelMessage, listError, formState, formError,
   activeWarehouseTab, workorderStatusFilter, workorderTypeFilter, workorderPriorityFilter,
   cache, token, currentUser, activeModule, canCreateDepartmentTerminalUser, formSchema,
+  moduleUnavailable, ApiError,
   assignmentOptionsCache, operatorDirectory, hasPermission, canReadModule, canWriteModule,
   rowsFor, appendQuery, isPaginatedResponse, loadStatistics, decimalToScaled, moneyToCents,
   resetWorkorderProductSelection, searchWorkorderProducts, invalidateWorkorderProductSearch,
@@ -694,6 +723,7 @@ async function switchModule(key: string) {
   pageTotal.value = 0
   skeletonResult.value = null
   listError.value = ''
+  moduleUnavailable.value = null
   closeWorkOrder()
   closeAssignment()
   showCreateForm.value = false
@@ -722,7 +752,11 @@ let assignmentOptionsRequestToken = 0
 
 async function openAssignment(row: any) {
   const config = assignmentConfigs[activeKey.value]
-  if (!config) return
+  if (!config || assignmentTargetDisabled(row)) {
+    const hint = assignmentTargetHint(row)
+    if (hint) ElMessage.warning(hint)
+    return
+  }
   assignmentTarget.value = row
   assignmentModuleKey.value = activeKey.value
   assignmentOptionsError.value = ''
@@ -787,16 +821,32 @@ function retryAssignmentOptions() {
 }
 
 function isAssignmentOptionDisabled(option: BasicItem): boolean {
-  return Boolean(
-    assignmentConfig.value?.isDisabled
-    && assignmentTarget.value
-    && assignmentConfig.value.isDisabled(assignmentTarget.value, option)
-  )
+  return Boolean(assignmentScopeBlockedReason.value || assignmentOptionDisabledReason(option))
+}
+
+function assignmentOptionScopeReason(option: BasicItem, target: BasicItem): string {
+  const config = assignmentConfig.value
+  if (!config) return ''
+  if (config.isDisabled?.(target, option)) return '终端账号不能授予超级管理员角色'
+  const isSuperAdmin = currentUser.value?.roles?.includes('super_admin')
+  if (isSuperAdmin) return ''
+  if (config.optionKey === 'roles' && !currentUser.value?.roles?.includes(String(option.code || ''))) {
+    return '只能分配当前管理员自己实际持有的角色'
+  }
+  if (config.optionKey === 'permissions' && !currentUser.value?.permissions?.includes(String(option.code || ''))) {
+    return '只能授予当前管理员自己拥有的有效权限'
+  }
+  return ''
+}
+
+function assignmentOptionDisabledReason(option: BasicItem): string {
+  if (assignmentScopeBlockedReason.value) return assignmentScopeBlockedReason.value
+  return assignmentTarget.value ? assignmentOptionScopeReason(option, assignmentTarget.value) : ''
 }
 
 async function saveAssignment() {
   const config = assignmentConfig.value
-  if (!assignmentTarget.value || !config || !assignmentOptionsReady.value || assignmentSaving.value) return
+  if (!assignmentTarget.value || !config || !assignmentOptionsReady.value || assignmentSaving.value || assignmentScopeBlockedReason.value) return
   assignmentSaving.value = true
   assignmentSaveError.value = ''
   try {
@@ -1005,7 +1055,40 @@ async function loadHealth() {
     healthStatus.value = 'healthy'
   } catch {
     healthStatus.value = 'error'
+  } finally {
+    lastHealthCheckAt.value = new Date().toISOString()
   }
+}
+
+function assignmentTargetDisabled(row: Record<string, unknown>): boolean {
+  if (activeKey.value === 'users') return Number(row.id) === Number(currentUser.value?.id)
+  if (activeKey.value === 'roles') return row.code === 'super_admin'
+  return false
+}
+
+function assignmentTargetHint(row: Record<string, unknown>): string {
+  if (activeKey.value === 'users' && Number(row.id) === Number(currentUser.value?.id)) return '不能修改当前登录账号自己的角色'
+  if (activeKey.value === 'roles' && row.code === 'super_admin') return '超级管理员是锁定的系统角色'
+  return ''
+}
+
+function setPageDetailPanelVisible(visible: boolean) {
+  pageDetailPanelVisible.value = visible
+}
+
+function handleModuleUnavailableEvent(event: Event) {
+  const detail = (event as CustomEvent<{path?: string; message?: string}>).detail
+  const moduleKey = deferredModuleForPath(detail?.path || '')
+  if (!moduleKey || activeKey.value !== moduleKey) return
+  moduleUnavailable.value = {module: moduleKey, message: detail?.message || '该模块的数据结构待后续重构'}
+  rows.value = []
+  columns.value = []
+  pageTotal.value = 0
+  showCreateForm.value = false
+  editingSupplier.value = null
+  if (moduleKey === 'warehouses') performWarehouseClose()
+  if (moduleKey === 'workorder') closeWorkOrder()
+  panelMessage.value = '数据结构待后续重构，当前页面已切换为只读状态'
 }
 
 async function loadMe() {
@@ -1146,6 +1229,7 @@ useDirtyGuard('workspace-business-state', {
 
 onMounted(() => {
   window.addEventListener('focus', refreshOnSessionActivity)
+  window.addEventListener(moduleUnavailableEvent, handleModuleUnavailableEvent)
   document.addEventListener('visibilitychange', refreshOnSessionActivity)
   scheduleSessionRefresh()
   if (token.value) {
@@ -1163,6 +1247,7 @@ onBeforeUnmount(() => {
   clearSessionRefreshTimer()
   disposeWorkorderOperations()
   window.removeEventListener('focus', refreshOnSessionActivity)
+  window.removeEventListener(moduleUnavailableEvent, handleModuleUnavailableEvent)
   document.removeEventListener('visibilitychange', refreshOnSessionActivity)
   configureAuthSession(null)
 })
@@ -1229,6 +1314,7 @@ const workorderContext = {
     errorMessage,
     panelMessage,
     listError,
+    moduleUnavailable,
     assignmentTarget,
     assignmentModuleKey,
     selectedAssignmentIDs,
@@ -1239,6 +1325,7 @@ const workorderContext = {
     assignmentSaveError,
     selectedWarehouseItem,
     warehouseDrawerVisible,
+    workorderDrawerVisible,
     warehouseDetail,
     warehouseDetailLoading,
     warehouseDetailError,
@@ -1253,6 +1340,7 @@ const workorderContext = {
     quickSupplierSubmitting,
     quickSupplierError,
     healthStatus,
+    lastHealthCheckAt,
     loginForm,
     loginUsernameInput,
     formError,
@@ -1261,6 +1349,9 @@ const workorderContext = {
     quickSupplier,
     activeWarehouseTab,
     statisticsData,
+    pageDetailPanelVisible,
+    statisticsSourcesUnavailable,
+    statisticsSourceUnavailable,
     affiliationTarget,
     affiliationDepartmentID,
     affiliationTerminalID,
@@ -1294,6 +1385,7 @@ const workorderContext = {
     assignmentOptions,
     assignmentOptionsReady,
     assignmentOptionGroups,
+    assignmentScopeBlockedReason,
     userInitial,
     greeting,
     quickActionDefinitions,
@@ -1344,6 +1436,10 @@ const workorderContext = {
     loadAssignmentOptions,
     retryAssignmentOptions,
     isAssignmentOptionDisabled,
+    assignmentOptionDisabledReason,
+    assignmentTargetDisabled,
+    assignmentTargetHint,
+    setPageDetailPanelVisible,
     saveAssignment,
     openUserAffiliation,
     closeUserAffiliation,

@@ -10,6 +10,7 @@ import (
 
 	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/operator"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
@@ -120,21 +121,32 @@ func RegisterRoutes(v1 *echo.Group, db *gorm.DB, require func(string, string) ec
 
 func (h *Handler) register(v1 *echo.Group, path string, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	object := "/api/v1/" + path
+	deferred := moduleavailability.Middleware(h.DB, "任务单", workorderModuleRequirements()...)
 	group := v1.Group("/"+path, audit)
-	group.GET("", h.List, require(object, "read"))
-	group.POST("", h.Create, require(object, "write"))
+	group.GET("", h.List, require(object, "read"), deferred)
+	group.POST("", h.Create, require(object, "write"), deferred)
 	if path == "workorder" {
-		group.POST("/products", h.CreateTemporaryProduct, require(object, "write"), require(temporaryProductObject, "write"))
+		group.POST("/products", h.CreateTemporaryProduct, require(object, "write"), require(temporaryProductObject, "write"), deferred)
 	}
-	group.POST("/:id/dispatch", h.Dispatch, require(object, "write"))
-	group.POST("/:id/pause", h.Pause, require(object, "write"))
-	group.POST("/:id/resume", h.Resume, require(object, "write"))
-	group.POST("/:id/urgent", h.SetUrgent, require(object, "write"))
-	group.POST("/:id/complete", h.Complete, require(object, "write"))
-	group.GET("/:id/logs", h.ListLogs, require(object, "read"))
-	group.POST("/department-tasks/:id/start", h.StartDepartmentTask, require(object, "write"))
-	group.POST("/department-tasks/:id/partial-complete", h.PartialCompleteDepartmentTask, require(object, "write"))
-	group.POST("/department-tasks/:id/complete", h.CompleteDepartmentTask, require(object, "write"))
+	group.POST("/:id/dispatch", h.Dispatch, require(object, "write"), deferred)
+	group.POST("/:id/pause", h.Pause, require(object, "write"), deferred)
+	group.POST("/:id/resume", h.Resume, require(object, "write"), deferred)
+	group.POST("/:id/urgent", h.SetUrgent, require(object, "write"), deferred)
+	group.POST("/:id/complete", h.Complete, require(object, "write"), deferred)
+	group.GET("/:id/logs", h.ListLogs, require(object, "read"), deferred)
+	group.POST("/department-tasks/:id/start", h.StartDepartmentTask, require(object, "write"), deferred)
+	group.POST("/department-tasks/:id/partial-complete", h.PartialCompleteDepartmentTask, require(object, "write"), deferred)
+	group.POST("/department-tasks/:id/complete", h.CompleteDepartmentTask, require(object, "write"), deferred)
+}
+
+func workorderModuleRequirements() []moduleavailability.Requirement {
+	return []moduleavailability.Requirement{
+		{Model: &model.WorkOrder{}, Name: "work_orders"},
+		{Model: &model.DepartmentTask{}, Name: "department_tasks"},
+		{Model: &model.WorkOrderFlowLog{}, Name: "work_order_flow_logs"},
+		{Model: &model.Warehouse{}, Name: "warehouses"},
+		{Model: &model.InventoryBalance{}, Name: "inventory_balances"},
+	}
 }
 
 const temporaryProductObject = "/api/v1/workorder/products"
@@ -153,6 +165,7 @@ const temporaryProductObject = "/api/v1/workorder/products"
 // @Success 200 {object} ListResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder [get]
 func (h *Handler) List(c *echo.Context) error {
 	query := pagination.FromEcho(c)
@@ -193,6 +206,7 @@ func (h *Handler) List(c *echo.Context) error {
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder [post]
 func (h *Handler) Create(c *echo.Context) error {
 	var req createRequest
@@ -291,6 +305,7 @@ func (h *Handler) Create(c *echo.Context) error {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/products [post]
 func (h *Handler) CreateTemporaryProduct(c *echo.Context) error {
 	var req temporaryProductRequest
@@ -382,6 +397,7 @@ func isUniqueConstraintError(err error) bool {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/dispatch [post]
 func (h *Handler) Dispatch(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -455,6 +471,7 @@ func (h *Handler) Dispatch(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/pause [post]
 func (h *Handler) Pause(c *echo.Context) error {
 	var req reasonRequest
@@ -483,6 +500,7 @@ func (h *Handler) Pause(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/resume [post]
 func (h *Handler) Resume(c *echo.Context) error {
 	var req operatorActionRequest
@@ -508,6 +526,7 @@ func (h *Handler) Resume(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/urgent [post]
 func (h *Handler) SetUrgent(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -562,6 +581,7 @@ func (h *Handler) SetUrgent(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/complete [post]
 func (h *Handler) Complete(c *echo.Context) error {
 	id, err := request.ParamID(c)
@@ -634,6 +654,7 @@ func (h *Handler) Complete(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/start [post]
 func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
@@ -666,6 +687,7 @@ func (h *Handler) StartDepartmentTask(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/partial-complete [post]
 func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 	var req partialCompleteRequest
@@ -706,6 +728,7 @@ func (h *Handler) PartialCompleteDepartmentTask(c *echo.Context) error {
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/department-tasks/{id}/complete [post]
 func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 	var req remarkRequest
@@ -734,6 +757,7 @@ func (h *Handler) CompleteDepartmentTask(c *echo.Context) error {
 // @Success 200 {array} model.WorkOrderFlowLog
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse
+// @Failure 503 {object} ErrorResponse
 // @Router /api/v1/workorder/{id}/logs [get]
 func (h *Handler) ListLogs(c *echo.Context) error {
 	id, err := request.ParamID(c)

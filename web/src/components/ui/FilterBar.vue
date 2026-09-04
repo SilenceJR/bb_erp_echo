@@ -43,10 +43,9 @@ const emit = defineEmits<{
   gap: var(--bb-space-3);
   margin-bottom: var(--bb-space-3);
   border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-lg);
+  border-radius: var(--bb-radius-md);
   background: var(--bb-bg-surface);
   padding: var(--bb-space-2) var(--bb-space-3);
-  box-shadow: var(--bb-shadow-xs);
 }
 
 .ui-filter-bar__controls,

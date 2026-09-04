@@ -1337,10 +1337,15 @@ definitions:
         $ref: '#/definitions/statistics.BusinessStatistics'
       can_view_cost:
         type: boolean
+      data_status:
+        example: ready
+        type: string
       generated_at:
         type: string
       inventory:
         $ref: '#/definitions/statistics.InventoryStatistics'
+      message:
+        type: string
       molds:
         $ref: '#/definitions/statistics.MoldStatistics'
       recent_workorders:
@@ -1349,6 +1354,10 @@ definitions:
         type: array
       summary:
         $ref: '#/definitions/statistics.Summary'
+      unavailable_sources:
+        items:
+          type: string
+        type: array
       workorders:
         $ref: '#/definitions/statistics.WorkOrderStatistics'
     type: object
@@ -2925,6 +2934,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询库存余额
@@ -2961,6 +2974,10 @@ paths:
             $ref: '#/definitions/inventory.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
       security:
@@ -3009,6 +3026,10 @@ paths:
             $ref: '#/definitions/inventory.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
       security:
@@ -3065,6 +3086,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 审核过账库存单据
@@ -3119,6 +3144,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 冲销已过账库存单据
@@ -3153,6 +3182,10 @@ paths:
             $ref: '#/definitions/inventory.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/inventory.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/inventory.ErrorResponse'
       security:
@@ -3196,6 +3229,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库库位
@@ -3237,6 +3274,10 @@ paths:
             $ref: '#/definitions/warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
       security:
@@ -4436,6 +4477,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库标签物品
@@ -4477,6 +4522,10 @@ paths:
             $ref: '#/definitions/warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
       security:
@@ -4694,6 +4743,10 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 查询仓库分类标签
@@ -4728,6 +4781,10 @@ paths:
             $ref: '#/definitions/warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
       security:
@@ -4771,6 +4828,10 @@ paths:
             $ref: '#/definitions/warehouse.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/warehouse.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/warehouse.ErrorResponse'
       security:
@@ -4822,6 +4883,10 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 分页查询任务单
@@ -4851,6 +4916,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:
@@ -4893,6 +4962,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 办公室确认完成任务单
@@ -4933,6 +5006,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 派发任务单
@@ -4959,6 +5036,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:
@@ -5001,6 +5082,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 暂停任务单
@@ -5039,6 +5124,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:
@@ -5081,6 +5170,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 设置或取消加急
@@ -5119,6 +5212,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:
@@ -5161,6 +5258,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 部门提交部分完成数量
@@ -5199,6 +5300,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:
@@ -5244,6 +5349,10 @@ paths:
             $ref: '#/definitions/workorder.ErrorResponse'
         "409":
           description: Conflict
+          schema:
+            $ref: '#/definitions/workorder.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/workorder.ErrorResponse'
       security:

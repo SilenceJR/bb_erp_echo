@@ -13,6 +13,7 @@ import (
 	"bb_erp_echo/internal/auth"
 	erpmiddleware "bb_erp_echo/internal/middleware"
 	"bb_erp_echo/internal/model"
+	"bb_erp_echo/internal/moduleavailability"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 
@@ -379,9 +380,15 @@ func (h *Handler) ensureOwnerExists(ownerType string, ownerID uint) error {
 		var item model.Mold
 		return ownerRecordError(h.db.First(&item, ownerID).Error)
 	case OwnerWorkOrder:
+		if err := moduleavailability.Check(h.db, "任务单", moduleavailability.Requirement{Model: &model.WorkOrder{}, Name: "work_orders"}); err != nil {
+			return err
+		}
 		var item model.WorkOrder
 		return ownerRecordError(h.db.First(&item, ownerID).Error)
 	case OwnerDepartmentTask:
+		if err := moduleavailability.Check(h.db, "任务单", moduleavailability.Requirement{Model: &model.DepartmentTask{}, Name: "department_tasks"}); err != nil {
+			return err
+		}
 		var task model.DepartmentTask
 		return ownerRecordError(h.db.First(&task, ownerID).Error)
 	}
@@ -391,6 +398,9 @@ func (h *Handler) ensureOwnerExists(ownerType string, ownerID uint) error {
 func (h *Handler) ensureDepartmentWrite(c *echo.Context, ownerType string, ownerID uint) error {
 	if ownerType != OwnerDepartmentTask {
 		return nil
+	}
+	if err := moduleavailability.Check(h.db, "任务单", moduleavailability.Requirement{Model: &model.DepartmentTask{}, Name: "department_tasks"}); err != nil {
+		return err
 	}
 	var task model.DepartmentTask
 	if err := h.db.First(&task, ownerID).Error; err != nil {

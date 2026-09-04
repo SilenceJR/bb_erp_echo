@@ -1528,6 +1528,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1584,6 +1590,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1658,6 +1670,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1744,6 +1762,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1827,6 +1851,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1881,6 +1911,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/inventory.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/inventory.ErrorResponse"
                         }
@@ -1949,6 +1985,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -2013,6 +2055,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -3911,6 +3959,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -3975,6 +4029,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4307,6 +4367,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4361,6 +4427,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4428,6 +4500,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
@@ -4508,6 +4586,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -4554,6 +4638,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4620,6 +4710,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4683,6 +4779,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4743,6 +4845,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4815,6 +4923,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4875,6 +4989,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -4941,6 +5061,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -4983,6 +5109,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -5049,6 +5181,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -5112,6 +5250,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -5172,6 +5316,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/workorder.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -7214,11 +7364,18 @@ const docTemplate = `{
                 "can_view_cost": {
                     "type": "boolean"
                 },
+                "data_status": {
+                    "type": "string",
+                    "example": "ready"
+                },
                 "generated_at": {
                     "type": "string"
                 },
                 "inventory": {
                     "$ref": "#/definitions/statistics.InventoryStatistics"
+                },
+                "message": {
+                    "type": "string"
                 },
                 "molds": {
                     "$ref": "#/definitions/statistics.MoldStatistics"
@@ -7231,6 +7388,12 @@ const docTemplate = `{
                 },
                 "summary": {
                     "$ref": "#/definitions/statistics.Summary"
+                },
+                "unavailable_sources": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "workorders": {
                     "$ref": "#/definitions/statistics.WorkOrderStatistics"

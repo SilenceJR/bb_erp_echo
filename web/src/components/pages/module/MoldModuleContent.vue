@@ -202,7 +202,7 @@ onMounted(() => { void Promise.all([load(), loadLocations()]) })
 .danger-zone { display: flex; align-items: center; gap: 12px; margin-top: var(--bb-space-5); padding-top: var(--bb-space-4); border-top: 1px solid var(--bb-border-default); }
 .danger-zone small { color: var(--bb-text-secondary); }
 .import-dropzone { display: grid; min-height: 112px; place-items: center; align-content: center; gap: var(--bb-space-1); margin: var(--bb-space-4) 0; border: 1px dashed var(--bb-border-strong); border-radius: var(--bb-radius-lg); background: var(--bb-bg-subtle); color: var(--bb-text-secondary); cursor: pointer; }
-.import-dropzone:hover, .import-dropzone:focus-visible, .import-dropzone.is-dragging { border-color: var(--bb-brand-500); background: var(--bb-brand-50); color: var(--bb-brand-700); outline: none; }
+.import-dropzone:hover, .import-dropzone:focus-visible, .import-dropzone.is-dragging { border-color: var(--bb-accent-icon); background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); outline: none; }
 .import-dropzone strong { color: inherit; font-size: var(--bb-font-size-14); }
 .import-dropzone span, .import-file span { color: var(--bb-text-secondary); font-size: var(--bb-font-size-12); }
 .import-file { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--bb-space-3); margin: var(--bb-space-3) 0; border: 1px solid var(--bb-info-border); border-radius: var(--bb-radius-md); background: var(--bb-info-bg); padding: var(--bb-space-3); }
