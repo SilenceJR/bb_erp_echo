@@ -86,15 +86,15 @@ export function useDirectoryOperations(d: Dependencies) {
         d.rows.value = []; d.columns.value = []; d.pageTotal.value = 0
       } else if (item.key === 'statistics') await d.loadStatistics()
       else await loadList(item.key, true)
-      d.panelMessage.value = '已同步'
+      d.panelMessage.value = '已刷新'
     } catch (error) {
       if (isModuleNotInitialized(error)) {
-        d.moduleUnavailable.value = {module: item.key, message: error.message || '该模块的数据结构待后续重构'}
+        d.moduleUnavailable.value = {module: item.key, message: error.message || '此功能暂不可用'}
         d.rows.value = []
         d.columns.value = []
         d.pageTotal.value = 0
         d.showCreateForm.value = false
-        d.panelMessage.value = '数据结构待后续重构'
+        d.panelMessage.value = '此功能暂不可用'
         return
       }
       d.listError.value = error instanceof Error ? error.message : '加载失败'
@@ -215,7 +215,7 @@ export function useDirectoryOperations(d: Dependencies) {
 
   async function createItem() {
     const item = d.activeModule.value as ModuleItem | undefined
-    if (d.moduleUnavailable.value) { d.panelMessage.value = '数据结构待后续重构，当前不能新增或修改数据'; d.showCreateForm.value = false; return }
+    if (d.moduleUnavailable.value) { d.panelMessage.value = '此功能暂不可用，无法保存'; d.showCreateForm.value = false; return }
     if (!item?.path || !d.canWriteModule(item)) { d.panelMessage.value = '你的账号只有查看权限，不能新增数据'; d.showCreateForm.value = false; return }
     d.formError.value = validateActiveForm()
     if (d.formError.value) {

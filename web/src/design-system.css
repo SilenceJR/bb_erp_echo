@@ -1,5 +1,5 @@
 /*
- * 博邦 ERP UI Design System — 方案 A「清晰实用」
+ * 博邦 ERP UI Design System — 桌面工作台
  *
  * 这里只保存跨页面设计令牌与 Element Plus 变量映射。
  * 基础规则、组件主题、布局和业务兼容样式由 styles/ 下的分层文件负责。
@@ -36,6 +36,10 @@
   --bb-text-disabled: #b3bbc6;
   --bb-bg-page: #f7f8fa;
   --bb-bg-surface: #ffffff;
+  /* Elevated is the semantic surface for controls and Teleport overlays. It
+     stays distinct from the page without forcing every component to invent a
+     local white background (especially important in the dark client). */
+  --bb-bg-elevated: #ffffff;
   --bb-bg-subtle: #f3f5f7;
   --bb-bg-sunken: #eceff2;
   --bb-bg-overlay: rgba(14, 35, 51, 0.42);
@@ -59,6 +63,7 @@
   /* Typography. */
   --bb-font-sans: "Microsoft YaHei UI", "PingFang SC", system-ui, -apple-system, sans-serif;
   --bb-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --bb-font-size-11: 11px;
   --bb-font-size-12: 12px;
   --bb-font-size-13: 13px;
   --bb-font-size-14: 14px;
@@ -102,8 +107,16 @@
   --bb-control-sm: 32px;
   --bb-control-md: 40px;
   --bb-control-lg: 48px;
-  --bb-table-row-compact: 40px;
+  /* Industrial table density. Components may opt into a density class; the
+     default data table uses standard rows and double-line cells opt into 64px. */
+  --bb-table-header-height: 40px;
+  --bb-table-row-compact: 44px;
   --bb-table-row-standard: 48px;
+  --bb-table-row-double: 64px;
+  --bb-table-row-complex: 72px;
+  --bb-table-head-font-size: 12px;
+  --bb-table-body-font-size: 14px;
+  --bb-table-border-radius: 8px;
 
   /* Motion and stacking. */
   --bb-duration-fast: 120ms;
@@ -122,7 +135,8 @@
   --bb-shell-header-height: 56px;
   --bb-detail-panel-width: 420px;
   --bb-content-max-width: 1240px;
-  --bb-content-wide-width: 1480px;
+  --bb-content-wide-width: 1440px;
+  --bb-content-docked-inset: clamp(20px, 2.2vw, 32px);
 
   /* Element Plus theme bridge. */
   --el-color-primary-rgb: 7, 88, 173;
@@ -175,12 +189,12 @@
   --el-color-info-dark-2: color-mix(in srgb, var(--bb-info) 80%, black);
   --el-bg-color: var(--bb-bg-surface);
   --el-bg-color-page: var(--bb-bg-page);
-  --el-bg-color-overlay: var(--bb-bg-surface);
+  --el-bg-color-overlay: var(--bb-bg-elevated);
   --el-fill-color: var(--bb-bg-sunken);
   --el-fill-color-light: var(--bb-bg-subtle);
-  --el-fill-color-lighter: #fafcfd;
-  --el-fill-color-extra-light: #fcfdfe;
-  --el-fill-color-blank: var(--bb-bg-surface);
+  --el-fill-color-lighter: color-mix(in srgb, var(--bb-bg-elevated) 78%, var(--bb-bg-subtle));
+  --el-fill-color-extra-light: color-mix(in srgb, var(--bb-bg-elevated) 90%, var(--bb-bg-subtle));
+  --el-fill-color-blank: var(--bb-bg-elevated);
   --el-text-color-primary: var(--bb-text-primary);
   --el-text-color-regular: var(--bb-text-regular);
   --el-text-color-secondary: var(--bb-text-secondary);
@@ -192,7 +206,7 @@
   --el-border-color-extra-light: #f4f7f9;
   --el-border-color-dark: var(--bb-border-strong);
   --el-border-radius-base: var(--bb-radius-sm);
-  --el-border-radius-small: 6px;
+  --el-border-radius-small: var(--bb-radius-sm);
   --el-border-radius-round: 20px;
   --el-border-radius-circle: 100%;
   --el-box-shadow-light: var(--bb-shadow-sm);
@@ -206,6 +220,7 @@
   --el-disabled-bg-color: var(--bb-bg-sunken);
   --el-disabled-text-color: var(--bb-text-disabled);
   --el-disabled-border-color: var(--bb-border-default);
+  --el-overlay-color-lighter: var(--bb-bg-overlay);
   --el-transition-duration: var(--bb-duration-base);
   --el-transition-duration-fast: var(--bb-duration-fast);
 }
@@ -261,6 +276,7 @@
   --bb-text-disabled: #667085;
   --bb-bg-page: #202225;
   --bb-bg-surface: #272a2e;
+  --bb-bg-elevated: #2f3338;
   --bb-bg-subtle: #1b1d20;
   --bb-bg-sunken: #181a1d;
   --bb-bg-overlay: rgba(0, 0, 0, 0.62);
@@ -299,17 +315,18 @@
   --bb-shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.48);
   --el-bg-color: var(--bb-bg-surface);
   --el-bg-color-page: var(--bb-bg-page);
-  --el-bg-color-overlay: #363636;
-  --el-fill-color: #3a3a3a;
-  --el-fill-color-light: #333333;
-  --el-fill-color-lighter: #303030;
-  --el-fill-color-extra-light: #2d2d2d;
-  --el-fill-color-blank: var(--bb-bg-surface);
+  --el-bg-color-overlay: var(--bb-bg-elevated);
+  --el-fill-color: var(--bb-bg-sunken);
+  --el-fill-color-light: var(--bb-bg-subtle);
+  --el-fill-color-lighter: var(--bb-bg-surface);
+  --el-fill-color-extra-light: var(--bb-bg-elevated);
+  --el-fill-color-blank: var(--bb-bg-elevated);
   --el-border-color-lighter: #3d3d3d;
   --el-border-color-extra-light: #363636;
   --el-mask-color: rgba(0, 0, 0, 0.64);
   --el-mask-color-extra-light: rgba(0, 0, 0, 0.36);
-  --el-disabled-bg-color: #292929;
+  --el-disabled-bg-color: color-mix(in srgb, var(--bb-bg-elevated) 72%, var(--bb-bg-sunken));
+  --el-overlay-color-lighter: var(--bb-bg-overlay);
 }
 
 :root[data-theme="dark"][data-accent="teal"] {

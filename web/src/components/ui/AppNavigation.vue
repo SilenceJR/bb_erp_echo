@@ -84,7 +84,8 @@ function findBusiness(key: string) {
 .navigation-group h2 { margin: var(--bb-space-2) var(--bb-space-3) var(--bb-space-1); color: var(--bb-text-placeholder); font-size: 11px; font-weight: var(--bb-font-weight-semibold); letter-spacing: .06em; }
 .ui-app-navigation__footer { display: grid; gap: var(--bb-space-2); margin-top: auto; border-top: 1px solid var(--bb-border-subtle); padding-top: var(--bb-space-3); }
 .navigation-button { display: flex; width: 100%; min-height: 44px; align-items: center; gap: var(--bb-space-3); border: 0; border-radius: var(--bb-radius-md); background: transparent; padding: 0 var(--bb-space-3); color: var(--bb-text-regular); text-align: left; }
-.navigation-button:hover { background: var(--bb-bg-sunken); color: var(--bb-text-primary); }
+.navigation-button { position: relative; transition: background-color var(--bb-duration-fast) var(--bb-ease-standard), color var(--bb-duration-fast) var(--bb-ease-standard); }
+.navigation-button:hover { background: color-mix(in srgb, var(--bb-bg-sunken) 54%, transparent); color: var(--bb-text-primary); }
 .navigation-button__icon { display: grid; width: 20px; flex: 0 0 20px; place-items: center; color: var(--bb-text-secondary); font-size: 17px; }
 .navigation-button__icon svg { width: 1em; height: 1em; }
 .navigation-button__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

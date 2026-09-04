@@ -42,8 +42,8 @@ withDefaults(defineProps<{
   overflow: hidden;
   border: 1px solid var(--bb-border-default);
   border-radius: var(--bb-radius-md);
-  background: var(--bb-bg-surface);
-  padding: var(--bb-space-4);
+  background: var(--bb-bg-elevated);
+  padding: var(--bb-space-5);
 }
 
 .ui-metric-card::before {
@@ -61,7 +61,7 @@ withDefaults(defineProps<{
 
 .ui-metric-card.is-emphasized {
   border-color: var(--bb-brand-200);
-  box-shadow: var(--bb-shadow-sm);
+  box-shadow: var(--bb-shadow-xs);
 }
 
 .ui-metric-card__heading {

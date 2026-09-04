@@ -29,14 +29,15 @@ withDefaults(defineProps<{
   gap: var(--bb-space-3);
   margin-top: var(--bb-space-5);
   border-top: 1px solid var(--bb-border-subtle);
-  background: var(--bb-bg-surface);
-  padding: var(--bb-space-4) 0;
+  background: var(--bb-bg-elevated);
+  padding: var(--bb-space-4) 0 calc(var(--bb-space-4) + env(safe-area-inset-bottom, 0px));
 }
 
 .ui-form-action-bar.is-sticky {
   position: sticky;
   bottom: 0;
   z-index: var(--bb-z-sticky);
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--bb-text-primary) 5%, transparent);
 }
 
 .ui-form-action-bar.is-start { justify-content: flex-start; }

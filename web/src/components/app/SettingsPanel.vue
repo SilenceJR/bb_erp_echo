@@ -10,14 +10,13 @@
       <section class="settings-section" aria-labelledby="appearance-title">
         <div class="settings-section__heading">
           <div>
-            <span>个性化</span>
             <h2 id="appearance-title">外观</h2>
           </div>
-          <small>只保存在当前设备</small>
+          <small>仅保存在此设备</small>
         </div>
 
         <div class="setting-field">
-          <div><strong>显示模式</strong><small>暗色使用低对比深灰表面，适合长时间查看。</small></div>
+          <div><strong>显示模式</strong></div>
           <el-radio-group v-model="theme" aria-label="显示模式" @change="saveAppearance">
             <el-radio-button value="light">亮色</el-radio-button>
             <el-radio-button value="dark">暗色</el-radio-button>
@@ -25,7 +24,7 @@
         </div>
 
         <div class="setting-field is-stacked">
-          <div><strong>主题颜色</strong><small>业务状态色保持固定，仅切换品牌强调色。</small></div>
+          <div><strong>主题颜色</strong></div>
           <div class="accent-options" role="radiogroup" aria-label="主题颜色">
             <button
               v-for="option in accentOptions"
@@ -55,7 +54,6 @@
       <section class="settings-section" aria-labelledby="connection-title">
         <div class="settings-section__heading">
           <div>
-            <span>客户端</span>
             <h2 id="connection-title">连接与服务</h2>
           </div>
           <StatusTag :label="healthStatusLabel" :tone="connectionTone" />
@@ -71,7 +69,7 @@
         <el-alert
           v-if="healthStatus === 'error'"
           title="服务暂不可用"
-          description="请先检查网络和服务器状态；切换服务器会退出当前登录。"
+          description="请检查网络后重试；仍无法连接时，请联系管理员。"
           type="error"
           :closable="false"
           show-icon
@@ -80,7 +78,6 @@
           <el-button :loading="healthStatus === 'checking'" @click="loadHealth">重新检查</el-button>
           <el-button v-if="canChangeServer" type="primary" plain @click="requestServerChange">切换服务器</el-button>
         </div>
-        <p v-if="!canChangeServer" class="settings-note">Web 版使用当前站点配置的服务，无需在客户端切换地址。</p>
       </section>
     </div>
   </el-drawer>
@@ -111,11 +108,11 @@ const accent = ref<AccentTheme>(normalizeAccentTheme(localStorage.getItem(accent
 const accentOptionRefs = new Map<AccentTheme, HTMLButtonElement>()
 const accentOptions: {value: AccentTheme; label: string; description: string}[] = [
   {value: 'bobbang', label: '博邦蓝', description: '默认品牌色'},
-  {value: 'teal', label: '青绿色', description: '柔和清晰'},
-  {value: 'violet', label: '紫色', description: '稳重醒目'},
+  {value: 'teal', label: '青绿色', description: ''},
+  {value: 'violet', label: '紫色', description: ''},
 ]
 const connectionTone = computed(() => healthStatus.value === 'healthy' ? 'success' : healthStatus.value === 'checking' ? 'info' : 'danger')
-const lastCheckText = computed(() => lastHealthCheckAt.value ? formatDate(lastHealthCheckAt.value) : '本次会话尚未检查')
+const lastCheckText = computed(() => lastHealthCheckAt.value ? formatDate(lastHealthCheckAt.value) : '尚未检查')
 
 watch(() => props.modelValue, (open) => {
   if (!open) return

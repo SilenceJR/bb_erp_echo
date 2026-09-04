@@ -247,7 +247,7 @@ async function loadCodes() {
     } while (nextCodes.length < remoteTotal)
     if (generation !== listGeneration.value) return
     sourceCodes.value = nextCodes
-    syncMessage.value = '已同步'
+    syncMessage.value = '已刷新'
     await loadCodeOptions(generation)
   } catch (cause) {
     if (generation === listGeneration.value) { listError.value = cause instanceof Error ? cause.message : '加载失败'; syncMessage.value = listError.value }

@@ -607,6 +607,7 @@ const operationalSummaryCards = computed<MetricCardItem[]>(() => {
   return []
 })
 const statisticsCards = computed<MetricCardItem[]>(() => {
+  if (!statisticsData.value) return []
   const summary = statisticsData.value?.summary || {}
   const lowStock = Number(summary.low_stock_items || 0)
   const urgent = Number(summary.urgent_workorders || 0)
@@ -616,9 +617,9 @@ const statisticsCards = computed<MetricCardItem[]>(() => {
     {label: '低库存', value: statisticsSourceUnavailable('inventory') ? '—' : String(lowStock), caption: statisticsSourceUnavailable('inventory') ? '库存数据源尚未初始化' : '低于或等于安全库存', tone: statisticsSourceUnavailable('inventory') ? 'neutral' : lowStock ? 'danger' : 'success', statusLabel: statisticsSourceUnavailable('inventory') ? '不可用' : lowStock ? '需处理' : '正常', statusTone: statisticsSourceUnavailable('inventory') ? 'info' : lowStock ? 'danger' : 'success'},
     {label: '进行中任务', value: statisticsSourceUnavailable('workorders') ? '—' : String(summary.open_workorders || 0), caption: statisticsSourceUnavailable('workorders') ? '任务数据源尚未初始化' : `加急 ${urgent} · 待确认 ${pendingClose}`, tone: statisticsSourceUnavailable('workorders') ? 'neutral' : urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
     {label: '模具档案', value: String(summary.molds || 0), caption: '模具产品记录总数', tone: 'info'},
-    {label: '客户编码', value: String(summary.customers || 0), caption: '稳定关联编码总数', tone: 'neutral'},
-    {label: '仓库物品', value: statisticsSourceUnavailable('inventory') ? '—' : String(summary.warehouse_items || 0), caption: statisticsSourceUnavailable('inventory') ? '仓库数据源尚未初始化' : '产品与物资档案', tone: 'neutral'},
-  ]
+    {label: '客户编码', value: String(summary.customers || 0), caption: '客户编码总数', tone: 'neutral'},
+    {label: '仓库物品', value: statisticsSourceUnavailable('inventory') ? '—' : String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
+  ].filter((card) => card.value !== '—') as MetricCardItem[]
 })
 const statisticsSourcesUnavailable = computed(() => statisticsData.value?.data_status === 'sources_unavailable')
 function statisticsSourceUnavailable(source: StatisticsSource): boolean {
@@ -629,8 +630,8 @@ function statisticsSourceUnavailable(source: StatisticsSource): boolean {
   )
 }
 const compactTrendItems = computed(() => {
-  const inventory = statisticsData.value?.inventory?.trend || []
-  const workorders = statisticsData.value?.workorders?.trend || []
+  const inventory = statisticsSourceUnavailable('inventory') ? [] : statisticsData.value?.inventory?.trend || []
+  const workorders = statisticsSourceUnavailable('workorders') ? [] : statisticsData.value?.workorders?.trend || []
   const sorted = [...inventory, ...workorders]
     .sort((left, right) => {
       const leftTime = new Date(String(left.date)).getTime()
@@ -1080,7 +1081,7 @@ function handleModuleUnavailableEvent(event: Event) {
   const detail = (event as CustomEvent<{path?: string; message?: string}>).detail
   const moduleKey = deferredModuleForPath(detail?.path || '')
   if (!moduleKey || activeKey.value !== moduleKey) return
-  moduleUnavailable.value = {module: moduleKey, message: detail?.message || '该模块的数据结构待后续重构'}
+  moduleUnavailable.value = {module: moduleKey, message: detail?.message || '此功能暂不可用'}
   rows.value = []
   columns.value = []
   pageTotal.value = 0
@@ -1088,7 +1089,7 @@ function handleModuleUnavailableEvent(event: Event) {
   editingSupplier.value = null
   if (moduleKey === 'warehouses') performWarehouseClose()
   if (moduleKey === 'workorder') closeWorkOrder()
-  panelMessage.value = '数据结构待后续重构，当前页面已切换为只读状态'
+  panelMessage.value = '此功能暂不可用'
 }
 
 async function loadMe() {

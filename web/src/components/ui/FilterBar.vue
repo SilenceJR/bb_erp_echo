@@ -37,14 +37,14 @@ const emit = defineEmits<{
 <style scoped>
 .ui-filter-bar {
   display: flex;
-  min-height: 58px;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: var(--bb-space-3);
   margin-bottom: var(--bb-space-3);
   border: 1px solid var(--bb-border-default);
   border-radius: var(--bb-radius-md);
-  background: var(--bb-bg-surface);
+  background: var(--bb-bg-elevated);
   padding: var(--bb-space-2) var(--bb-space-3);
 }
 
@@ -61,6 +61,8 @@ const emit = defineEmits<{
   flex-wrap: wrap;
 }
 
+.ui-filter-bar__controls :deep(.el-input) { min-width: min(280px, 100%); flex: 1 1 280px; }
+
 .ui-filter-bar__actions {
   flex: 0 0 auto;
   flex-wrap: wrap;
@@ -68,11 +70,23 @@ const emit = defineEmits<{
 }
 
 .ui-filter-bar__message {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--bb-text-secondary);
   font-size: var(--bb-font-size-13);
 }
 
 .ui-filter-bar :deep(.el-button) {
   margin: 0;
+}
+
+@media (max-width: 760px) {
+  .ui-filter-bar { align-items: stretch; flex-direction: column; }
+  .ui-filter-bar__controls,
+  .ui-filter-bar__actions { width: 100%; }
+  .ui-filter-bar__actions { justify-content: space-between; }
+  .ui-filter-bar__message { max-width: 100%; }
 }
 </style>

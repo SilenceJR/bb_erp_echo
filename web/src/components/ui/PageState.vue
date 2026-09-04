@@ -60,7 +60,7 @@ const icon = computed(() => ({
   gap: var(--bb-space-2);
   border: 1px solid var(--bb-border-default);
   border-radius: var(--bb-radius-md);
-  background: transparent;
+  background: var(--bb-bg-elevated);
   padding: var(--bb-space-8);
   color: var(--bb-text-secondary);
   text-align: center;
@@ -82,6 +82,9 @@ const icon = computed(() => ({
   width: 48px;
   height: 48px;
   place-items: center;
+  border: 1px solid var(--bb-border-subtle);
+  border-radius: var(--bb-radius-md);
+  background: var(--bb-bg-subtle);
   background: transparent;
   color: var(--bb-info);
   font-size: var(--bb-font-size-24);

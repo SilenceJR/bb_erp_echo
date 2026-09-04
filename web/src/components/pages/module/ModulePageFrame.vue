@@ -7,6 +7,7 @@
       @back="switchModule('dashboard')"
     >
       <template #actions>
+        <el-button v-if="activeKey === 'statistics'" :loading="loading" @click="loadActiveModule">刷新</el-button>
         <el-button v-if="activeKey !== 'molds' && formSchema.length && canWriteActive && !moduleUnavailable" class="add-button" type="primary" :disabled="loading" @click="toggleCreateForm">
           {{ showCreateForm ? '收起' : `＋ 新增${createEntityTitle}` }}
         </el-button>
@@ -21,7 +22,7 @@
     <ModuleAssignmentDialogs />
 
     <FilterBar
-      v-if="activeKey !== 'updates' && activeKey !== 'molds' && !moduleUnavailable"
+      v-if="activeKey !== 'updates' && activeKey !== 'molds' && activeKey !== 'statistics' && !moduleUnavailable"
       :message="panelMessage"
       :loading="loading"
       :resettable="hasActiveFilters"
@@ -51,8 +52,8 @@
     <PageState
       v-if="moduleUnavailable"
       kind="readonly"
-      title="数据结构待后续重构"
-      :description="`${moduleUnavailable.message}。当前保留客户端页面入口，新增、编辑和业务办理操作已暂停。`"
+      :title="`${activeModule?.title || '此功能'}暂不可用`"
+      description="当前服务尚未启用此功能，暂时无法查看或办理业务。"
       action-label="重新检查"
       @action="loadActiveModule"
     />

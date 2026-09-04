@@ -1,4 +1,10 @@
-/* Element Plus component styling. Variable mappings live with the design tokens. */
+/* Element Plus bridge for the shared Web/Tauri desktop client.
+ *
+ * Keep component styling here (rather than scattering one-off overrides in
+ * pages) so a page rendered in a Teleport/Drawer has exactly the same surface,
+ * focus and density language as the main work area. The variables themselves
+ * live in design-system.css; this file is only the component contract.
+ */
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
   outline: 2px solid var(--bb-focus-color);
   outline-offset: 2px;
@@ -11,11 +17,258 @@
   box-shadow: var(--bb-focus-ring);
 }
 
-:root[data-theme="dark"] .el-button--primary.is-plain {
-  --el-button-text-color: var(--bb-accent-text);
-  --el-button-bg-color: var(--el-color-primary-light-9);
-  --el-button-border-color: var(--el-color-primary-light-7);
+/* Controls: quiet surfaces, a single predictable 40px rhythm and no default
+   inner glow. Hover is communicated by border/accent changes, not movement. */
+.el-button {
+  min-height: var(--bb-control-md);
+  border-radius: var(--bb-radius-sm);
+  font-weight: var(--bb-font-weight-semibold);
+  transition: color var(--bb-duration-fast) var(--bb-ease-standard),
+    background-color var(--bb-duration-fast) var(--bb-ease-standard),
+    border-color var(--bb-duration-fast) var(--bb-ease-standard),
+    box-shadow var(--bb-duration-fast) var(--bb-ease-standard);
 }
+
+.el-button:not(.is-disabled):not(:disabled):hover {
+  transform: none;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--bb-action-primary);
+  --el-button-border-color: var(--bb-action-primary);
+  --el-button-hover-bg-color: var(--bb-brand-600);
+  --el-button-hover-border-color: var(--bb-brand-600);
+  --el-button-active-bg-color: var(--bb-brand-800);
+  --el-button-active-border-color: var(--bb-brand-800);
+  --el-button-text-color: var(--bb-text-on-brand);
+}
+
+.el-button--primary.is-plain {
+  --el-button-text-color: var(--bb-accent-text);
+  --el-button-bg-color: var(--bb-accent-selected-bg);
+  --el-button-border-color: var(--bb-brand-300);
+  --el-button-hover-text-color: var(--bb-accent-selected-text);
+  --el-button-hover-bg-color: var(--bb-accent-selected-bg);
+  --el-button-hover-border-color: var(--bb-brand-400);
+}
+
+.el-button--default {
+  --el-button-text-color: var(--bb-text-regular);
+  --el-button-bg-color: var(--bb-bg-elevated);
+  --el-button-border-color: var(--bb-border-default);
+  --el-button-hover-text-color: var(--bb-text-primary);
+  --el-button-hover-bg-color: var(--bb-bg-subtle);
+  --el-button-hover-border-color: var(--bb-border-strong);
+}
+
+.el-button--danger.is-plain {
+  --el-button-text-color: var(--bb-danger);
+  --el-button-bg-color: var(--bb-danger-bg);
+  --el-button-border-color: var(--bb-danger-border);
+  --el-button-hover-text-color: var(--bb-danger);
+  --el-button-hover-bg-color: var(--bb-danger-bg);
+  --el-button-hover-border-color: var(--bb-danger);
+}
+
+.el-button.is-link,
+.el-button.is-text {
+  min-height: 32px;
+  border-radius: var(--bb-radius-xs);
+}
+
+.el-button.is-circle { min-width: var(--bb-control-md); padding: 0; }
+
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: var(--bb-control-md);
+  border-radius: var(--bb-radius-sm);
+  background: var(--bb-bg-elevated);
+  box-shadow: 0 0 0 1px var(--bb-border-default) inset;
+  transition: background-color var(--bb-duration-fast) var(--bb-ease-standard),
+    box-shadow var(--bb-duration-fast) var(--bb-ease-standard);
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--bb-border-strong) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-input__wrapper:focus-within,
+.el-select__wrapper:focus-within {
+  box-shadow: 0 0 0 1px var(--bb-focus-color) inset, var(--bb-focus-ring);
+}
+
+.el-input__inner,
+.el-select__selected-item,
+.el-select__placeholder,
+.el-textarea__inner {
+  color: var(--bb-text-primary);
+  font-size: var(--bb-font-size-14);
+}
+
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder { color: var(--bb-text-placeholder); }
+
+.el-textarea__inner {
+  min-height: 96px;
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-sm);
+  background: var(--bb-bg-elevated);
+  box-shadow: none;
+  transition: border-color var(--bb-duration-fast) var(--bb-ease-standard), box-shadow var(--bb-duration-fast) var(--bb-ease-standard);
+}
+
+.el-textarea__inner:hover { border-color: var(--bb-border-strong); }
+.el-textarea__inner:focus { border-color: var(--bb-focus-color); box-shadow: var(--bb-focus-ring); }
+
+.el-input-number .el-input__wrapper { width: 100%; }
+.el-form-item { margin-bottom: var(--bb-space-4); }
+.el-form-item__label {
+  color: var(--bb-text-regular);
+  font-size: var(--bb-font-size-13);
+  font-weight: var(--bb-font-weight-semibold);
+  line-height: 1.4;
+}
+.el-form-item__error { color: var(--bb-danger); font-size: var(--bb-font-size-12); }
+
+/* Segments and tabs share one quiet control language. */
+.el-segmented {
+  min-height: 40px;
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-md);
+  background: var(--bb-bg-subtle);
+  padding: 3px;
+}
+.el-segmented__item { min-height: 32px; border-radius: var(--bb-radius-sm); color: var(--bb-text-secondary); }
+.el-segmented__item.is-selected {
+  background: var(--bb-bg-elevated);
+  box-shadow: var(--bb-shadow-xs);
+  color: var(--bb-text-primary);
+  font-weight: var(--bb-font-weight-semibold);
+}
+
+.el-tabs__header { margin: 0 0 var(--bb-space-4); }
+.el-tabs__nav-wrap::after { height: 1px; background: var(--bb-border-subtle); }
+.el-tabs__item {
+  min-height: 44px;
+  padding: 0 var(--bb-space-4);
+  color: var(--bb-text-secondary);
+  font-size: var(--bb-font-size-14);
+  font-weight: var(--bb-font-weight-semibold);
+}
+.el-tabs__item:hover { color: var(--bb-accent-text); }
+.el-tabs__item.is-active { color: var(--bb-accent-text); }
+.el-tabs__active-bar { height: 2px; background: var(--bb-action-primary); }
+
+/* Tables: header 40px, standard rows 48px. The density utility classes in
+   utilities.css can opt a table into 44/64/72px without changing the markup. */
+.el-table {
+  --el-table-header-bg-color: var(--bb-bg-subtle);
+  --el-table-tr-bg-color: var(--bb-bg-elevated);
+  --el-table-row-hover-bg-color: var(--bb-bg-subtle);
+  --el-table-border-color: var(--bb-border-subtle);
+  --el-table-text-color: var(--bb-text-regular);
+  background: var(--bb-bg-elevated);
+  color: var(--bb-text-regular);
+  font-size: var(--bb-table-body-font-size);
+}
+.el-table::before { background-color: var(--bb-border-subtle); }
+.el-table th.el-table__cell {
+  height: var(--bb-table-header-height);
+  background: var(--bb-bg-subtle);
+  color: var(--bb-text-secondary);
+  font-size: var(--bb-table-head-font-size);
+  font-weight: var(--bb-font-weight-semibold);
+  letter-spacing: .01em;
+}
+.el-table th.el-table__cell > .cell {
+  min-height: var(--bb-table-header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--bb-space-3);
+}
+.el-table td.el-table__cell {
+  height: var(--bb-table-row-standard);
+  padding: 0 var(--bb-space-3);
+  border-bottom-color: var(--bb-border-subtle);
+}
+.el-table td.el-table__cell > .cell { min-height: var(--bb-table-row-standard); display: flex; align-items: center; padding: 0; line-height: var(--bb-line-height-base); }
+.el-table .el-table__body tr:hover > td.el-table__cell { background: var(--bb-bg-subtle); }
+.el-table .el-table__body tr.current-row > td.el-table__cell { background: var(--bb-accent-selected-bg); }
+.el-table .cell { overflow-wrap: anywhere; }
+.el-table .el-table-fixed-column--right::before, .el-table .el-table-fixed-column--left::before { box-shadow: none; }
+
+/* Dense tabular values should remain scannable in Windows WebView2 and
+   Tauri. Consumers add bb-number/bb-table-number when the column is numeric. */
+.el-table .bb-number,
+.el-table [data-bb-numeric="true"] { display: block; width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Pagination is part of the table rhythm, not a floating pill cluster. */
+.el-pagination { gap: var(--bb-space-1); color: var(--bb-text-secondary); }
+.el-pagination button,
+.el-pagination .el-pager li {
+  min-width: 32px;
+  height: 32px;
+  border-radius: var(--bb-radius-sm);
+  background: transparent;
+  color: var(--bb-text-secondary);
+  line-height: 32px;
+}
+.el-pagination.is-background .el-pager li:not(.is-disabled):hover,
+.el-pagination .el-pager li:not(.is-disabled):hover { color: var(--bb-accent-text); }
+.el-pagination.is-background .el-pager li.is-active { background: var(--bb-action-primary); color: var(--bb-text-on-brand); }
+.el-pagination .el-select .el-input__wrapper { min-height: 32px; }
+
+/* Dialog, Drawer and all popup surfaces use the same elevated semantic token.
+   This is intentionally global because Element Plus Teleports these nodes to
+   body, outside page-scoped styles. */
+.el-overlay { background: var(--bb-bg-overlay); }
+.el-dialog,
+.el-drawer,
+.el-popover,
+.el-dropdown-menu,
+.el-select-dropdown,
+.el-picker-panel,
+.el-date-picker,
+.el-time-panel,
+.el-autocomplete-suggestion,
+.el-cascader__dropdown {
+  border: 1px solid var(--bb-border-default);
+  border-radius: var(--bb-radius-lg);
+  background: var(--bb-bg-elevated);
+  color: var(--bb-text-primary);
+  box-shadow: var(--bb-shadow-lg);
+}
+.el-dialog { overflow: hidden; }
+.el-dialog__header { margin: 0; border-bottom: 1px solid var(--bb-border-subtle); padding: var(--bb-space-6) var(--bb-space-6) var(--bb-space-4); }
+.el-dialog__title { color: var(--bb-text-primary); font-size: var(--bb-font-size-20); font-weight: var(--bb-font-weight-bold); }
+.el-dialog__body { max-height: min(66vh, 640px); overflow: auto; padding: var(--bb-space-5) var(--bb-space-6); color: var(--bb-text-regular); }
+.el-dialog__footer { border-top: 1px solid var(--bb-border-subtle); padding: var(--bb-space-4) var(--bb-space-6); }
+.el-dialog__headerbtn { width: 32px; height: 32px; top: var(--bb-space-5); right: var(--bb-space-5); }
+.el-dialog__headerbtn .el-dialog__close { color: var(--bb-text-secondary); }
+.el-dialog__headerbtn:hover .el-dialog__close { color: var(--bb-accent-text); }
+.el-drawer { box-shadow: var(--bb-shadow-lg); }
+.el-drawer__header { margin-bottom: 0; border-bottom: 1px solid var(--bb-border-subtle); color: var(--bb-text-primary); padding: var(--bb-space-6); }
+.el-drawer__title { color: var(--bb-text-primary); font-size: var(--bb-font-size-20); font-weight: var(--bb-font-weight-bold); }
+.el-drawer__body { color: var(--bb-text-regular); }
+.el-drawer__footer { border-top: 1px solid var(--bb-border-subtle); }
+.el-popper.is-light { border-color: var(--bb-border-default); background: var(--bb-bg-elevated); }
+.el-popper.is-light .el-popper__arrow::before { border-color: var(--bb-border-default); background: var(--bb-bg-elevated); }
+.el-tooltip__popper.is-dark { border: 1px solid var(--bb-border-strong); background: var(--bb-bg-sunken); color: var(--bb-text-primary); }
+.el-dropdown-menu { padding: var(--bb-space-2); }
+.el-dropdown-menu__item { min-height: 36px; border-radius: var(--bb-radius-xs); color: var(--bb-text-regular); line-height: 36px; }
+.el-dropdown-menu__item:not(.is-disabled):hover { background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); }
+.el-select-dropdown__item { min-height: 36px; border-radius: var(--bb-radius-xs); color: var(--bb-text-regular); line-height: 36px; }
+.el-select-dropdown__item.hover, .el-select-dropdown__item:hover { background: var(--bb-accent-selected-bg); color: var(--bb-accent-selected-text); }
+
+/* Cards and messages should recede into the work surface. */
+.el-card { border-color: var(--bb-border-default); border-radius: var(--bb-radius-lg); background: var(--bb-bg-elevated); box-shadow: var(--bb-shadow-xs); }
+.el-alert { border: 1px solid var(--el-alert-border-color); border-radius: var(--bb-radius-sm); }
+.el-message { border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-elevated); box-shadow: var(--bb-shadow-md); }
+.el-notification { border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-elevated); box-shadow: var(--bb-shadow-md); }
+.el-message__content, .el-notification__content { color: var(--bb-text-regular); }
 
 .v-modal {
   background: var(--bb-bg-overlay) !important;
@@ -35,7 +288,7 @@
   max-width: min(420px, calc(100vw - 48px));
   border: 1px solid var(--bb-border-default);
   border-radius: var(--bb-radius-xl);
-  background: var(--bb-bg-surface);
+  background: var(--bb-bg-elevated);
   box-shadow: var(--bb-shadow-lg);
 }
 
@@ -52,11 +305,3 @@
 .el-message-box.bb-message-box .el-message-box__btns {
   gap: var(--bb-space-2);
 }
-
-.el-table th.el-table__cell {
-  background: var(--bb-bg-subtle);
-  color: var(--bb-text-secondary);
-  font-weight: var(--bb-font-weight-semibold);
-}
-
-.el-drawer__header { color: var(--bb-text-primary); }

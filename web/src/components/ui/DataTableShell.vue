@@ -1,5 +1,5 @@
 <template>
-  <section class="ui-data-table-shell" :aria-label="ariaLabel" :aria-busy="loading">
+  <section class="ui-data-table-shell" :class="`bb-table-density-${density}`" :aria-label="ariaLabel" :aria-busy="loading">
     <el-alert
       v-if="error && rowsCount > 0"
       class="ui-data-table-shell__alert"
@@ -13,7 +13,7 @@
     <PageState
       v-else-if="error && rowsCount === 0"
       kind="error"
-      title="数据加载失败"
+      title="加载失败"
       :description="error"
       action-label="重新加载"
       @action="emit('retry')"
@@ -58,13 +58,15 @@ withDefaults(defineProps<{
   emptyTitle?: string
   emptyDescription?: string
   pagination?: boolean
+  density?: 'compact' | 'standard' | 'double' | 'complex'
 }>(), {
   loading: false,
   error: '',
   ariaLabel: '数据列表',
-  emptyTitle: '暂无数据',
-  emptyDescription: '当前还没有可显示的记录。',
+  emptyTitle: '暂无记录',
+  emptyDescription: '',
   pagination: true,
+  density: 'standard',
 })
 
 const emit = defineEmits<{
@@ -86,8 +88,8 @@ const emit = defineEmits<{
 .ui-data-table-shell__table {
   overflow: hidden;
   border: 1px solid var(--bb-border-default);
-  border-radius: var(--bb-radius-md);
-  background: var(--bb-bg-surface);
+  border-radius: var(--bb-table-border-radius);
+  background: var(--bb-bg-elevated);
 }
 
 .ui-data-table-shell__table :deep(.el-table) {
@@ -100,7 +102,8 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: var(--bb-space-3);
-  margin-top: var(--bb-space-3);
+  margin-top: var(--bb-space-4);
+  padding: 0 var(--bb-space-1);
   color: var(--bb-text-secondary);
   font-size: var(--bb-font-size-13);
 }

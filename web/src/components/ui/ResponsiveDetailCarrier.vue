@@ -154,9 +154,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleDockedEscape
 </script>
 
 <style scoped>
-.workspace-detail-aside { width: var(--bb-detail-panel-width); min-width: var(--bb-detail-panel-width); height: 100%; overflow: auto; background: var(--bb-bg-surface); padding: var(--bb-space-5); }
-.workspace-detail-aside__header { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); margin-bottom: var(--bb-space-4); }
-.workspace-detail-aside__header h2 { margin: 0; font-size: var(--bb-font-size-16); }
+.workspace-detail-aside {
+  width: var(--bb-detail-panel-width);
+  min-width: var(--bb-detail-panel-width);
+  height: 100%;
+  overflow: auto;
+  background: var(--bb-bg-elevated);
+  padding: var(--bb-space-6);
+  scrollbar-gutter: stable;
+}
+.workspace-detail-aside__header { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: var(--bb-space-3); margin-bottom: var(--bb-space-5); border-bottom: 1px solid var(--bb-border-subtle); padding-bottom: var(--bb-space-4); }
+.workspace-detail-aside__header h2 { margin: 0; color: var(--bb-text-primary); font-size: var(--bb-font-size-16); font-weight: var(--bb-font-weight-bold); }
+.workspace-detail-aside__header :deep(.el-button) { flex: 0 0 auto; }
 .workspace-detail-panel-enter-active,
 .workspace-detail-panel-leave-active { transition: opacity var(--bb-duration-base) var(--bb-ease-standard), transform var(--bb-duration-base) var(--bb-ease-standard); }
 .workspace-detail-panel-enter-from { opacity: .92; transform: translateX(8px); }
