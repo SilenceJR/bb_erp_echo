@@ -136,7 +136,8 @@ type AdminConfig struct {
 }
 
 // SilenceConfig 描述全新数据库额外管理员的初始化配置。
-// Password 不提供源码默认值，只能通过 BB_ERP_SILENCE_PASSWORD 注入。
+// Password 不提供源码默认值；未配置时不创建额外的 Silence 管理员。
+// 需要该托管账号时，只能通过 BB_ERP_SILENCE_PASSWORD 注入初始密码。
 type SilenceConfig struct {
 	Password string `koanf:"password"`
 }

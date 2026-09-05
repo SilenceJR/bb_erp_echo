@@ -370,23 +370,55 @@ func TestSeedSystemDataCreatesAdminAndAdditionalSilenceSuperAdmin(t *testing.T) 
 	}
 }
 
-func TestSeedSystemDataRequiresConfiguredSilencePasswordForFreshDatabase(t *testing.T) {
+func TestSeedSystemDataAllowsMissingOrBlankSilencePasswordForFreshDatabase(t *testing.T) {
+	for _, silencePassword := range []string{"", "   "} {
+		t.Run(fmt.Sprintf("password=%q", silencePassword), func(t *testing.T) {
+			service := newAssignmentTestService(t)
+			cfg := &config.Config{Admin: config.AdminConfig{
+				Username: "seed-admin",
+				Password: "seed-password",
+				Name:     "种子管理员",
+			}, Silence: config.SilenceConfig{Password: silencePassword}}
+
+			if err := service.SeedSystemData(cfg); err != nil {
+				t.Fatalf("seed system data without Silence password: %v", err)
+			}
+			var userCount int64
+			if err := service.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
+				t.Fatalf("count initialized users: %v", err)
+			}
+			if userCount != 1 {
+				t.Fatalf("initialized users = %d, want original admin only", userCount)
+			}
+			var silenceCount int64
+			if err := service.DB.Model(&model.User{}).Where("username = ?", SilenceUsername).Count(&silenceCount).Error; err != nil {
+				t.Fatalf("count Silence users: %v", err)
+			}
+			if silenceCount != 0 {
+				t.Fatalf("blank Silence password created %d Silence accounts", silenceCount)
+			}
+		})
+	}
+}
+
+func TestSeedSystemDataRejectsInvalidSilencePasswordBeforeFreshDatabaseWrites(t *testing.T) {
 	service := newAssignmentTestService(t)
 	cfg := &config.Config{Admin: config.AdminConfig{
 		Username: "seed-admin",
 		Password: "seed-password",
 		Name:     "种子管理员",
-	}}
+	}, Silence: config.SilenceConfig{Password: "short"}}
 
 	err := service.SeedSystemData(cfg)
-	if err == nil || !strings.Contains(err.Error(), "BB_ERP_SILENCE_PASSWORD") {
-		t.Fatalf("missing Silence password error = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "validate Silence administrator password") {
+		t.Fatalf("invalid Silence password error = %v", err)
 	}
-	var userCount int64
-	if countErr := service.DB.Model(&model.User{}).Count(&userCount).Error; countErr != nil || userCount != 0 {
-		t.Fatalf("fresh database received partial initialization users: count=%d err=%v", userCount, countErr)
-	}
-	for name, item := range map[string]any{"organizations": &model.Organization{}, "roles": &model.Role{}, "permissions": &model.Permission{}} {
+	for name, item := range map[string]any{
+		"users":         &model.User{},
+		"organizations": &model.Organization{},
+		"roles":         &model.Role{},
+		"permissions":   &model.Permission{},
+	} {
 		var count int64
 		if countErr := service.DB.Model(item).Count(&count).Error; countErr != nil || count != 0 {
 			t.Fatalf("fresh database received partial %s seed data: count=%d err=%v", name, count, countErr)

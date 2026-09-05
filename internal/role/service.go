@@ -109,11 +109,10 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 	silencePassword := ""
 	if freshDatabase {
 		silencePassword = strings.TrimSpace(cfg.Silence.Password)
-		if silencePassword == "" {
-			return errors.New("BB_ERP_SILENCE_PASSWORD must be configured to create the additional Silence administrator")
-		}
-		if err := auth.ValidatePassword(silencePassword); err != nil {
-			return fmt.Errorf("validate Silence administrator password: %w", err)
+		if silencePassword != "" {
+			if err := auth.ValidatePassword(silencePassword); err != nil {
+				return fmt.Errorf("validate Silence administrator password: %w", err)
+			}
 		}
 	}
 
@@ -209,6 +208,13 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 			// Existing accounts, including a pre-existing admin or Silence, are
 			// never reset or rebound. A missing original admin is still created by
 			// the historical FirstOrCreate-compatible initialization behavior.
+			return nil
+		}
+
+		if silencePassword == "" {
+			// The optional Silence administrator is only created when an explicit
+			// password is configured. The original admin remains sufficient for a
+			// fresh installation to complete initialization out of the box.
 			return nil
 		}
 
