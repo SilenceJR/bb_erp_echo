@@ -3,7 +3,6 @@ package update
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,8 +21,6 @@ import (
 	"time"
 
 	"bb_erp_echo/internal/config"
-	"bb_erp_echo/internal/shared/jsonstrict"
-
 	"golang.org/x/mod/semver"
 )
 
@@ -151,23 +148,7 @@ func (s *HTTPManifestSource) Fetch(ctx context.Context) (*Manifest, error) {
 	if len(raw) > maxManifestSize {
 		return nil, fmt.Errorf("read manifest: response exceeds %d bytes", maxManifestSize)
 	}
-	if err := jsonstrict.RejectDuplicateKeys(raw); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
-	}
-
-	var manifest Manifest
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, errors.New("decode manifest: trailing JSON content is not allowed")
-	}
-	if manifest.Server.Version == "" && manifest.ClientUpdateV2 == nil {
-		return nil, errors.New("manifest contains no package version")
-	}
-	return &manifest, nil
+	return parseManifest(raw)
 }
 
 // Location 返回当前清单地址。
@@ -175,8 +156,9 @@ func (s *HTTPManifestSource) Location() string { return s.URL }
 
 // LocalPackageStore 使用临时文件、校验和重命名缓存服务端升级包。
 type LocalPackageStore struct {
-	Root   string
-	Client *http.Client
+	Root       string
+	Client     *http.Client
+	ReleaseDir string
 
 	mu         sync.Mutex
 	verified   map[string]verifiedFileSnapshot
@@ -192,8 +174,8 @@ func (s *LocalPackageStore) Path(name string) string {
 // Cached 判断现有文件是否与清单一致且是有效 ZIP。
 func (s *LocalPackageStore) Cached(name string, pkg PackageManifest) bool {
 	path := s.Path(name)
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() || info.Size() == 0 {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() == 0 {
 		s.invalidate(name)
 		return false
 	}
@@ -233,6 +215,9 @@ func (s *LocalPackageStore) Ensure(ctx context.Context, name string, pkg Package
 	if s.Cached(name, pkg) {
 		return s.Path(name), true, nil
 	}
+	if strings.TrimSpace(s.ReleaseDir) != "" {
+		return s.ensureFromDirectory(ctx, name, pkg)
+	}
 	if strings.TrimSpace(pkg.URL) == "" || pkg.Size <= 0 || !isSHA256(pkg.SHA256) {
 		return "", false, errors.New("update package must declare url, positive size and sha256")
 	}
@@ -262,6 +247,44 @@ func (s *LocalPackageStore) Ensure(ctx context.Context, name string, pkg Package
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", false, fmt.Errorf("stat stored client package: %w", err)
+	}
+	s.mu.Lock()
+	s.rememberVerifiedLocked(path, strings.ToLower(pkg.SHA256), path, info)
+	s.mu.Unlock()
+	return path, false, nil
+}
+
+// ensureFromDirectory 从已激活发布目录复制服务端升级包，完全绕过 HTTP 客户端。
+func (s *LocalPackageStore) ensureFromDirectory(ctx context.Context, name string, pkg PackageManifest) (string, bool, error) {
+	if strings.TrimSpace(pkg.URL) == "" || pkg.Size <= 0 || !isSHA256(pkg.SHA256) {
+		return "", false, errors.New("local update package must declare relative url, positive size and sha256")
+	}
+	path := s.Path(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", false, fmt.Errorf("create update cache directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".update-*.tmp")
+	if err != nil {
+		return "", false, fmt.Errorf("create package temporary file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", false, fmt.Errorf("close package temporary file: %w", err)
+	}
+	defer os.Remove(tmpPath)
+	if err := copyVerifiedReleaseFile(ctx, s.ReleaseDir, pkg.URL, tmpPath, pkg.Size, pkg.SHA256); err != nil {
+		return "", false, err
+	}
+	if err := validateZip(tmpPath); err != nil {
+		return "", false, err
+	}
+	if err := replaceCachedFile(tmpPath, path); err != nil {
+		return "", false, fmt.Errorf("store local update package: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false, fmt.Errorf("stat stored local update package: %w", err)
 	}
 	s.mu.Lock()
 	s.rememberVerifiedLocked(path, strings.ToLower(pkg.SHA256), path, info)
@@ -313,7 +336,7 @@ type Service struct {
 	startOnce       sync.Once
 }
 
-// NewService 使用普通 HTTP 清单源与本地文件缓存创建更新服务。
+// NewService 根据配置选择 HTTP 或本地 directory 清单源，并创建对应缓存实现。
 func NewService(cfg config.UpdateConfig, serverVersion string) *Service {
 	if cfg.ManifestTimeout <= 0 {
 		cfg.ManifestTimeout = 20 * time.Second
@@ -324,6 +347,15 @@ func NewService(cfg config.UpdateConfig, serverVersion string) *Service {
 	manifestClient := &http.Client{Timeout: cfg.ManifestTimeout}
 	downloadClient := &http.Client{Timeout: cfg.DownloadTimeout}
 	verifier, verifierErr := LoadSignedManifestVerifier(cfg.SigningPublicKey, cfg.SigningPublicKeyFile)
+	if strings.EqualFold(strings.TrimSpace(cfg.Source), config.UpdateSourceDirectory) {
+		return NewServiceWithAllDependencies(cfg, serverVersion,
+			NewDirectoryManifestSource(cfg.ReleaseDir),
+			&DirectoryPackageStore{Root: cfg.CacheDir, ReleaseDir: cfg.ReleaseDir},
+			&DirectoryArtifactStore{Root: cfg.CacheDir, ReleaseDir: cfg.ReleaseDir},
+			verifier,
+			verifierErr,
+		)
+	}
 	return NewServiceWithAllDependencies(cfg, serverVersion,
 		&HTTPManifestSource{URL: cfg.ManifestURL, Client: manifestClient},
 		&LocalPackageStore{Root: cfg.CacheDir, Client: downloadClient},
@@ -338,8 +370,13 @@ func NewServiceWithDependencies(cfg config.UpdateConfig, serverVersion string, s
 	if cfg.DownloadTimeout <= 0 {
 		cfg.DownloadTimeout = 10 * time.Minute
 	}
-	return NewServiceWithAllDependencies(cfg, serverVersion, source, store,
-		&LocalArtifactStore{Root: cfg.CacheDir, Client: &http.Client{Timeout: cfg.DownloadTimeout}}, nil, nil)
+	var artifactStore ArtifactStore
+	if strings.EqualFold(strings.TrimSpace(cfg.Source), config.UpdateSourceDirectory) {
+		artifactStore = &DirectoryArtifactStore{Root: cfg.CacheDir, ReleaseDir: cfg.ReleaseDir}
+	} else {
+		artifactStore = &LocalArtifactStore{Root: cfg.CacheDir, Client: &http.Client{Timeout: cfg.DownloadTimeout}}
+	}
+	return NewServiceWithAllDependencies(cfg, serverVersion, source, store, artifactStore, nil, nil)
 }
 
 // NewServiceWithAllDependencies 允许测试或宿主注入 v2 签名验证和内容寻址缓存实现。
@@ -351,7 +388,11 @@ func NewServiceWithAllDependencies(cfg config.UpdateConfig, serverVersion string
 		cfg.DownloadTimeout = 10 * time.Minute
 	}
 	if artifactStore == nil {
-		artifactStore = &LocalArtifactStore{Root: cfg.CacheDir, Client: &http.Client{Timeout: cfg.DownloadTimeout}}
+		if strings.EqualFold(strings.TrimSpace(cfg.Source), config.UpdateSourceDirectory) {
+			artifactStore = &DirectoryArtifactStore{Root: cfg.CacheDir, ReleaseDir: cfg.ReleaseDir}
+		} else {
+			artifactStore = &LocalArtifactStore{Root: cfg.CacheDir, Client: &http.Client{Timeout: cfg.DownloadTimeout}}
+		}
 	}
 	return &Service{
 		cfg: cfg, serverVersion: serverVersion, source: source, store: store,
@@ -423,6 +464,16 @@ func (s *Service) performCheck(ctx context.Context) error {
 	payload, artifacts, err := s.cacheFullClientArtifacts(ctx, manifest)
 	if err != nil {
 		return err
+	}
+	// 本地目录由人工搬运，只有服务端整包也完成大小、摘要、签名和 ZIP
+	// 结构校验后，才允许替换上一份成功清单。
+	if _, localDirectory := s.source.(*DirectoryManifestSource); localDirectory {
+		s.serverPackageMu.Lock()
+		_, _, serverErr := s.ensureServerPackage(ctx, manifest)
+		s.serverPackageMu.Unlock()
+		if serverErr != nil {
+			return serverErr
+		}
 	}
 	s.mu.Lock()
 	s.manifest = cloneManifest(manifest)
@@ -526,6 +577,12 @@ func (s *Service) ServerPackage(ctx context.Context) (path string, fileName stri
 
 	s.mu.RLock()
 	manifest := cloneManifest(s.manifest)
+	s.mu.RUnlock()
+	return s.ensureServerPackage(ctx, manifest)
+}
+
+func (s *Service) ensureServerPackage(ctx context.Context, manifest *Manifest) (path string, fileName string, err error) {
+	s.mu.RLock()
 	verifier := s.verifier
 	verifierErr := s.verifierErr
 	s.mu.RUnlock()
@@ -542,7 +599,7 @@ func (s *Service) ServerPackage(ctx context.Context) (path string, fileName stri
 		return "", "", fmt.Errorf("服务端升级包大小 %d 超出允许范围 1..%d", manifest.Server.Size, maxServerPackageSize)
 	}
 	fileName = packageFileName(manifest.Server.URL)
-	cacheName := serverPackageCacheName(fileName)
+	cacheName := serverPackageCacheName(fileName, manifest.Server.SHA256)
 	path, _, err = s.store.Ensure(ctx, cacheName, manifest.Server)
 	if err != nil {
 		return "", "", fmt.Errorf("下载或校验服务端升级包失败：%w", err)
@@ -647,8 +704,12 @@ func (s *Service) ClientArtifact(digest string) (string, ClientArtifact, bool) {
 	return path, artifact, ok
 }
 
-func serverPackageCacheName(fileName string) string {
-	return "server/" + fileName
+func serverPackageCacheName(fileName, sha256 string) string {
+	digest := strings.ToLower(strings.TrimSpace(sha256))
+	if len(digest) > 16 {
+		digest = digest[:16]
+	}
+	return "server/" + digest + "-" + fileName
 }
 
 func packageCacheLocation(name string) (cacheDir, fileName string) {
@@ -729,6 +790,9 @@ type Manager struct {
 func NewManager(cfg config.UpdateConfig) *Manager {
 	if cfg.ManifestTimeout <= 0 {
 		cfg.ManifestTimeout = 20 * time.Second
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.Source), config.UpdateSourceDirectory) {
+		return &Manager{Config: cfg, Source: NewDirectoryManifestSource(cfg.ReleaseDir)}
 	}
 	return &Manager{Config: cfg, Source: &HTTPManifestSource{
 		URL: cfg.ManifestURL, Client: &http.Client{Timeout: cfg.ManifestTimeout},
@@ -869,6 +933,8 @@ func validateServerPackageArchive(archivePath, expectedVersion string) error {
 		"bb-erp-server.exe":         false,
 		"bb-erp-updater.exe":        false,
 		"bb-erp-upgrade-runner.bat": false,
+		"bb-erp-verify-update.exe":  false,
+		"激活离线更新.ps1":                false,
 		"update-public.key":         false,
 		"version.json":              false,
 	}

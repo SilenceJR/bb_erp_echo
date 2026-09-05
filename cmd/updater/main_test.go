@@ -1,11 +1,13 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +29,8 @@ func TestBackupServerFilesIncludesRuntimeState(t *testing.T) {
 		"bb-erp-server.exe":         "server",
 		"bb-erp-updater.exe":        "updater",
 		"bb-erp-upgrade-runner.bat": "runner",
+		"bb-erp-verify-update.exe":  "verifier",
+		"激活离线更新.ps1":                "activation",
 		"web/index.html":            "web",
 		"data/erp.db":               "sqlite",
 		"static/uploads/image.png":  "upload",
@@ -74,6 +78,8 @@ func TestReplaceServerFilesRefreshesVerificationKey(t *testing.T) {
 		"bb-erp-server.exe":         "new-server",
 		"bb-erp-updater.exe":        "new-updater",
 		"bb-erp-upgrade-runner.bat": "new-runner",
+		"bb-erp-verify-update.exe":  "new-verifier",
+		"激活离线更新.ps1":                "new-activation",
 		"update-public.key":         "new-public-key",
 		"web/index.html":            "new-web",
 		"version.json":              `{"version":"2.0.0","server_version":"2.0.0","manifest_url":"https://example.com/update-manifest.json"}`,
@@ -157,7 +163,7 @@ func TestValidateServerPackageRequiresValidPublicKey(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sourceDir, "bb-erp-server.exe"), []byte("server"), 0o700); err != nil {
 		t.Fatalf("write server: %v", err)
 	}
-	for name, contents := range map[string]string{"bb-erp-updater.exe": "updater", "bb-erp-upgrade-runner.bat": "runner"} {
+	for name, contents := range map[string]string{"bb-erp-updater.exe": "updater", "bb-erp-upgrade-runner.bat": "runner", "bb-erp-verify-update.exe": "verifier", "激活离线更新.ps1": "activation"} {
 		if err := os.WriteFile(filepath.Join(sourceDir, name), []byte(contents), 0o700); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
@@ -285,6 +291,67 @@ func TestLoadUpdaterMetadataRequiresManifestURL(t *testing.T) {
 	}
 	if _, err := loadUpdaterMetadata(installDir); err == nil {
 		t.Fatal("metadata without manifest_url must fail")
+	}
+}
+
+func TestLoadUpdaterMetadataSupportsDirectorySource(t *testing.T) {
+	installDir := t.TempDir()
+	releaseDir := filepath.Join(t.TempDir(), "active")
+	contents, err := json.Marshal(map[string]string{
+		"version":        "0.0.8",
+		"server_version": " 0.0.8 ",
+		"update_source":  " DIRECTORY ",
+		"release_dir":    " " + releaseDir + " ",
+	})
+	if err != nil {
+		t.Fatalf("marshal directory version metadata: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "version.json"), contents, 0o600); err != nil {
+		t.Fatalf("write version metadata: %v", err)
+	}
+	metadata, err := loadUpdaterMetadata(installDir)
+	if err != nil {
+		t.Fatalf("load directory updater metadata: %v", err)
+	}
+	if metadata.UpdateSource != "directory" || metadata.ReleaseDir != releaseDir || metadata.ServerVersion != "0.0.8" {
+		t.Fatalf("unexpected directory metadata: %+v", metadata)
+	}
+}
+
+func TestLoadUpdaterMetadataRejectsUnsupportedDirectoryConfiguration(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name:     "directory without release dir",
+			contents: `{"server_version":"0.0.8","update_source":"directory"}`,
+			want:     "release_dir",
+		},
+		{
+			name:     "unsupported source",
+			contents: `{"server_version":"0.0.8","update_source":"ftp","manifest_url":"https://example.invalid/update-manifest.json"}`,
+			want:     "unsupported update_source",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			installDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(installDir, "version.json"), []byte(test.contents), 0o600); err != nil {
+				t.Fatalf("write version metadata: %v", err)
+			}
+			if _, err := loadUpdaterMetadata(installDir); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("metadata error=%v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRunWithProgressSourceRejectsConflictingPackageSources(t *testing.T) {
+	err := runWithProgressSource("https://example.invalid/update-manifest.json", t.TempDir(), "", "", t.TempDir(), "", "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("conflicting source arguments error=%v", err)
 	}
 }
 
@@ -437,6 +504,109 @@ func TestDownloadServerPackageRejectsOversizedManifest(t *testing.T) {
 	if _, _, err := downloadServerPackage(server.URL, "0.0.8", keyPath); err == nil || !strings.Contains(err.Error(), "1..") {
 		t.Fatalf("oversized package manifest was not rejected: %v", err)
 	}
+}
+
+func TestDownloadServerPackageFromDirectoryUsesLocalManifestAndSignature(t *testing.T) {
+	releaseDir := t.TempDir()
+	trustedPublic, trustedPrivate, err := minisign.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate trusted key: %v", err)
+	}
+	archive := updaterServerPackageZip(t, "0.0.9", trustedPublic.String())
+	serverPath := filepath.Join(releaseDir, "packages", "server.zip")
+	if err := os.MkdirAll(filepath.Dir(serverPath), 0o755); err != nil {
+		t.Fatalf("create release package directory: %v", err)
+	}
+	if err := os.WriteFile(serverPath, archive, 0o600); err != nil {
+		t.Fatalf("write release server package: %v", err)
+	}
+	digest := sha256.Sum256(archive)
+	manifest := update.Manifest{Version: "0.0.9", Server: update.PackageManifest{
+		Version: "0.0.9", URL: "packages/server.zip", Size: int64(len(archive)),
+		SHA256: hex.EncodeToString(digest[:]), Signature: signFileForTest(t, trustedPrivate, archive),
+	}}
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal local update manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, "update-manifest.json"), manifestData, 0o600); err != nil {
+		t.Fatalf("write local update manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, ".release-ready"), []byte("0.0.9"), 0o600); err != nil {
+		t.Fatalf("write activation marker: %v", err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "update-public.key")
+	if err := os.WriteFile(keyPath, []byte(trustedPublic.String()), 0o600); err != nil {
+		t.Fatalf("write trusted public key: %v", err)
+	}
+
+	packagePath, version, err := downloadServerPackageFromDirectory(releaseDir, "0.0.8", keyPath)
+	if err != nil {
+		t.Fatalf("read and verify local server package: %v", err)
+	}
+	defer os.Remove(packagePath)
+	if version != "0.0.9" {
+		t.Fatalf("local package version=%q, want 0.0.9", version)
+	}
+	got, err := os.ReadFile(packagePath)
+	if err != nil {
+		t.Fatalf("read copied local server package: %v", err)
+	}
+	if !bytes.Equal(got, archive) {
+		t.Fatal("copied local server package differs from release resource")
+	}
+	if _, _, err := downloadServerPackageFromDirectory(releaseDir, "0.0.9", keyPath); err == nil || !errors.Is(err, errAlreadyUpToDate) {
+		t.Fatalf("same-version local package was not rejected as up to date: %v", err)
+	}
+}
+
+func TestDownloadServerPackageFromDirectoryRejectsUnsafeResource(t *testing.T) {
+	releaseDir := t.TempDir()
+	manifest := update.Manifest{Version: "0.0.9", Server: update.PackageManifest{
+		Version: "0.0.9", URL: "../server.zip", Size: 1,
+		SHA256: strings.Repeat("a", 64), Signature: "signed",
+	}}
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal unsafe local update manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, "update-manifest.json"), manifestData, 0o600); err != nil {
+		t.Fatalf("write unsafe local update manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, ".release-ready"), []byte("0.0.9"), 0o600); err != nil {
+		t.Fatalf("write activation marker: %v", err)
+	}
+	if _, _, err := downloadServerPackageFromDirectory(releaseDir, "0.0.8", ""); err == nil || !strings.Contains(err.Error(), "parent traversal") {
+		t.Fatalf("unsafe local resource was not rejected: %v", err)
+	}
+}
+
+func updaterServerPackageZip(t *testing.T, version, publicKey string) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	files := map[string][]byte{
+		"bb-erp-server.exe":         []byte("server-" + version),
+		"bb-erp-updater.exe":        []byte("updater-" + version),
+		"bb-erp-upgrade-runner.bat": []byte("runner-" + version),
+		"bb-erp-verify-update.exe":  []byte("verifier-" + version),
+		"激活离线更新.ps1":                []byte("activation-" + version),
+		"update-public.key":         []byte(publicKey),
+		"version.json":              []byte(`{"version":"` + version + `","server_version":"` + version + `"}`),
+	}
+	for name, contents := range files {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("create archive entry %s: %v", name, err)
+		}
+		if _, err := entry.Write(contents); err != nil {
+			t.Fatalf("write archive entry %s: %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close server package archive: %v", err)
+	}
+	return buffer.Bytes()
 }
 
 func signFileForTest(t *testing.T, private minisign.PrivateKey, payload []byte) string {

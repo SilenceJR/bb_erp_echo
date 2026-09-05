@@ -88,6 +88,17 @@ npm install
 npm run desktop:dev
 ```
 
+Windows 本机可使用统一脚本生成全新安装包；默认只生成 all-in-one，显式传入
+`-Target All` 时同时生成可放入服务器本地更新目录的签名离线更新整包：
+
+```powershell
+.\scripts\windows-package.ps1 -Version 0.0.13
+.\scripts\windows-package.ps1 -Version 0.0.13 -Target All
+```
+
+脚本读取 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 和
+`TAURI_UPDATER_PUBLIC_KEY`；私钥和公钥变量都支持文件路径，密钥不会写入构建报告。
+
 全新数据库首次启动前必须配置 `BB_ERP_SILENCE_PASSWORD`。系统会保留原有 `admin` / `admin123456`，并额外创建 `Silence` 超级管理员；两者登录后都应立即修改初始密码。已有数据库不会补建或重置该额外账号。额外注入的 `Silence` 是系统托管保底账号，不出现在账号管理列表中，只能由该账号本人通过登录后的密码修改流程维护。
 
 服务器 Windows 专用网络需要放行 ERP TCP 端口（默认 `8080`）和发现 UDP 端口 `39080`。UDP 被阻断时仍可手动连接。
@@ -109,6 +120,18 @@ BB_ERP_DISCOVERY_PORT=39080
 ```
 
 连接范围仅允许 loopback 与 RFC1918 IPv4 的 HTTP 地址。
+
+服务器使用人工投放的本地更新目录时配置：
+
+```bash
+BB_ERP_UPDATE_ENABLED=true
+BB_ERP_UPDATE_SOURCE=directory
+BB_ERP_UPDATE_RELEASE_DIR=updates/releases/active
+BB_ERP_UPDATE_CACHE_DIR=updates/cache
+BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
+```
+
+目录模式只读取发布目录内的相对资源，不发起更新相关的公网请求。
 
 ## 验证
 

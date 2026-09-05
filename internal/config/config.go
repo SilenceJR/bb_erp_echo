@@ -141,12 +141,24 @@ type SilenceConfig struct {
 	Password string `koanf:"password"`
 }
 
+const (
+	// UpdateSourceHTTP selects a manifest and resources fetched over HTTP(S).
+	UpdateSourceHTTP = "http"
+	// UpdateSourceDirectory selects a manifest and resources in ReleaseDir.
+	UpdateSourceDirectory = "directory"
+)
+
 // UpdateConfig 描述 GitHub、Gitee 或内网更新源配置。
 type UpdateConfig struct {
+	// Source 是更新清单和资源的来源，可选 http 或 directory。
+	// 空值按 http 处理，以兼容未设置该选项的既有部署。
+	Source string `koanf:"source"`
 	// Enabled 表示是否允许服务端主动检查远端更新清单。
 	Enabled bool `koanf:"enabled"`
 	// ManifestURL 是 update-manifest.json 的地址，可来自 GitHub、Gitee 或内网静态服务。
 	ManifestURL string `koanf:"manifest_url"`
+	// ReleaseDir 是 directory 来源的完整发布目录，只允许读取其内部的清单和资源。
+	ReleaseDir string `koanf:"release_dir"`
 	// CacheDir 是服务端缓存客户端升级包的目录。
 	CacheDir string `koanf:"cache_dir"`
 	// ClientVersion 是当前随服务端发布的客户端版本，用于判断是否需要缓存新客户端包。
@@ -197,7 +209,9 @@ func Load() (*Config, error) {
 		"admin.name":                     "系统管理员",
 		"silence.password":               "",
 		"update.enabled":                 false,
+		"update.source":                  UpdateSourceHTTP,
 		"update.manifest_url":            "",
+		"update.release_dir":             "",
 		"update.cache_dir":               "updates",
 		"update.client_version":          buildinfo.Version,
 		"update.check_interval":          "6h",
@@ -269,6 +283,23 @@ func Load() (*Config, error) {
 		cfg.Web.DistDir = "web/dist"
 	}
 	cfg.Update.Enabled = k.Bool("update.enabled")
+	if source := k.String("update.source"); source != "" {
+		cfg.Update.Source = strings.ToLower(strings.TrimSpace(source))
+	}
+	// 连续语义词的环境变量直接读取，避免 koanf 将 RELEASE_DIR 拆成
+	// release.dir 后无法映射到 release_dir 字段。
+	if source, ok := os.LookupEnv("BB_ERP_UPDATE_SOURCE"); ok {
+		cfg.Update.Source = strings.ToLower(strings.TrimSpace(source))
+	}
+	if releaseDir, ok := os.LookupEnv("BB_ERP_UPDATE_RELEASE_DIR"); ok {
+		cfg.Update.ReleaseDir = strings.TrimSpace(releaseDir)
+	}
+	if cfg.Update.Source == "" {
+		cfg.Update.Source = UpdateSourceHTTP
+	}
+	if cfg.Update.Source != UpdateSourceHTTP && cfg.Update.Source != UpdateSourceDirectory {
+		return nil, fmt.Errorf("update source must be %s or %s", UpdateSourceHTTP, UpdateSourceDirectory)
+	}
 	if manifestURL := k.String("update.manifest.url"); manifestURL != "" {
 		cfg.Update.ManifestURL = manifestURL
 	}
@@ -396,10 +427,27 @@ func validateProductionConfig(cfg Config) error {
 		return nil
 	}
 
-	manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
-	parsedURL, err := url.Parse(manifestURL)
-	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
-		return fmt.Errorf("production update manifest URL must be an HTTP(S) URL")
+	if strings.EqualFold(strings.TrimSpace(cfg.Update.Source), UpdateSourceDirectory) {
+		releaseDir := strings.TrimSpace(cfg.Update.ReleaseDir)
+		if releaseDir == "" {
+			return fmt.Errorf("production directory update source must configure release directory")
+		}
+		info, err := os.Lstat(releaseDir)
+		if err != nil {
+			return fmt.Errorf("production update release directory %q is not readable: %w", releaseDir, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("production update release directory %q must not be a symlink", releaseDir)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("production update release directory %q is not a directory", releaseDir)
+		}
+	} else {
+		manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
+		parsedURL, err := url.Parse(manifestURL)
+		if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
+			return fmt.Errorf("production update manifest URL must be an HTTP(S) URL")
+		}
 	}
 
 	if strings.TrimSpace(cfg.Update.SigningPublicKey) == "" {

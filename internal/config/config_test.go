@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,9 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	}
 	if cfg.Update.CheckInterval != 6*time.Hour || cfg.Update.ManifestTimeout != 20*time.Second || cfg.Update.DownloadTimeout != 10*time.Minute {
 		t.Fatalf("unexpected update durations: %+v", cfg.Update)
+	}
+	if cfg.Update.Source != "http" || cfg.Update.ReleaseDir != "" {
+		t.Fatalf("unexpected update source defaults: %+v", cfg.Update)
 	}
 	if !cfg.Discovery.Enabled || cfg.Discovery.ServerName == "" || cfg.Discovery.BindHost != "0.0.0.0" || cfg.Discovery.Port != 39080 {
 		t.Fatalf("unexpected discovery defaults: %+v", cfg.Discovery)
@@ -118,6 +122,29 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadDirectoryUpdateConfigFromEnv(t *testing.T) {
+	releaseDir := t.TempDir()
+	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
+	t.Setenv("BB_ERP_UPDATE_RELEASE_DIR", releaseDir)
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
+	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "configured-test-key")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load directory update config: %v", err)
+	}
+	if cfg.Update.Source != "directory" || cfg.Update.ReleaseDir != releaseDir {
+		t.Fatalf("directory update config: %+v", cfg.Update)
+	}
+}
+
+func TestLoadRejectsUnknownUpdateSource(t *testing.T) {
+	t.Setenv("BB_ERP_UPDATE_SOURCE", "ftp")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "update source must be http or directory") {
+		t.Fatalf("unknown update source error = %v", err)
+	}
+}
+
 // TestLoadProductionConfigAllowsDefaultCredentials 验证生产环境允许首次使用默认管理员登录再在系统内修改密码。
 func TestLoadProductionConfigAllowsDefaultCredentials(t *testing.T) {
 	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
@@ -151,5 +178,28 @@ func TestLoadProductionConfigRequiresUpdateVerifier(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "signing public key") {
 		t.Fatalf("expected update signing key validation error, got %v", err)
+	}
+}
+
+func TestLoadProductionDirectoryConfigRequiresReleaseDirectory(t *testing.T) {
+	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
+	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "release directory") {
+		t.Fatalf("expected release directory validation error, got %v", err)
+	}
+}
+
+func TestLoadProductionDirectoryConfigRequiresExistingDirectory(t *testing.T) {
+	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
+	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
+	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
+	t.Setenv("BB_ERP_UPDATE_RELEASE_DIR", filepath.Join(t.TempDir(), "missing"))
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "release directory") {
+		t.Fatalf("expected existing release directory validation error, got %v", err)
 	}
 }

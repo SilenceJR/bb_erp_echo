@@ -52,7 +52,7 @@ func serverPackageZipBytes(t *testing.T) []byte {
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	for _, name := range []string{
-		"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "update-public.key", "version.json",
+		"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "bb-erp-verify-update.exe", "激活离线更新.ps1", "update-public.key", "version.json",
 	} {
 		file, err := writer.Create(name)
 		if err != nil {

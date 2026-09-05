@@ -53,7 +53,7 @@
 - Rust 调用 `/api/v1/updates/client/plan`，只传真实安装版本、`windows-x86_64` 和 `nsis|portable` 安装模式。当前契约固定返回完整更新，不保留差分计划、旧 ZIP、协议降级或外部下载分支。
 - 更新资源必须通过来源限制、签名、哈希和大小验证；写入临时文件并原子替换，启动失败时恢复原客户端。
 - 安装前先调用统一离开守卫，存在未保存业务内容时默认取消安装。
-- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。服务端升级包通过同源受保护接口 `/api/v1/system/updates/server/download` 下载，由 Go 服务端使用已部署可信公钥流式验证 Minisign 签名、1 字节至 512 MiB 大小、SHA-256 和 ZIP 结构后分发，Tauri 不直接打开外部更新地址；桌面传输对此大文件接口使用 12 分钟超时，比服务端默认下载时限多保留 2 分钟，以便接收并反馈服务端具体错误。
+- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。更新源支持既有 HTTP 模式与 `directory` 本地发布目录模式；目录模式只接受发布根目录内无符号链接的相对资源，不发起更新相关公网请求。服务端升级包通过同源受保护接口 `/api/v1/system/updates/server/download` 下载，由 Go 服务端使用已部署可信公钥流式验证 Minisign 签名、1 字节至 512 MiB 大小、SHA-256 和 ZIP 结构后分发，Tauri 不直接打开外部更新地址；桌面传输对此大文件接口使用 12 分钟超时，比服务端默认下载时限多保留 2 分钟，以便接收并反馈服务端具体错误。
 - Web 更新中心不展示没有有效下载路径的客户端 ZIP 卡片；真实客户端更新能力只通过 Tauri 原生更新面板提供。
 
 ## 调试说明

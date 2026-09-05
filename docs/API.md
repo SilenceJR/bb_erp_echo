@@ -287,7 +287,7 @@ GET  /api/v1/system/updates/server/download
 - 外层更新清单同样拒绝重复 JSON key、未知字段和尾随 JSON 内容；清单解析失败不会替换上一次成功状态或缓存。
 - `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
 - `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
-- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存，并在返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次下载。下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
+- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存；当 `BB_ERP_UPDATE_SOURCE=directory` 时，只从带匹配版本 `.release-ready` 激活标记的 `BB_ERP_UPDATE_RELEASE_DIR` 读取 `update-manifest.json` 及其相对资源，拒绝绝对路径、父目录、符号链接和目录逃逸且不发起网络请求。目录检查在提交新状态前即缓存并验证服务端 ZIP 与两个客户端完整包；任一资源不完整时继续保留上一份成功状态。返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次读取。读取、下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
 - 更新状态中的服务端 `download_url`/`download_path` 指向上述同源受保护接口，不再把外部下载地址直接交给 Tauri WebView；下载只提供升级包，不会自动替换当前进程。
 
 更新状态示例：
