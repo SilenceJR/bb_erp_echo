@@ -83,6 +83,23 @@ GitHub 环境 `gitee-release`：
 
 ## 4. 发布流程
 
+### Windows 本机离线打包
+
+已有 Windows 工具链可在仓库根目录运行：
+
+```powershell
+# 默认只生成 all-in-one
+.\scripts\windows-package.ps1 -Version 0.0.13
+
+# 同时生成 all-in-one 与服务器目录离线更新整包
+.\scripts\windows-package.ps1 -Version 0.0.13 -Target All
+```
+
+脚本支持将 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_UPDATER_PUBLIC_KEY` 配置为文件路径，
+自动规范化公钥并临时注入客户端构建。离线 manifest 仅包含同一目录内的相对文件名，
+必须先完整解压到服务器 `updates/releases/incoming/v<版本>`，再从已安装的 `server` 目录运行 `激活离线更新.ps1 -IncomingDir updates/releases/incoming/v<版本>`。该受保护脚本只使用安装目录中的可信公钥与验证器，不执行 incoming 内程序，并在校验和、Minisign 验签完成后原子切换目录；随后 `BB_ERP_UPDATE_SOURCE=directory` 才会从 `updates/releases/active` 使用。禁止直接覆盖 `active`。
+目录模式不替代签名、大小、SHA-256 和 ZIP 结构校验，也不会自动上传或修改 Gitee。
+
 1. 确认分支测试通过并创建正式标签：
 
    ```bash

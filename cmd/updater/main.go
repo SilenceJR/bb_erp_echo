@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,8 @@ type updaterMetadata struct {
 	Version       string `json:"version"`
 	ServerVersion string `json:"server_version"`
 	ManifestURL   string `json:"manifest_url"`
+	UpdateSource  string `json:"update_source"`
+	ReleaseDir    string `json:"release_dir"`
 }
 
 var errAlreadyUpToDate = errors.New("server is already up to date")
@@ -33,6 +36,7 @@ const maxServerPackageSize = int64(512 << 20)
 
 func main() {
 	var manifestURL string
+	var releaseDir string
 	var packagePath string
 	var packageSignature string
 	var installDir string
@@ -40,6 +44,7 @@ func main() {
 	var currentVersion string
 
 	flag.StringVar(&manifestURL, "manifest-url", "", "update-manifest.json URL from GitHub, Gitee, or intranet")
+	flag.StringVar(&releaseDir, "release-dir", "", "local active update release directory containing update-manifest.json")
 	flag.StringVar(&packagePath, "package", "", "local server zip package path")
 	flag.StringVar(&packageSignature, "package-signature", "", "base64 Minisign signature for a local server zip package")
 	interactive := len(os.Args) == 1
@@ -52,7 +57,7 @@ func main() {
 	if logErr != nil {
 		fmt.Fprintln(os.Stderr, "warning: create updater log:", logErr)
 	}
-	err := runWithProgress(manifestURL, packagePath, packageSignature, installDir, serviceName, currentVersion, output)
+	err := runWithProgressSource(manifestURL, releaseDir, packagePath, packageSignature, installDir, serviceName, currentVersion, output)
 	if err != nil {
 		fmt.Fprintln(output, "upgrade failed:", err)
 	} else {
@@ -72,8 +77,23 @@ func main() {
 }
 
 func runWithProgress(manifestURL string, packagePath string, packageSignature string, installDir string, serviceName string, currentVersion string, output io.Writer) error {
+	return runWithProgressSource(manifestURL, "", packagePath, packageSignature, installDir, serviceName, currentVersion, output)
+}
+
+// runWithProgressSource 执行 HTTP manifest、directory manifest 或显式本地包升级。
+// 保留 runWithProgress 作为旧调用方兼容包装，避免改变既有测试和内部集成契约。
+func runWithProgressSource(manifestURL string, releaseDir string, packagePath string, packageSignature string, installDir string, serviceName string, currentVersion string, output io.Writer) error {
 	if output == nil {
 		output = io.Discard
+	}
+	manifestURL = strings.TrimSpace(manifestURL)
+	releaseDir = strings.TrimSpace(releaseDir)
+	packagePath = strings.TrimSpace(packagePath)
+	if manifestURL != "" && releaseDir != "" {
+		return errors.New("-manifest-url and -release-dir cannot be used together")
+	}
+	if packagePath != "" && releaseDir != "" {
+		return errors.New("-package and -release-dir cannot be used together")
 	}
 	installDir, err := filepath.Abs(installDir)
 	if err != nil {
@@ -84,12 +104,16 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 		return err
 	}
 	defer releaseLock()
-	if packagePath == "" && manifestURL == "" {
+	if packagePath == "" && manifestURL == "" && releaseDir == "" {
 		metadata, metadataErr := loadUpdaterMetadata(installDir)
 		if metadataErr != nil {
-			return fmt.Errorf("no -package or -manifest-url was supplied and installed version metadata is unavailable: %w", metadataErr)
+			return fmt.Errorf("no -package, -manifest-url or -release-dir was supplied and installed version metadata is unavailable: %w", metadataErr)
 		}
-		manifestURL = metadata.ManifestURL
+		if metadata.UpdateSource == "directory" {
+			releaseDir = metadata.ReleaseDir
+		} else {
+			manifestURL = metadata.ManifestURL
+		}
 		if currentVersion == "" {
 			currentVersion = metadata.ServerVersion
 		}
@@ -100,8 +124,13 @@ func runWithProgress(manifestURL string, packagePath string, packageSignature st
 	downloadedPackage := false
 	expectedVersion := ""
 	if packagePath == "" {
-		fmt.Fprintln(output, "[1/6] Downloading and verifying the server package...")
-		packagePath, expectedVersion, err = downloadServerPackage(manifestURL, currentVersion, filepath.Join(installDir, "update-public.key"))
+		if releaseDir != "" {
+			fmt.Fprintln(output, "[1/6] Reading and verifying the local server package...")
+			packagePath, expectedVersion, err = downloadServerPackageFromDirectory(releaseDir, currentVersion, filepath.Join(installDir, "update-public.key"))
+		} else {
+			fmt.Fprintln(output, "[1/6] Downloading and verifying the server package...")
+			packagePath, expectedVersion, err = downloadServerPackage(manifestURL, currentVersion, filepath.Join(installDir, "update-public.key"))
+		}
 		if err != nil {
 			if errors.Is(err, errAlreadyUpToDate) {
 				fmt.Fprintln(output, err)
@@ -227,6 +256,8 @@ func readUpdaterMetadata(installDir string) (updaterMetadata, error) {
 		return updaterMetadata{}, fmt.Errorf("decode %s: %w", path, err)
 	}
 	metadata.ManifestURL = strings.TrimSpace(metadata.ManifestURL)
+	metadata.UpdateSource = strings.ToLower(strings.TrimSpace(metadata.UpdateSource))
+	metadata.ReleaseDir = strings.TrimSpace(metadata.ReleaseDir)
 	metadata.ServerVersion = strings.TrimSpace(metadata.ServerVersion)
 	metadata.Version = strings.TrimSpace(metadata.Version)
 	return metadata, nil
@@ -237,8 +268,29 @@ func loadUpdaterMetadata(installDir string) (updaterMetadata, error) {
 	if err != nil {
 		return updaterMetadata{}, err
 	}
-	if metadata.ManifestURL == "" {
-		return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url", filepath.Join(installDir, "version.json"))
+	metadataPath := filepath.Join(installDir, "version.json")
+	switch metadata.UpdateSource {
+	case "":
+		// Existing installations only carry manifest_url. When a package is
+		// explicitly configured with release_dir but omits update_source, infer
+		// directory mode so the runner remains useful across metadata revisions.
+		if metadata.ReleaseDir != "" {
+			metadata.UpdateSource = "directory"
+			break
+		}
+		if metadata.ManifestURL == "" {
+			return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url", metadataPath)
+		}
+	case "http":
+		if metadata.ManifestURL == "" {
+			return updaterMetadata{}, fmt.Errorf("%s does not contain manifest_url for http update source", metadataPath)
+		}
+	case "directory":
+		if metadata.ReleaseDir == "" {
+			return updaterMetadata{}, fmt.Errorf("%s does not contain release_dir for directory update source", metadataPath)
+		}
+	default:
+		return updaterMetadata{}, fmt.Errorf("%s contains unsupported update_source %q", metadataPath, metadata.UpdateSource)
 	}
 	return metadata, nil
 }
@@ -316,6 +368,82 @@ func downloadServerPackage(manifestURL string, currentVersion string, trustedPub
 	if err := verifier.VerifyFile(path, manifest.Server.Signature); err != nil {
 		_ = os.Remove(path)
 		return "", "", fmt.Errorf("verify server package with installed trusted public key: %w", err)
+	}
+	return path, manifest.Server.Version, nil
+}
+
+// downloadServerPackageFromDirectory 读取 active release 目录中的清单和服务端包。
+// 目录源不调用 HTTP 客户端；路径、大小、SHA-256 和 Minisign 均在资源离开
+// release 目录前完成校验，后续 runWithProgressSource 仍会执行 ZIP 和版本结构校验。
+func downloadServerPackageFromDirectory(releaseDir string, currentVersion string, trustedPublicKeyPath string) (string, string, error) {
+	releaseDir = strings.TrimSpace(releaseDir)
+	if releaseDir == "" {
+		return "", "", errors.New("-release-dir is empty")
+	}
+	source := update.NewDirectoryManifestSource(releaseDir)
+	manifest, err := source.Fetch(context.Background())
+	if err != nil {
+		return "", "", fmt.Errorf("read local update manifest: %w", err)
+	}
+	if currentVersion != "" && update.CompareVersions(manifest.Server.Version, currentVersion) <= 0 {
+		return "", "", fmt.Errorf("%w: current=%s latest=%s", errAlreadyUpToDate, currentVersion, manifest.Server.Version)
+	}
+	if manifest.Server.Version == "" {
+		return "", "", errors.New("manifest server.version is empty")
+	}
+	if strings.TrimSpace(manifest.Server.URL) == "" {
+		return "", "", errors.New("manifest server.url is empty")
+	}
+	if manifest.Server.Size <= 0 || manifest.Server.Size > maxServerPackageSize || !validSHA256(manifest.Server.SHA256) || strings.TrimSpace(manifest.Server.Signature) == "" {
+		return "", "", fmt.Errorf("manifest server package must declare a size within 1..%d, SHA-256 and Minisign signature", maxServerPackageSize)
+	}
+	verifier, err := update.LoadSignedManifestVerifier("", trustedPublicKeyPath)
+	if err != nil {
+		return "", "", fmt.Errorf("load installed trusted update public key: %w", err)
+	}
+	if verifier == nil {
+		return "", "", errors.New("installed trusted update public key is not configured")
+	}
+
+	// Use the existing directory package store for path confinement and the
+	// streaming size/SHA-256 check. Its temporary root is removed after the
+	// verified package is copied to the updater-owned temporary file below.
+	cacheRoot, err := os.MkdirTemp("", "bb-erp-directory-update-cache-*")
+	if err != nil {
+		return "", "", fmt.Errorf("create temporary local update cache: %w", err)
+	}
+	defer os.RemoveAll(cacheRoot)
+	store := &update.DirectoryPackageStore{Root: cacheRoot, ReleaseDir: releaseDir}
+	resourceName := "server/" + filepath.Base(filepath.FromSlash(manifest.Server.URL))
+	cachedPath, _, err := store.Ensure(context.Background(), resourceName, manifest.Server)
+	if err != nil {
+		return "", "", fmt.Errorf("copy local server package: %w", err)
+	}
+
+	temporary, err := os.CreateTemp("", "bb-erp-server-windows-*.zip")
+	if err != nil {
+		return "", "", fmt.Errorf("create temporary server package: %w", err)
+	}
+	path := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("close temporary server package: %w", err)
+	}
+	if err := copyPath(cachedPath, path); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("copy verified local server package: %w", err)
+	}
+	if err := verifyFileSize(path, manifest.Server.Size); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("verify local server package size: %w", err)
+	}
+	if err := verifySHA256(path, manifest.Server.SHA256); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("verify local server package SHA-256: %w", err)
+	}
+	if err := verifier.VerifyFile(path, manifest.Server.Signature); err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("verify local server package with installed trusted public key: %w", err)
 	}
 	return path, manifest.Server.Version, nil
 }
@@ -431,7 +559,7 @@ func startServer(serviceName string, installDir string) error {
 				return err
 			}
 			if running {
-				return nil
+				return waitServerReady()
 			}
 			if time.Now().After(deadline) {
 				return fmt.Errorf("service %q did not start within 30 seconds", serviceName)
@@ -471,7 +599,7 @@ func startServer(serviceName string, installDir string) error {
 		return fmt.Errorf("verify server startup: %w", err)
 	}
 	if running {
-		return nil
+		return waitServerReady()
 	}
 	if cmd.ProcessState == nil {
 		_ = cmd.Process.Kill()
@@ -480,6 +608,31 @@ func startServer(serviceName string, installDir string) error {
 		return fmt.Errorf("server did not remain running after launcher exited: %w", wrapperErr)
 	}
 	return fmt.Errorf("server did not remain running after launcher completed")
+}
+
+func waitServerReady() error {
+	port := strings.TrimSpace(os.Getenv("BB_ERP_HTTP_PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(45 * time.Second)
+	readyURL := "http://127.0.0.1:" + port + "/ready"
+	var lastErr error = errors.New("no readiness response")
+	for time.Now().Before(deadline) {
+		response, err := client.Get(readyURL)
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode >= 200 && response.StatusCode < 300 {
+				return nil
+			}
+			lastErr = fmt.Errorf("status %d", response.StatusCode)
+		} else {
+			lastErr = err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("server readiness check %s failed within 45 seconds: %w", readyURL, lastErr)
 }
 
 func serverRunning(serviceName, installDir string) (bool, error) {
@@ -546,7 +699,7 @@ func backupServerFiles(installDir string, backupDir string) error {
 	// Keep the rollback snapshot self-contained. Runtime configuration is supplied
 	// through environment variables and must be backed up by the deployment system,
 	// not copied into an upgrade archive.
-	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "web", "data", "static", "updates", "logs", "update-public.key", "version.json"} {
+	for _, name := range []string{"bb-erp-server.exe", "bb-erp-updater.exe", "bb-erp-upgrade-runner.bat", "bb-erp-verify-update.exe", "激活离线更新.ps1", "web", "data", "static", "updates", "logs", "update-public.key", "version.json"} {
 		source := filepath.Join(installDir, name)
 		if _, err := os.Stat(source); err != nil {
 			if os.IsNotExist(err) && name != "bb-erp-server.exe" {
@@ -576,6 +729,12 @@ func replaceServerFiles(sourceDir string, installDir string) error {
 	}
 	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-upgrade-runner.bat"), filepath.Join(installDir, "bb-erp-upgrade-runner.pending.bat")); err != nil {
 		return fmt.Errorf("stage next updater runner: %w", err)
+	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "bb-erp-verify-update.exe"), filepath.Join(installDir, "bb-erp-verify-update.exe")); err != nil {
+		return fmt.Errorf("replace trusted update verifier: %w", err)
+	}
+	if err := replaceFileSafely(filepath.Join(sourceDir, "激活离线更新.ps1"), filepath.Join(installDir, "激活离线更新.ps1")); err != nil {
+		return fmt.Errorf("replace trusted offline activation script: %w", err)
 	}
 	webSource := filepath.Join(sourceDir, "web")
 	if _, err := os.Stat(webSource); err == nil {
@@ -610,7 +769,8 @@ func restoreServerFiles(backupDir, installDir string) error {
 	for _, name := range []string{
 		"bb-erp-server.exe",
 		"bb-erp-updater.pending.exe", "bb-erp-upgrade-runner.pending.bat",
-		"update-public.key", "version.json", "web",
+		"bb-erp-verify-update.exe", "激活离线更新.ps1",
+		"update-public.key", "version.json", "web", "data", "static",
 	} {
 		source := filepath.Join(backupDir, name)
 		target := filepath.Join(installDir, name)

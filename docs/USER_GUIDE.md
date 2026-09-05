@@ -358,7 +358,9 @@ Windows 客户端通过当前内网 ERP 服务检查并安装完整更新。更�
 - `GET /api/v1/updates/client/artifacts/:sha256`
 - `POST /api/v1/system/updates/check`
 
-只支持当前 Windows full-only 契约，不提供差分包、旧 ZIP 或旧客户端回退。服务端更新检查默认关闭，需要配置更新清单地址和可信更新公钥后再启用。更新前系统会先检查未保存内容；便携版使用同目录暂存和启动确认，NSIS 版使用签名安装器，失败不会覆盖当前可运行客户端。
+只支持当前 Windows full-only 契约，不提供差分包、旧 ZIP 或旧客户端回退。服务端更新检查默认关闭，可以配置 HTTP 清单，也可以将完整离线更新包解压到服务器 `updates/releases/incoming/v<版本>`，再从已安装的 `server` 目录运行 `激活离线更新.ps1 -IncomingDir updates/releases/incoming/v<版本>`，验证并原子切换到 `updates/releases/active`；禁止运行 incoming 内程序或直接覆盖 active。激活只信任安装目录中受保护的公钥与验证器，不支持离线包自行更换密钥。随后设置 `BB_ERP_UPDATE_SOURCE=directory`、`BB_ERP_UPDATE_RELEASE_DIR=updates/releases/active` 和可信更新公钥后启用。目录模式不会访问公网，且只接受带 `.release-ready` 激活标记并通过路径、签名、大小、SHA-256 和 ZIP 结构校验的完整发布。更新前系统会先检查未保存内容；便携版使用同目录暂存和启动确认，NSIS 版使用签名安装器，失败不会覆盖当前可运行客户端。
+
+Windows 打包电脑在仓库根目录运行 `.\scripts\windows-package.ps1 -Version 0.0.13` 时只生成 all-in-one；追加 `-Target All` 时同时生成 `bb-erp-offline-update-v0.0.13.zip`。离线更新 ZIP 必须完整解压，不能只复制其中某个 EXE 或仍在复制时直接切换为 active。
 
 Web 更新中心只下载服务端升级包；Windows 客户端更新必须在 Tauri 客户端内完成，不提供无法校验和应用的“完整 ZIP 故障恢复”下载卡片。
 

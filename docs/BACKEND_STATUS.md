@@ -2,7 +2,7 @@
 
 ## 本轮 UI 整改联验（2026-09-05）
 
-本次仅调整共享前端及说明文档，没有修改 Go API、权限码、初始化账户或迁移契约，故无需重新生成未变化的 OpenAPI。`go test ./...` 已通过。浏览器隔离合成样本已检查新库暂缓模块不可用展示与统计降级；真实样本权限矩阵、已有业务表完整业务操作及 Windows 客户端联验仍待完成。不能把单元测试当作生产验收。最新问题、修复和证据见 [Astra 验收记录](ASTRA_ACCEPTANCE.md)。
+本轮共享前端整改没有改变业务 API、权限码、初始化账户或迁移契约；另新增更新源部署配置与 Windows 本机离线打包能力，现有更新 API 路径和响应字段保持不变，因此无需重新生成未变化的 OpenAPI。`go test ./...` 已通过。浏览器隔离合成样本已检查新库暂缓模块不可用展示与统计降级；Windows 本机脚本、目录激活、真实样本权限矩阵、已有业务表完整业务操作及客户端联验仍待完成。不能把单元测试当作生产验收。最新问题、修复和证据见 [Astra 验收记录](ASTRA_ACCEPTANCE.md)。
 
 > 基准日期：2026-09-05
 
@@ -23,7 +23,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；模板下载为可直接回导的 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 和标准空目录；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 降级兼容已完成 | 缺少供应商、库存或任务数据源时仍返回 200，并用 `data_status`、`unavailable_sources`、`message` 明确标识；审计查询不受影响 |
 | 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
-| 客户端更新 | 已完成 | Windows full-only 更新、内网同源代理、签名、哈希、临时文件与失败恢复 |
+| 客户端更新 | 已完成，待 Windows 离线包真机验收 | Windows full-only 更新、HTTP/本地目录更新源、内网同源代理、签名、哈希、临时文件与失败恢复 |
 | 局域网发现 | 已完成 | SQLite 稳定身份、匿名身份接口、UDP 39080、启动预检和 responder 生命周期 |
 
 ## 2. 局域网发现
@@ -120,6 +120,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
 - `v0.0.10` 至 `v0.0.12` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest。
+- 新增 Windows 本机 `scripts/windows-package.ps1`：默认只生成版本化 all-in-one，`-Target All` 同时生成带相对资源 manifest、Minisign 和 SHA-256 的离线更新整包；现有 CI/CD 未改动。本地目录更新源拒绝绝对路径、父目录、符号链接和目录逃逸，不执行更新相关公网请求。Go 单元测试与静态检查通过后仍需在已配置工具链的 Windows x64 电脑执行脚本、NSIS/portable、服务器目录激活及回滚验收。
 - `v0.0.11` 标签对应 GitHub Actions `#91`（run `33458004272`）已成功：Go、Web、Tauri 前端、通用/Windows Rust 和完整 Windows 发布包作业全部通过，五组 GitHub Artifact 已生成；Gitee 发布作业为 `skipped`，`bb_erp_releases` 无 `v0.0.11` Release，稳定 manifest 保持 `0.0.9`。
 - `v0.0.13` 待标签推送后由 GitHub Actions 执行完整打包；在获得实际作业结果前，不将 Artifact、Gitee Release 或 Windows 真机验收记为已完成。
 - Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。

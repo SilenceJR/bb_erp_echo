@@ -326,8 +326,9 @@ func (s verifiedFileSnapshot) matches(path, digest string, info os.FileInfo) boo
 
 // LocalArtifactStore 使用 SHA-256 文件名，避免调用方控制文件路径。
 type LocalArtifactStore struct {
-	Root   string
-	Client *http.Client
+	Root       string
+	Client     *http.Client
+	ReleaseDir string
 
 	mu         sync.Mutex
 	inflight   map[string]*artifactCall
@@ -341,8 +342,8 @@ func (s *LocalArtifactStore) Path(digest string) (string, bool) {
 		return "", false
 	}
 	path := filepath.Join(s.Root, "artifacts", strings.ToLower(digest))
-	info, err := os.Stat(path)
-	return path, err == nil && !info.IsDir() && info.Size() > 0
+	info, err := os.Lstat(path)
+	return path, err == nil && info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && info.Size() > 0
 }
 
 // Cached 校验内容地址对象的长度和哈希。
@@ -411,12 +412,48 @@ func (s *LocalArtifactStore) Ensure(ctx context.Context, artifact ClientArtifact
 	s.inflight[key] = call
 	s.mu.Unlock()
 
-	call.path, call.reused, call.err = s.ensure(ctx, artifact)
+	if strings.TrimSpace(s.ReleaseDir) != "" {
+		call.path, call.reused, call.err = s.ensureFromDirectory(ctx, artifact)
+	} else {
+		call.path, call.reused, call.err = s.ensure(ctx, artifact)
+	}
 	s.mu.Lock()
 	delete(s.inflight, key)
 	close(call.done)
 	s.mu.Unlock()
 	return call.path, call.reused, call.err
+}
+
+// ensureFromDirectory 从已激活发布目录复制客户端资源，避免 directory 模式发起网络请求。
+func (s *LocalArtifactStore) ensureFromDirectory(ctx context.Context, artifact ClientArtifact) (string, bool, error) {
+	path, _ := s.Path(artifact.SHA256)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", false, fmt.Errorf("create artifact cache directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".artifact-*.tmp")
+	if err != nil {
+		return "", false, fmt.Errorf("create artifact temporary file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", false, fmt.Errorf("close artifact temporary file: %w", err)
+	}
+	defer os.Remove(tmpPath)
+	if err := copyVerifiedReleaseFile(ctx, s.ReleaseDir, artifact.URL, tmpPath, artifact.Size, artifact.SHA256); err != nil {
+		return "", false, err
+	}
+	if err := replaceCachedFile(tmpPath, path); err != nil {
+		return "", false, fmt.Errorf("store local artifact: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false, fmt.Errorf("stat stored artifact: %w", err)
+	}
+	s.mu.Lock()
+	s.rememberVerifiedLocked(strings.ToLower(artifact.SHA256), path, info)
+	s.mu.Unlock()
+	return path, false, nil
 }
 
 func (s *LocalArtifactStore) ensure(ctx context.Context, artifact ClientArtifact) (string, bool, error) {
