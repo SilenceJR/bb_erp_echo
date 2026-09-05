@@ -76,6 +76,52 @@ func TestAssignmentServiceReplacesAndBatchLoadsAssociations(t *testing.T) {
 	}
 }
 
+func TestFixedRoleRegistryContainsOnlySuperAdmin(t *testing.T) {
+	if len(fixedRoleDefinitions) != 1 {
+		t.Fatalf("fixed role definitions = %d, want exactly one", len(fixedRoleDefinitions))
+	}
+	definition, ok := fixedRoleDefinitionByCode(SuperAdminCode)
+	if !ok {
+		t.Fatalf("super_admin fixed role definition is missing")
+	}
+	if definition.Name != "超级管理员" || definition.Description == "" {
+		t.Fatalf("unexpected super_admin fixed role definition: %+v", definition)
+	}
+	if _, ok := fixedRoleDefinitionByCode(BossCode); ok {
+		t.Fatalf("legacy boss role must not be a fixed role definition")
+	}
+}
+
+func TestReplaceRolePermissionsRejectsFixedRoleByCodeAndPreservesBindings(t *testing.T) {
+	service := newAssignmentTestService(t)
+	permissions := []model.Permission{
+		{Name: "权限一", Code: "fixed:test:one", Object: "/fixed/one", Action: "read"},
+		{Name: "权限二", Code: "fixed:test:two", Object: "/fixed/two", Action: "write"},
+	}
+	if err := service.DB.Create(&permissions).Error; err != nil {
+		t.Fatalf("create permissions: %v", err)
+	}
+	super := model.Role{Name: "超级管理员", Code: SuperAdminCode, System: false}
+	if err := service.DB.Create(&super).Error; err != nil {
+		t.Fatalf("create fixed role: %v", err)
+	}
+	if err := service.DB.Create(&model.RolePermission{RoleID: super.ID, PermissionID: permissions[0].ID}).Error; err != nil {
+		t.Fatalf("create existing binding: %v", err)
+	}
+
+	err := service.ReplaceRolePermissions(super.ID, []uint{permissions[1].ID})
+	if !errors.Is(err, ErrSystemRoleLocked) {
+		t.Fatalf("fixed role replacement error = %v, want ErrSystemRoleLocked", err)
+	}
+	var bindings []model.RolePermission
+	if err := service.DB.Where("role_id = ?", super.ID).Order("permission_id").Find(&bindings).Error; err != nil {
+		t.Fatalf("load fixed role bindings: %v", err)
+	}
+	if len(bindings) != 1 || bindings[0].PermissionID != permissions[0].ID {
+		t.Fatalf("fixed role bindings changed after rejection: %+v", bindings)
+	}
+}
+
 func TestAssignmentServiceRejectsSuperAdminForTerminalAccount(t *testing.T) {
 	service := newAssignmentTestService(t)
 	superAdmin := model.Role{Name: "测试超级管理员", Code: SuperAdminCode}

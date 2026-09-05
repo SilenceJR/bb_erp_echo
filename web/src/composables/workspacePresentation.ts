@@ -64,7 +64,7 @@ export function permissionDomainKey(option: BasicItem): string {
   const codePrefix = String(option.code || '').split(':')[0].trim().toLowerCase()
   const objectPath = String(option.object || '').toLowerCase()
   const aliases: Record<string, string> = {
-    system: 'system', users: 'system', roles: 'system', permissions: 'system', audits: 'system', updates: 'system', departments: 'system', employees: 'system', terminals: 'system',
+    system: 'system', users: 'system', roles: 'system', audits: 'system', updates: 'system', departments: 'system', employees: 'system', terminals: 'system',
     warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'warehouse', products: 'warehouse',
     workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers', supplier: 'suppliers', suppliers: 'suppliers', statistics: 'statistics', cost: 'cost',
   }

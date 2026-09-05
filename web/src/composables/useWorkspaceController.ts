@@ -315,7 +315,6 @@ const genericIdentityColumns = computed(() => {
     departments: ['name', 'code'],
     terminals: ['name', 'code'],
     roles: ['name', 'code'],
-    permissions: ['name', 'code'],
     audits: ['operator_employee_name', 'action'],
   }
   const configured = preferred[activeKey.value] || [columns.value[0] || 'id', columns.value[1] || '']
@@ -337,12 +336,15 @@ const assignmentConfig = computed(() => assignmentConfigs[assignmentModuleKey.va
 const assignmentOptions = computed(() => {
   return assignmentConfig.value ? assignmentOptionsCache[assignmentConfig.value.optionKey] || [] : []
 })
-const assignmentOptionsReady = computed(() => Boolean(
-  assignmentConfig.value
-  && Object.prototype.hasOwnProperty.call(assignmentOptionsCache, assignmentConfig.value.optionKey)
-  && !assignmentOptionsLoading.value
-  && !assignmentOptionsError.value,
-))
+const assignmentOptionsReady = computed(() => {
+  const config = assignmentConfig.value
+  // Read the reactive cache property directly. `hasOwnProperty.call` does not
+  // collect Vue's property dependency, so the ready state could remain false
+  // after the async loader added the options array. That left every checkbox
+  // disabled while the list itself was already visible.
+  const cachedOptions = config ? assignmentOptionsCache[config.optionKey] : undefined
+  return Boolean(config && Array.isArray(cachedOptions) && !assignmentOptionsLoading.value && !assignmentOptionsError.value)
+})
 const assignmentOptionGroups = computed(() => {
   if (assignmentConfig.value?.optionKey !== 'permissions') {
     return [{key: 'roles', label: '可分配角色', items: assignmentOptions.value}]
@@ -679,7 +681,6 @@ function canReadModule(item: ModuleItem): boolean {
   if (item.key === 'dashboard') return true
   if (item.key === 'users') return hasPermission('system:users:read') || hasPermission('system:users:write')
   if (item.key === 'roles') return hasPermission('system:roles:read') || hasPermission('system:roles:write') || hasPermission('system:users:write')
-  if (item.key === 'permissions') return hasPermission('system:permissions:read') || hasPermission('system:roles:write')
   return hasPermission(item.readPermission)
 }
 
@@ -791,7 +792,7 @@ async function openAssignment(row: any) {
   selectedAssignmentIDs.value = Array.isArray(row[config.selectedKey])
     ? (row[config.selectedKey] as unknown[]).map(Number)
     : []
-  if (!Object.prototype.hasOwnProperty.call(assignmentOptionsCache, config.optionKey)) await loadAssignmentOptions()
+  if (!Array.isArray(assignmentOptionsCache[config.optionKey])) await loadAssignmentOptions()
 }
 
 function closeAssignment() {
@@ -808,19 +809,17 @@ async function loadAssignmentOptions(force = false) {
   const config = assignmentConfig.value
   const targetModule = assignmentModuleKey.value
   if (!config || !assignmentTarget.value) return
-  if (!force && Object.prototype.hasOwnProperty.call(assignmentOptionsCache, config.optionKey)) return
+  if (!force && Array.isArray(assignmentOptionsCache[config.optionKey])) return
   const requestToken = ++assignmentOptionsRequestToken
   assignmentOptionsLoading.value = true
   assignmentOptionsError.value = ''
   try {
-    const moduleItem = modules.find((item) => item.key === config.optionKey)
-    if (!moduleItem?.path) throw new Error('未找到配置项接口')
     const allItems: BasicItem[] = []
     let currentPage = 1
     let total = Number.POSITIVE_INFINITY
     while (allItems.length < total && currentPage <= 100) {
       const data = await request<BasicItem[] | PaginatedResponse<BasicItem>>(
-        appendQuery(moduleItem.path, {page: currentPage, page_size: 200}), {}, token.value,
+        appendQuery(config.optionsPath, {page: currentPage, page_size: 200}), {}, token.value,
       )
       if (requestToken !== assignmentOptionsRequestToken || assignmentModuleKey.value !== targetModule) return
       if (Array.isArray(data)) {
@@ -876,6 +875,8 @@ async function saveAssignment() {
   if (!assignmentTarget.value || !config || !assignmentOptionsReady.value || assignmentSaving.value || assignmentScopeBlockedReason.value) return
   assignmentSaving.value = true
   assignmentSaveError.value = ''
+  const savedCount = selectedAssignmentIDs.value.length
+  const savedLabel = config.optionKey === 'permissions' ? '权限' : '角色'
   try {
     await request(config.endpoint(assignmentTarget.value.id), {
       method: 'POST',
@@ -883,8 +884,8 @@ async function saveAssignment() {
     }, token.value)
     closeAssignment()
     await loadActiveModule()
-    panelMessage.value = '权限配置已保存'
-    ElMessage.success('权限配置已保存')
+    panelMessage.value = `${savedLabel}配置已保存（${savedCount} 项）`
+    ElMessage.success(`${savedLabel}配置已保存（${savedCount} 项）`)
   } catch (error) {
     assignmentSaveError.value = error instanceof Error ? error.message : '权限配置保存失败'
   } finally {

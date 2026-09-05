@@ -227,8 +227,8 @@ q=关键字
 - 个人账号可以不绑定部门，但未绑定时不能执行任务、仓库或库存写入；部门终端账号必须同时绑定同一部门下的终端。员工调部门、终端更换或账号建错归属后，由管理员在“系统设置 → 用户账号 → 账号归属”修正。
 - 修正账号归属需要 `system:users:write`；管理写权限可以读取完成该操作所需的角色选项，部门和终端选项仍按各自读取权限控制。
 - 终端：维护公共电脑和部门终端。
-- 角色：创建角色，并给角色配置权限。
-- 权限：查看系统权限清单。
+- 角色：创建角色，并按业务分类配置权限；可一键选择当前管理员有权授予的全部权限，再取消岗位不需要的项目。
+- 权限名称、编码和说明统一在“角色 → 配置权限”中查看，不再提供重复的独立权限清单页面。
 - 操作审计：查看最近组织内操作记录。
 
 ### 客户资料
@@ -379,7 +379,7 @@ Web 更新中心只下载服务端升级包；Windows 客户端更新必须在 T
 | 员工档案 | `system:employees:read` | `system:employees:write` |
 | 终端 | `system:terminals:read` | `system:terminals:write` |
 | 角色 | `system:roles:read` | `system:roles:write` |
-| 权限清单 | `system:permissions:read` | - |
+| 权限选项接口（兼容旧客户端及角色配置） | `system:permissions:read` | - |
 | 操作审计 | `system:audits:read` | - |
 | 客户资料 | `customers:read` | `customers:write`；批量导入另需 `customers:import` |
 | 供应商 | `suppliers:read` | `suppliers:write` |

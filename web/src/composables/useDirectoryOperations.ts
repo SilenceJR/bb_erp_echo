@@ -235,7 +235,7 @@ export function useDirectoryOperations(d: Dependencies) {
       const isSupplierEdit = d.activeKey.value === 'suppliers' && d.editingSupplier.value
       const saved = await request<BasicItem>(isSupplierEdit ? `${item.path}/${d.editingSupplier.value.id}` : item.path, {method: isSupplierEdit ? 'PATCH' : 'POST', body: normalizedForm()}, d.token.value)
       if (['warehouses', 'workorder'].includes(d.activeKey.value)) d.operatorDirectory.invalidate()
-      if (['roles', 'permissions'].includes(item.key)) delete d.assignmentOptionsCache[item.key]
+      if (item.key === 'roles') delete d.assignmentOptionsCache[item.key]
       clearForm(); await preloadBaseData(); await loadActiveModule()
       d.panelMessage.value = isSupplierEdit ? '已保存' : '已新增'
       ElMessage.success(isSupplierEdit ? '保存成功' : '新增成功')

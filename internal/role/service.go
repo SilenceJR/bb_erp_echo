@@ -141,16 +141,25 @@ func (s *Service) SeedSystemData(cfg *config.Config) error {
 		return err
 	}
 
+	superDefinition, ok := fixedRoleDefinitionByCode(SuperAdminCode)
+	if !ok {
+		return errors.New("super admin fixed role definition is missing")
+	}
 	var super model.Role
-	result := s.DB.Where("code = ?", SuperAdminCode).First(&super)
+	result := s.DB.Where("code = ?", superDefinition.Code).First(&super)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		super = model.Role{Name: "超级管理员", Code: SuperAdminCode, Description: "系统内置管理员角色", System: true}
+		super = model.Role{
+			Name:        superDefinition.Name,
+			Code:        superDefinition.Code,
+			Description: superDefinition.Description,
+			System:      true,
+		}
 		if err := s.DB.Create(&super).Error; err != nil {
 			return err
 		}
 	} else if result.Error != nil {
 		return result.Error
-	} else if !super.System {
+	} else if !isFixedRole(super) || !super.System {
 		// super_admin 是唯一锁定系统角色；升级旧库时强制恢复锁定。
 		if err := s.DB.Model(&super).Update("system", true).Error; err != nil {
 			return err
@@ -738,7 +747,7 @@ func (s *Service) replaceRolePermissionsTx(tx *gorm.DB, roleID uint, permissionI
 		}
 		return err
 	}
-	if item.Code == SuperAdminCode || item.System {
+	if isFixedRole(item) {
 		return ErrSystemRoleLocked
 	}
 	if err := s.validatePermissionIDsTx(tx, permissionIDs); err != nil {

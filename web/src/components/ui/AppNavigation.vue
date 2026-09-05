@@ -51,7 +51,7 @@ const collapsed = computed(() => mode.value === 'icon')
 
 const icons: Record<string, Component> = {
   dashboard: House, workorder: Tickets, warehouses: Box, molds: Coin, customers: UserFilled, suppliers: Van, statistics: TrendCharts,
-  departments: OfficeBuilding, employees: Avatar, users: UserFilled, terminals: Monitor, roles: Key, permissions: Key, audits: Document, updates: Upload,
+  departments: OfficeBuilding, employees: Avatar, users: UserFilled, terminals: Monitor, roles: Key, audits: Document, updates: Upload,
 }
 const withIcon = (item: NavigationItem): NavigationDisplayItem => ({...item, icon: icons[item.key] || Document})
 const dashboardItem = withIcon({key: 'dashboard', title: '首页'})

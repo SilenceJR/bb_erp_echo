@@ -45,8 +45,8 @@ import GenericRecordDetail, {type GenericRecordDetailField} from './GenericRecor
 
 const {rows, columns, loading, listError, pageTotal, page, pageSize, filteredEmptyTitle, filteredEmptyDescription, activeModule, loadActiveModule, handlePageChange, handlePageSizeChange, columnLabel, isGenericStatusColumn, genericStatusLabel, genericStatusTone, formatGenericCell, hasAssignmentAction, activeKey, canWriteActive, assignmentConfigs, openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint, showCreateForm, toggleCreateForm, setPageDetailPanelVisible, genericRowTitle, genericRowSubtitle} = useWorkspaceContext()
 const tableState = computed(() => ({loading: loading.value, error: listError.value, rowsCount: rows.value.length, total: pageTotal.value, page: page.value, pageSize: pageSize.value, emptyTitle: filteredEmptyTitle.value, emptyDescription: filteredEmptyDescription.value}))
-// Permission metadata is a catalogue, not a log; internal timestamps are not user-facing columns.
-const visibleColumns = computed(() => activeKey.value === 'permissions' ? ['name', 'code', 'description'] : columns.value)
+// Internal timestamps and transport-only fields are not user-facing columns.
+const visibleColumns = computed(() => columns.value)
 const detailVisible = ref(false)
 const detailRow = ref<Record<string, unknown> | null>(null)
 const detailPrimary = computed(() => detailRow.value ? genericRowTitle(detailRow.value as never) : '')

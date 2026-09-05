@@ -18,7 +18,6 @@ export const modules: ModuleItem[] = [
   { key: 'users', title: '用户账号', group: 'system', path: '/api/v1/system/users', readPermission: 'system:users:read', writePermission: 'system:users:write', status: 'available', description: '个人账号和部门终端账号基础管理。' },
   { key: 'terminals', title: '终端', group: 'system', path: '/api/v1/system/terminals', readPermission: 'system:terminals:read', writePermission: 'system:terminals:write', status: 'available', description: '公共电脑和部门终端。' },
   { key: 'roles', title: '角色', group: 'system', path: '/api/v1/system/roles', readPermission: 'system:roles:read', writePermission: 'system:roles:write', status: 'available', description: '按岗位配置功能权限。' },
-  { key: 'permissions', title: '权限', group: 'system', path: '/api/v1/system/permissions', readPermission: 'system:permissions:read', status: 'available', description: '系统功能权限清单。' },
   { key: 'audits', title: '操作审计', group: 'system', path: '/api/v1/system/audits', readPermission: 'system:audits:read', status: 'available', description: '最近 200 条组织内操作审计。' },
   { key: 'updates', title: '版本与更新', group: 'system', path: '/api/v1/system/updates/status', readPermission: 'system:updates:read', writePermission: 'system:updates:write', status: 'available', description: '检查新版本，查看或下载安装包。' },
   { key: 'customers', title: '客户资料', group: 'business', path: '/api/v1/customer-codes', readPermission: 'customers:read', writePermission: 'customers:write', status: 'available', description: '按客户编码维护资料、联系人与 Excel 导入导出。' },

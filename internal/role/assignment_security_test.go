@@ -167,6 +167,111 @@ func TestRolePermissionUpdateRejectsRoleSharedWithAnotherOrganization(t *testing
 	}
 }
 
+func TestAuthorizedRolePermissionUpdateRejectsOverGrantAndPreservesBindings(t *testing.T) {
+	service := newAssignmentTestService(t)
+	permissions := []model.Permission{
+		{Name: "角色维护", Code: "system:roles:write", Object: "/api/v1/system/roles", Action: "write"},
+		{Name: "允许查看", Code: "authorized:test:read", Object: "/authorized/test", Action: "read"},
+		{Name: "禁止维护", Code: "authorized:test:write", Object: "/authorized/test", Action: "write"},
+	}
+	if err := service.DB.Create(&permissions).Error; err != nil {
+		t.Fatalf("create permissions: %v", err)
+	}
+	managerRole := model.Role{Name: "角色管理员", Code: "authorized_role_manager"}
+	targetRole := model.Role{Name: "业务角色", Code: "authorized_target_role"}
+	if err := service.DB.Create(&[]*model.Role{&managerRole, &targetRole}).Error; err != nil {
+		t.Fatalf("create roles: %v", err)
+	}
+	if err := service.DB.Create(&[]model.RolePermission{
+		{RoleID: managerRole.ID, PermissionID: permissions[0].ID},
+		{RoleID: managerRole.ID, PermissionID: permissions[1].ID},
+		{RoleID: targetRole.ID, PermissionID: permissions[1].ID},
+	}).Error; err != nil {
+		t.Fatalf("create role permissions: %v", err)
+	}
+	actor := model.User{Username: "authorized-role-manager", AccountType: model.AccountTypePersonal, Name: "角色管理员", OrganizationID: 1, Status: model.StatusActive, PasswordHash: "hash"}
+	if err := service.DB.Create(&actor).Error; err != nil {
+		t.Fatalf("create actor: %v", err)
+	}
+	if err := service.DB.Create(&model.UserRole{UserID: actor.ID, RoleID: managerRole.ID}).Error; err != nil {
+		t.Fatalf("bind actor role: %v", err)
+	}
+	current := &auth.CurrentUser{ID: actor.ID, Username: actor.Username, OrganizationID: actor.OrganizationID}
+
+	err := service.ReplaceRolePermissionsForActor(current, targetRole.ID, []uint{permissions[2].ID})
+	if !errors.Is(err, ErrManagerCannotGrant) {
+		t.Fatalf("over-grant error = %v, want ErrManagerCannotGrant", err)
+	}
+	var bindings []model.RolePermission
+	if err := service.DB.Where("role_id = ?", targetRole.ID).Order("permission_id").Find(&bindings).Error; err != nil {
+		t.Fatalf("load target role bindings: %v", err)
+	}
+	if len(bindings) != 1 || bindings[0].PermissionID != permissions[1].ID {
+		t.Fatalf("target role bindings changed after over-grant rejection: %+v", bindings)
+	}
+}
+
+func TestAuthorizedRolePermissionUpdateRejectsInvalidAndDuplicateIDsAtomically(t *testing.T) {
+	service := newAssignmentTestService(t)
+	permissions := []model.Permission{
+		{Name: "角色维护", Code: "system:roles:write", Object: "/api/v1/system/roles", Action: "write"},
+		{Name: "允许查看", Code: "atomic:test:read", Object: "/atomic/test", Action: "read"},
+		{Name: "允许写入", Code: "atomic:test:write", Object: "/atomic/test", Action: "write"},
+	}
+	if err := service.DB.Create(&permissions).Error; err != nil {
+		t.Fatalf("create permissions: %v", err)
+	}
+	managerRole := model.Role{Name: "角色管理员", Code: "atomic_role_manager"}
+	targetRole := model.Role{Name: "业务角色", Code: "atomic_target_role"}
+	if err := service.DB.Create(&[]*model.Role{&managerRole, &targetRole}).Error; err != nil {
+		t.Fatalf("create roles: %v", err)
+	}
+	if err := service.DB.Create(&[]model.RolePermission{
+		{RoleID: managerRole.ID, PermissionID: permissions[0].ID},
+		{RoleID: managerRole.ID, PermissionID: permissions[1].ID},
+		{RoleID: managerRole.ID, PermissionID: permissions[2].ID},
+		{RoleID: targetRole.ID, PermissionID: permissions[1].ID},
+	}).Error; err != nil {
+		t.Fatalf("create role permissions: %v", err)
+	}
+	actor := model.User{Username: "atomic-role-manager", AccountType: model.AccountTypePersonal, Name: "角色管理员", OrganizationID: 1, Status: model.StatusActive, PasswordHash: "hash"}
+	if err := service.DB.Create(&actor).Error; err != nil {
+		t.Fatalf("create actor: %v", err)
+	}
+	if err := service.DB.Create(&model.UserRole{UserID: actor.ID, RoleID: managerRole.ID}).Error; err != nil {
+		t.Fatalf("bind actor role: %v", err)
+	}
+	current := &auth.CurrentUser{ID: actor.ID, Username: actor.Username, OrganizationID: actor.OrganizationID}
+
+	err := service.ReplaceRolePermissionsForActor(current, targetRole.ID, []uint{permissions[2].ID, 999999})
+	if !errors.Is(err, ErrInvalidPermissionID) {
+		t.Fatalf("invalid permission error = %v, want ErrInvalidPermissionID", err)
+	}
+	assertRolePermissionIDs(t, service, targetRole.ID, []uint{permissions[1].ID})
+
+	err = service.ReplaceRolePermissionsForActor(current, targetRole.ID, []uint{permissions[1].ID, permissions[1].ID})
+	if !errors.Is(err, ErrDuplicateAssignmentID) {
+		t.Fatalf("duplicate permission error = %v, want ErrDuplicateAssignmentID", err)
+	}
+	assertRolePermissionIDs(t, service, targetRole.ID, []uint{permissions[1].ID})
+}
+
+func assertRolePermissionIDs(t *testing.T, service *Service, roleID uint, want []uint) {
+	t.Helper()
+	got, err := service.RolePermissionIDs([]uint{roleID})
+	if err != nil {
+		t.Fatalf("load role permissions: %v", err)
+	}
+	if len(got[roleID]) != len(want) {
+		t.Fatalf("role %d permission IDs = %v, want %v", roleID, got[roleID], want)
+	}
+	for index := range want {
+		if got[roleID][index] != want[index] {
+			t.Fatalf("role %d permission IDs = %v, want %v", roleID, got[roleID], want)
+		}
+	}
+}
+
 func TestConcurrentSuperAdminDisableKeepsOneActive(t *testing.T) {
 	service := newAssignmentTestService(t)
 	permission := model.Permission{Name: "用户维护", Code: "system:users:write", Object: "/api/v1/system/users", Action: "write"}
