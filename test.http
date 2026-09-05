@@ -386,6 +386,10 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8080/api/v1/molds/export
 Authorization: Bearer {{token}}
 
+### 下载模具导入模板（ZIP；包含 molds.xlsx、locations.json 和标准目录）
+GET http://127.0.0.1:8080/api/v1/molds/import-template
+Authorization: Bearer {{token}}
+
 ### 模具资料包导入预览
 POST http://127.0.0.1:8080/api/v1/molds/import/preview
 Authorization: Bearer {{token}}

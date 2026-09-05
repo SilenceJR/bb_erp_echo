@@ -20,7 +20,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 基础资料 | 部分暂缓 | 物料、产品等共享基础表继续创建；新数据库暂不创建供应商、仓库和库位表，已有表与数据不删除 |
 | 库存 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建库存表，访问返回统一 `503 module_not_initialized`，已有表时继续工作 |
 | 任务单 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建任务/部门任务/流转表，写操作不可用，已有表时继续工作 |
-| 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；资料包上限 2 GiB；不保留旧生命周期 |
+| 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；模板下载为可直接回导的 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 和标准空目录；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 降级兼容已完成 | 缺少供应商、库存或任务数据源时仍返回 200，并用 `data_status`、`unavailable_sources`、`message` 明确标识；审计查询不受影响 |
 | 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
 | 客户端更新 | 已完成 | Windows full-only 更新、内网同源代理、签名、哈希、临时文件与失败恢复 |
@@ -89,7 +89,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 数量使用四位定点整数，金额/单价使用分；禁止把前端浮点值直接作为库存或金额事实。
 - 图片权限继承业务对象权限；身份发现接口不得返回组织、账号、业务数据、更新地址或凭据。
 - 图片上传支持 JPG/JFIF、PNG、GIF、WebP、HEIC/HEIF、AVIF、BMP、TIFF、SVG；动画只取静态封面，JPEG 应用 EXIF 方向。服务端保存原图并派生受保护 JPEG 预览，SVG 原图只允许附件下载。已取消 20 MiB 业务上限，但保留单批 100 张、单批预览 256 MiB、3200 万像素、HEIC/HEIF/AVIF 128 MiB、SVG 8 MiB、全局两个并发转换任务和全局请求上限等运行安全边界；Windows 正式服务构建固定使用 `nodynamic`，不探测外部图片解码 DLL。
-- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、预览文件、DWG 与位置字典；最多 2000 个源条目、共模复制后 5000 个资产，声明解压总量与实际落盘总量均限制为 4 GiB，工作簿/位置/修正参数另有 64/4/4 MiB 边界。导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。资料包图片与图库共用扩展格式、预览阶段真实解码和静态预览规则，大小写扩展名均可识别，系统导出的新格式可回导；图片、DWG、整模删除和全量导入使用同一资产互斥边界。
+- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、预览文件、DWG 与位置字典；模板和正式导出均为 ZIP，模板固定包含一条 `MOLD-001` 示例行、`A1-1`/`B1-1` 位置和 `images/`、`drawings/` 标准空目录，下载响应统一使用安全的 UTF-8 `Content-Disposition`、`no-store` 和 `nosniff` 头；最多 2000 个源条目、共模复制后 5000 个资产，声明解压总量与实际落盘总量均限制为 4 GiB，工作簿/位置/修正参数另有 64/4/4 MiB 边界。导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。资料包图片与图库共用扩展格式、预览阶段真实解码和静态预览规则，大小写扩展名均可识别，系统导出的新格式可回导；图片、DWG、整模删除和全量导入使用同一资产互斥边界。
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
@@ -116,6 +116,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 本轮初始化测试覆盖：原有 admin 与额外 Silence 同时创建、Silence 密码通过配置注入并以 bcrypt 哈希保存、已有数据库不补建或重置、历史角色幂等解除锁定且保留用户关联。
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
 - `git diff --check`
+- 本轮导入导出专项：统一下载响应头由 `internal/spreadsheet` 提供，客户 XLSX 模板/导出契约保持不变；模具模板改为 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 与标准空目录，模板和正式导出均通过现有 `readPackage` 回读测试；`go test ./internal/spreadsheet ./internal/customer ./internal/mold` 通过。
 - 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
 - `v0.0.10` 至 `v0.0.12` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest。

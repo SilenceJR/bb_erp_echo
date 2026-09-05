@@ -11,7 +11,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -62,7 +61,7 @@ type ImportResult struct {
 }
 
 func (h *Handler) registerExcelRoutes(g *echo.Group, require func(string, string) echo.MiddlewareFunc) {
-	g.GET("/import-template", h.importTemplate, require("/api/v1/customers", "read"))
+	g.GET("/import-template", h.importTemplate, require("/api/v1/customers/import", "import"))
 	g.POST("/import/preview", h.importPreview, require("/api/v1/customers/import", "import"))
 	g.POST("/import/commit", h.importCommit, require("/api/v1/customers/import", "import"))
 	g.GET("/export/preview", h.exportPreview, require("/api/v1/customers", "read"))
@@ -593,6 +592,6 @@ func hashToken(token string) string {
 }
 func hashBytes(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 func sendXLSX(c *echo.Context, name string, data []byte) error {
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", url.QueryEscape(name)))
+	spreadsheet.DownloadHeaders(c.Response().Header(), name, spreadsheet.XLSXWriter{}.ContentType(), int64(len(data)))
 	return c.Blob(http.StatusOK, spreadsheet.XLSXWriter{}.ContentType(), data)
 }

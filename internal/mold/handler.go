@@ -40,7 +40,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	group.GET("/:id/drawings/:drawing_id/content", h.DrawingContent, require("/api/v1/molds", "read"))
 	group.DELETE("/:id/drawings/:drawing_id", h.DeleteDrawing, require("/api/v1/molds", "write"))
 	group.GET("/export", h.Export, require("/api/v1/molds", "read"))
-	group.GET("/import-template", h.ImportTemplate, require("/api/v1/molds", "read"))
+	group.GET("/import-template", h.ImportTemplate, require("/api/v1/molds/import", "import"))
 	group.POST("/import/preview", h.ImportPreview, require("/api/v1/molds/import", "import"), echomiddleware.BodyLimit(MaxPackageSize+32<<20), erpmiddleware.TransferDeadline(2*time.Hour), echomiddleware.ContextTimeout(2*time.Hour))
 	group.POST("/import/commit", h.ImportCommit, require("/api/v1/molds/import", "import"), echomiddleware.BodyLimit(MaxPackageSize+32<<20), erpmiddleware.TransferDeadline(2*time.Hour), echomiddleware.ContextTimeout(2*time.Hour))
 	group.GET("/:id", h.GetMold, require("/api/v1/molds", "read"))

@@ -27,7 +27,7 @@
         <span class="step-number">2</span>
         <div><h3>拖放或选择 Excel 文件</h3><p>重复编码会形成多条客户资料；任一行错误都不会写入数据库。</p></div>
         <div class="customer-import-dropzone" data-file-drop-target :class="{'is-dragging': dragging}" role="button" tabindex="0" @click="openFilePicker" @keydown.enter.prevent="openFilePicker" @keydown.space.prevent="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop" @bb-native-file-drag="handleNativeFileDrag"><strong>{{ dragging ? '松开以选择文件' : '拖入 Excel 文件' }}</strong><el-button type="primary" plain @click.stop="openFilePicker">选择文件</el-button></div>
-        <input ref="fileInput" class="bb-sr-only" type="file" accept=".xls,.xlsx" @change="selectFile" />
+        <input ref="fileInput" class="bb-sr-only" type="file" :accept="importDefinition.accept" @change="selectFile" />
       </div>
       <div v-if="file" class="selected-file">
         <div><strong>{{ file.name }}</strong><small>{{ formatBytes(file.size) }}</small></div>
@@ -86,17 +86,21 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, ref, toRef} from 'vue'
 import {ElMessage} from 'element-plus'
 import {CircleCheckFilled} from '@element-plus/icons-vue'
-import {downloadApiFile, request, uploadNativeFiles} from '../../api/http'
+import {request, uploadNativeFiles} from '../../api/http'
+import {getTransferImportDefinition} from '../../data/transferRegistry'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
+import {useTransferDownload} from '../../composables/useTransferDownload'
 import type {CustomerImportPreview, NativeFileDragDetail} from '../../types'
 
 const props = defineProps<{modelValue: boolean; token: string}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void; (event: 'completed'): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
+const importDefinition = getTransferImportDefinition('customers')
+const {download: downloadTransfer, isLoading: isTransferLoading} = useTransferDownload(toRef(props, 'token'))
 const step = ref(0)
 const file = ref<File | null>(null)
 const nativeFilePath = ref<string | null>(null)
@@ -105,7 +109,7 @@ const preview = ref<CustomerImportPreview | null>(null)
 const result = ref<{imported_codes: number; imported_profiles: number; completed_at: string} | null>(null)
 const previewLoading = ref(false)
 const commitLoading = ref(false)
-const templateLoading = ref(false)
+const templateLoading = computed(() => isTransferLoading('customers', 'template'))
 const error = ref('')
 const dragging = ref(false)
 let dragDepth = 0
@@ -143,23 +147,17 @@ function clearFile() { file.value = null; nativeFilePath.value = null; if (fileI
 function formatBytes(size: number) { return size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / 1024 / 1024).toFixed(1)} MiB` }
 
 async function downloadTemplate() {
-  templateLoading.value = true
-  try {
-    const result = await downloadApiFile('/api/v1/customers/import-template', '客户资料导入模板.xlsx', props.token)
-    if (result.status === 'error') throw new Error(result.message)
-    if (result.status === 'saved') ElMessage.success(result.path ? `模板已保存到：${result.path}` : '浏览器已开始下载模板')
-    if (result.status === 'cancelled') ElMessage.info('已取消保存导入模板')
-  }
-  catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : '模板下载失败') }
-  finally { templateLoading.value = false }
+  error.value = ''
+  try { await downloadTransfer('customers', 'template') }
+  catch { /* 下载反馈由共享传输 composable 统一负责 */ }
 }
 async function loadPreview() {
   if (!file.value) return
   previewLoading.value = true
   error.value = ''
   try {
-    if (nativeFilePath.value) preview.value = await uploadNativeFiles<CustomerImportPreview>('/api/v1/customers/import/preview', [nativeFilePath.value], {}, props.token)
-    else { const form = new FormData(); form.append('file', file.value); preview.value = await request<CustomerImportPreview>('/api/v1/customers/import/preview', {method: 'POST', body: form}, props.token) }
+    if (nativeFilePath.value) preview.value = await uploadNativeFiles<CustomerImportPreview>(importDefinition.previewPath, [nativeFilePath.value], {}, props.token)
+    else { const form = new FormData(); form.append('file', file.value); preview.value = await request<CustomerImportPreview>(importDefinition.previewPath, {method: 'POST', body: form}, props.token) }
     step.value = 1
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '导入预览失败' }
   finally { previewLoading.value = false }
@@ -169,8 +167,8 @@ async function commit() {
   commitLoading.value = true
   error.value = ''
   try {
-    if (nativeFilePath.value) result.value = await uploadNativeFiles('/api/v1/customers/import/commit', [nativeFilePath.value], {token: preview.value.token}, props.token)
-    else { const form = new FormData(); form.append('file', file.value); form.append('token', preview.value.token); result.value = await request('/api/v1/customers/import/commit', {method: 'POST', body: form}, props.token) }
+    if (nativeFilePath.value) result.value = await uploadNativeFiles(importDefinition.commitPath, [nativeFilePath.value], {token: preview.value.token}, props.token)
+    else { const form = new FormData(); form.append('file', file.value); form.append('token', preview.value.token); result.value = await request(importDefinition.commitPath, {method: 'POST', body: form}, props.token) }
     step.value = 2
     emit('completed')
     ElMessage.success('客户资料导入成功')

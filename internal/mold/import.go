@@ -93,22 +93,60 @@ type packageAsset struct {
 	Name     string
 }
 
-// ImportTemplate 下载模具 Excel 模板。
+// ImportTemplate 下载可直接回导的模具 ZIP 模板。
 // @Summary 下载模具导入模板
+// @Description 返回 `博邦模具导入模板.zip`，包含 molds.xlsx、locations.json 和 images/drawings 标准空目录。
 // @Tags mold
 // @Security BearerAuth
-// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce application/zip
 // @Success 200 {file} binary
 // @Router /api/v1/molds/import-template [get]
 func (h *Handler) ImportTemplate(c *echo.Context) error {
-	data, err := spreadsheet.XLSXWriter{}.Write(c.Request().Context(), spreadsheet.SpreadsheetDocument{
+	data, err := buildMoldImportTemplate(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	return sendMoldDownload(c, moldImportTemplateFilename, "application/zip", bytes.NewReader(data), int64(len(data)))
+}
+
+const moldImportTemplateFilename = "博邦模具导入模板.zip"
+
+// buildMoldImportTemplate 生成与正式模具资料包相同目录规范的空模板。
+// 模板包含一条可通过 readPackage 校验的示例模具记录，用户可直接替换
+// molds.xlsx 内容并向预留目录添加图片、DWG 文件后提交导入。
+func buildMoldImportTemplate(ctx context.Context) ([]byte, error) {
+	xlsx, err := spreadsheet.XLSXWriter{}.Write(ctx, spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Title: "博邦模具", Columns: moldColumns,
 		Rows: [][]string{{"", "MOLD-001", "示例产品", "单模", "A1-1", "", "0", "示例备注"}}, TotalRows: 1,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return sendMoldDownload(c, "模具导入模板.xlsx", spreadsheet.XLSXWriter{}.ContentType(), bytes.NewReader(data), int64(len(data)))
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	if err := addZipBytes(zw, "molds.xlsx", xlsx); err != nil {
+		return nil, err
+	}
+	locations, err := json.MarshalIndent([]struct {
+		Code   string `json:"code"`
+		Status string `json:"status"`
+	}{
+		{Code: "A1-1", Status: model.MoldLocationActive},
+		{Code: "B1-1", Status: model.MoldLocationActive},
+	}, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := addZipBytes(zw, "locations.json", append(locations, '\n')); err != nil {
+		return nil, err
+	}
+	if err := addMoldArchiveDirectories(zw, []string{"MOLD-001"}); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return archive.Bytes(), nil
 }
 
 // ImportPreview 预览模具 ZIP 全量资料包。
@@ -281,6 +319,14 @@ func (h *Handler) Export(c *echo.Context) error {
 		temp.Close()
 		return err
 	}
+	moldNumbers := make([]string, 0, len(molds))
+	for _, item := range molds {
+		moldNumbers = append(moldNumbers, item.MoldNumber)
+	}
+	if err := addMoldArchiveDirectories(zw, moldNumbers); err != nil {
+		temp.Close()
+		return err
+	}
 	for _, item := range molds {
 		var images []model.ImageFile
 		if err := h.DB.Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Order("category asc, sort_order asc, id asc").Find(&images).Error; err != nil {
@@ -344,8 +390,13 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包解压后的文件总量超过 4 GiB，请拆分后导入")
 		}
 		declaredExpandedBytes += item.UncompressedSize64
-		clean := filepath.ToSlash(filepath.Clean(item.Name))
-		if item.Name != clean || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		rawName := filepath.ToSlash(item.Name)
+		isDirectory := strings.HasSuffix(rawName, "/")
+		clean := filepath.ToSlash(filepath.Clean(strings.TrimSuffix(rawName, "/")))
+		if isDirectory {
+			clean += "/"
+		}
+		if rawName != clean || clean == "./" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
 			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包包含非法路径")
 		}
 		if _, ok := files[clean]; ok {
@@ -947,6 +998,34 @@ func addZipBytes(zw *zip.Writer, name string, data []byte) error {
 	_, err = w.Write(data)
 	return err
 }
+func addZipDirectory(zw *zip.Writer, name string) error {
+	if !strings.HasSuffix(name, "/") {
+		name += "/"
+	}
+	_, err := zw.Create(name)
+	return err
+}
+func addMoldArchiveDirectories(zw *zip.Writer, moldNumbers []string) error {
+	if err := addZipDirectory(zw, "images/"); err != nil {
+		return err
+	}
+	if err := addZipDirectory(zw, "drawings/"); err != nil {
+		return err
+	}
+	for _, number := range moldNumbers {
+		for _, directory := range []string{
+			filepath.ToSlash(filepath.Join("images", number)) + "/",
+			filepath.ToSlash(filepath.Join("images", number, "product_material")) + "/",
+			filepath.ToSlash(filepath.Join("images", number, "supplement")) + "/",
+			filepath.ToSlash(filepath.Join("drawings", number)) + "/",
+		} {
+			if err := addZipDirectory(zw, directory); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 func addStoredFile(zw *zip.Writer, root, archive, relative string) error {
 	path := filepath.Join(root, filepath.FromSlash(relative))
 	f, err := os.Open(path)
@@ -993,7 +1072,6 @@ func moldTypeLabel(value string) string {
 	return "单模"
 }
 func sendMoldDownload(c *echo.Context, name, contentType string, reader io.Reader, size int64) error {
-	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="`+strings.ReplaceAll(filepath.Base(name), `"`, "'")+`"`)
-	c.Response().Header().Set(echo.HeaderContentLength, strconv.FormatInt(size, 10))
+	spreadsheet.DownloadHeaders(c.Response().Header(), name, contentType, size)
 	return c.Stream(http.StatusOK, contentType, reader)
 }

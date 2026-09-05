@@ -2469,8 +2469,9 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含 molds.xlsx、locations.json 和 images/drawings 标准空目录。",
                 "produces": [
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/zip"
                 ],
                 "tags": [
                     "mold"

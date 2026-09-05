@@ -239,7 +239,7 @@ q=关键字
 - 客户资料和空客户编码均为物理删除。资料已被库存单、任务单或模具引用时不能删除；资料创建后也不能直接换到另一编码。
 - `customers:read` 可查看、展开、导出预览和下载；`customers:write` 可维护编码、资料和默认项；`customers:import` 可批量导入。
 
-Excel 导入步骤：下载模板，选择 `.xls` 或 `.xlsx`，查看校验统计和逐行错误，全部通过后确认导入。同一文件最多 10 MiB、10,000 条，只读取第一个工作表；任一错误整批不写入。预览令牌 30 分钟内有效，确认时必须使用同一文件。
+Excel 导入步骤：使用“下载标准模板”获取 `.xlsx` 模板，选择 `.xls` 或 `.xlsx`，查看校验统计和逐行错误，全部通过后确认导入。同一文件最多 10 MiB、10,000 条，只读取第一个工作表；任一错误整批不写入。预览令牌 30 分钟内有效，确认时必须使用同一文件。模板下载、预览和确认均需要 `customers:import`。
 
 Excel 导出会先打开工作表式预览。选择“当前筛选结果”或“全部客户资料”后，可以按 50/100 条翻页查看固定九列，再确认下载 XLSX。预览后数据如果变化，下载文件以下载时的最新数据为准；没有资料时不会生成空白文件。
 
@@ -289,6 +289,12 @@ daily_supply         生活物资
 - 模具状态：在库、已借出、维修中、保养中、报废。
 - 借出、归还、维修、保养履历。
 - 完成保养后会按保养周期计算下次保养日期。
+
+资料包导入与导出：
+
+- 有 `mold:import` 权限时，在“导入模具资料包”中下载 `博邦模具导入模板.zip`。模板内含 `molds.xlsx`、`locations.json`、一条 `MOLD-001` 示例记录，以及 `images/`、`drawings/` 的标准目录。
+- 开始前先使用“导出模具资料包”保存当前资料备份；随后将示例记录替换为实际资料，按目录加入图片和 DWG 图纸后压缩为 ZIP。先预览并处理错误或未识别图片，再确认导入。导入会替换模具、位置、图片和图纸，不影响其他模块。
+- 有 `mold:read` 权限时可导出 `博邦模具资料包.zip`；其目录结构与模板一致，并只包含当前实际资料。
 
 ### 任务单
 
@@ -381,7 +387,7 @@ Web 更新中心只下载服务端升级包；Windows 客户端更新必须在 T
 | 库存单据 | `inventory:documents:read` | `inventory:documents:write` |
 | 库存余额 | `inventory:balances:read` | - |
 | 库存流水 | `inventory:ledgers:read` | - |
-| 模具 | `mold:read` | `mold:write` |
+| 模具 | `mold:read`（查看与导出资料包） | `mold:write`（维护档案、位置、图片和图纸）；资料包模板下载、ZIP 预览与确认导入另需 `mold:import` |
 | 任务单 | `workorder:read` | `workorder:write` |
 | 生产单临时产品建档 | - | `workorder:temporary-product:write`（同时需要 `workorder:write`） |
 | 统计报表 | `statistics:read` | `statistics:write` |

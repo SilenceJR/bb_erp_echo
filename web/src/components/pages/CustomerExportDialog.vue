@@ -81,21 +81,24 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
-import {ElMessage} from 'element-plus'
-import {downloadApiFile, request} from '../../api/http'
+import {computed, ref, toRef} from 'vue'
+import {request} from '../../api/http'
+import {getTransferDefinition} from '../../data/transferRegistry'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
+import {useTransferDownload} from '../../composables/useTransferDownload'
 import PageState from '../ui/PageState.vue'
 import type {SpreadsheetDocument} from '../../types'
 
 const props = defineProps<{modelValue: boolean; token: string; keyword: string; filter: 'all' | 'multiple' | 'empty'}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
+const exportDefinition = getTransferDefinition('customers', 'export')
+const {download: downloadTransfer, isLoading: isTransferLoading} = useTransferDownload(toRef(props, 'token'))
 const scope = ref<'current' | 'all'>('current')
 const previewReady = ref(false)
 const document = ref<SpreadsheetDocument | null>(null)
 const loading = ref(false)
-const downloading = ref(false)
+const downloading = computed(() => isTransferLoading('customers', 'export'))
 const error = ref('')
 const pageSize = ref(50)
 const frozen = ref({scope: 'current' as 'current' | 'all', q: '', filter: 'all' as 'all' | 'multiple' | 'empty'})
@@ -139,7 +142,8 @@ async function loadPreview(page: number) {
   loading.value = true
   error.value = ''
   try {
-    const data = await request<SpreadsheetDocument>(`/api/v1/customers/export/preview?${query(page)}`, {}, props.token)
+    if (!exportDefinition.previewPath) throw new Error('客户资料导出预览服务未配置')
+    const data = await request<SpreadsheetDocument>(`${exportDefinition.previewPath}?${query(page)}`, {}, props.token)
     if (requestGeneration === generation.value) document.value = data
   } catch (cause) {
     if (requestGeneration === generation.value) error.value = cause instanceof Error ? cause.message : '导出预览加载失败'
@@ -152,20 +156,15 @@ function refreshPreview() {
 }
 function backToScope() { generation.value++; loading.value = false; error.value = ''; document.value = null; previewReady.value = false }
 async function download() {
-  downloading.value = true
   error.value = ''
   try {
     const params = query(1); params.delete('page'); params.delete('page_size')
-    const result = await downloadApiFile(`/api/v1/customers/export?${params}`, '客户资料.xlsx', props.token)
-    if (result.status === 'error') throw new Error(result.message)
-    if (result.status === 'saved') ElMessage.success(result.path ? `客户资料 XLSX 已保存到：${result.path}` : '浏览器已开始下载客户资料 XLSX')
-    if (result.status === 'cancelled') ElMessage.info('已取消保存客户资料 XLSX')
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '导出失败'; ElMessage.error(error.value) }
-  finally { downloading.value = false }
+    await downloadTransfer('customers', 'export', params)
+  } catch { /* 下载反馈由共享传输 composable 统一负责 */ }
 }
 function columnStyle(width: number) { return {width: `${Math.max(width * 8, 72)}px`} }
 function alignmentClass(value?: string) { return value === 'center' ? 'is-center' : value === 'right' ? 'is-right' : 'is-left' }
-function reset() { generation.value++; scope.value = 'current'; previewReady.value = false; document.value = null; loading.value = false; downloading.value = false; error.value = ''; pageSize.value = 50 }
+function reset() { generation.value++; scope.value = 'current'; previewReady.value = false; document.value = null; loading.value = false; error.value = ''; pageSize.value = 50 }
 </script>
 
 <style scoped>
