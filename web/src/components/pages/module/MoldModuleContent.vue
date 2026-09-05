@@ -166,8 +166,8 @@ const importDirty = computed(() => importDialog.value && Boolean(importFile.valu
 const moldBusy = computed(() => saving.value || deleting.value || drawingSaving.value || bulkSaving.value || locationSaving.value || importing.value || importPreviewing.value)
 const moldDirty = computed(() => draftDirty.value || locationDirty.value || bulkDirty.value || importDirty.value)
 const {confirmLeave} = useDirtyGuard('mold-form', {busy: () => moldBusy.value, dirty: () => moldDirty.value, busyMessage: '模具操作正在提交，请稍候', dirtyMessage: '模具页面有尚未保存的修改，确认离开？'})
-const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(detailVisible, computed(() => editing.value))
-const locationPanel = useResponsiveDetailPanel(locationDialog, true)
+const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(detailVisible, computed(() => editing.value ? {complexity: 'standard-form' as const} : {complexity: 'detail' as const}))
+const locationPanel = useResponsiveDetailPanel(locationDialog, {complexity: 'standard-form'})
 
 watch([detailVisible, locationDialog], ([detailOpen, locationOpen]) => setPageDetailPanelVisible(detailOpen || locationOpen), {immediate: true, flush: 'sync'})
 

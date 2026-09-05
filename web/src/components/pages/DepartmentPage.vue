@@ -16,7 +16,17 @@
           <PropertyItem label="状态">{{ state.editing.value.status === 'disabled' ? '已停用' : '启用' }}</PropertyItem>
         </PropertyList>
       </section>
-      <el-form v-else id="department-editor" label-position="top" :disabled="state.saving.value" @submit.prevent="saveDepartment"><el-alert v-if="state.saveError.value" :title="state.saveError.value" type="error" :closable="false" show-icon/><el-form-item label="部门名称" required><el-input v-model.trim="state.form.name" autofocus /></el-form-item><el-form-item label="部门编码" required><el-input v-model.trim="state.form.code" /></el-form-item></el-form>
+      <el-form v-else id="department-editor" label-position="top" :disabled="state.saving.value" @submit.prevent="saveDepartment">
+        <FormPanelContent>
+          <el-alert v-if="state.saveError.value" :title="state.saveError.value" type="error" :closable="false" show-icon />
+          <FormSection title="部门信息" description="部门名称和编码用于任务流转、库存操作和员工归属。">
+            <FormGrid>
+              <el-form-item label="部门名称" required><el-input v-model.trim="state.form.name" autofocus /></el-form-item>
+              <el-form-item label="部门编码" required><el-input v-model.trim="state.form.code" /></el-form-item>
+            </FormGrid>
+          </FormSection>
+        </FormPanelContent>
+      </el-form>
       <template #footer><div class="form-actions"><el-button :disabled="state.saving.value" @click="requestDepartmentClose()">{{ state.formReadonly.value ? '关闭' : '取消' }}</el-button><el-button v-if="state.formReadonly.value && canManageMembers" type="primary" plain @click="openDepartment('members', state.editing.value || undefined)">管理员工</el-button><el-button v-if="state.formReadonly.value && canWrite" type="primary" plain @click="state.formReadonly.value = false">编辑部门</el-button><el-button v-if="!state.formReadonly.value" type="primary" native-type="submit" form="department-editor" :loading="state.saving.value">保存</el-button></div></template>
     </ResponsiveDetailCarrier>
     <DepartmentEmployeesDrawer v-model="state.memberVisible.value" :department="state.memberDepartment.value" :employees="state.employees.value" v-model:selectedEmployeeIDs="state.selectedEmployeeIDs.value" :original-employee-i-ds="state.originalEmployeeIDs.value" v-model:keyword="state.memberKeyword.value" :loading="state.memberLoading.value" :saving="state.saving.value" :load-error="state.memberLoadError.value" :save-error="state.saveError.value" @retry="state.loadMembers()" @save="state.saveMembers" />
@@ -35,6 +45,9 @@ import type {DepartmentItem} from '../../types'
 import DataTableShell from '../ui/DataTableShell.vue'; import PageHeader from '../ui/PageHeader.vue'; import PageState from '../ui/PageState.vue'; import StatusTag from '../ui/StatusTag.vue'; import DepartmentEmployeesDrawer from './DepartmentEmployeesDrawer.vue'
 import PropertyItem from '../ui/PropertyItem.vue'
 import PropertyList from '../ui/PropertyList.vue'
+import FormPanelContent from '../ui/FormPanelContent.vue'
+import FormSection from '../ui/FormSection.vue'
+import FormGrid from '../ui/FormGrid.vue'
 const {token, hasPermission, switchModule, loadList} = useWorkspaceContext(); const canWrite = hasPermission('system:departments:write'); const canManageMembers = canWrite && hasPermission('system:employees:read'); const state = useDepartments(token); const statusUpdatingID = ref<number | null>(null)
 let switchingDepartment = false
 async function openDepartment(mode: 'create' | 'view' | 'edit' | 'members', item?: any) {
@@ -50,7 +63,7 @@ async function openDepartment(mode: 'create' | 'view' | 'edit' | 'members', item
     else if (item) await state.openMembers(item)
   } finally { switchingDepartment = false }
 }
-const formPanel = useResponsiveDetailPanel(state.formVisible, computed(() => !state.formReadonly.value))
+const formPanel = useResponsiveDetailPanel(state.formVisible, computed(() => state.formReadonly.value ? {complexity: 'detail' as const} : {complexity: 'short-form' as const}))
 const departmentFormDirty = computed(() => { if (!state.formVisible.value || state.formReadonly.value) return false; const original = state.editing.value ? {name: state.editing.value.name, code: state.editing.value.code || ''} : {name: '', code: ''}; return state.form.name !== original.name || state.form.code !== original.code })
 const departmentMembersDirty = computed(() => state.memberVisible.value && [...state.selectedEmployeeIDs.value].sort((a, b) => a - b).join(',') !== [...state.originalEmployeeIDs.value].sort((a, b) => a - b).join(','))
 let removeDirtyGuard = () => {}

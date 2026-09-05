@@ -12,7 +12,7 @@
     destroy-on-close
     @closed="restoreFocus"
   >
-    <div v-if="visible" :key="`${mode}-${profile?.id || 'new'}`" class="customer-profile-motion">
+    <div v-if="visible" class="customer-profile-motion">
         <section v-if="mode === 'view' && profile" class="customer-drawer-content" aria-label="客户资料详情">
           <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
           <div class="customer-drawer-heading">
@@ -57,52 +57,44 @@
         </section>
 
         <el-form v-else id="customer-profile-editor" label-position="top" :disabled="saving" class="customer-profile-form" @submit.prevent="submit">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-      <section v-if="mode === 'create' && code" class="form-code-summary">
-        <span>客户编码</span><strong>{{ code.code }}</strong>
-        <small>当前从客户详情新增同码资料，编码不可更换。</small>
-      </section>
-      <section v-else-if="mode === 'create' && !code" class="form-section">
-        <div class="section-heading"><div><h3>客户编码</h3><p>可选择已有编码，或用系统建议值创建新编码。</p></div></div>
-        <el-radio-group v-model="codeMode" class="code-mode-switch">
-          <el-radio-button value="existing">选择已有编码</el-radio-button>
-          <el-radio-button value="new">创建新编码</el-radio-button>
-        </el-radio-group>
-        <el-form-item v-if="codeMode === 'existing'" label="客户编码" required :error="fieldErrors.customer_code_id">
-          <el-select v-model="form.customer_code_id" filterable placeholder="请选择客户编码" style="width:100%">
-            <el-option v-for="item in codes" :key="item.id" :value="item.id" :label="codeOptionLabel(item)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-else label="新客户编码" required :error="fieldErrors.new_code">
-          <el-input v-model.trim="form.new_code" maxlength="40" placeholder="例如 BB-001，可修改建议值" @blur="normalizeCodeInput" />
-          <small class="field-help">格式为 BB- 加至少 3 位正整数；1、BB-1 会规范为 BB-001。</small>
-        </el-form-item>
-      </section>
-      <section v-else class="form-code-summary">
-        <span>客户编码</span><strong>{{ code?.code || profile?.code }}</strong>
-        <small>资料创建后不可更换所属编码。</small>
-      </section>
+          <FormPanelContent>
+            <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+            <FormSection v-if="mode === 'create' && !code" title="客户编码" description="可选择已有编码，或用系统建议值创建新编码。">
+              <el-radio-group v-model="codeMode" class="code-mode-switch">
+                <el-radio-button value="existing">选择已有编码</el-radio-button>
+                <el-radio-button value="new">创建新编码</el-radio-button>
+              </el-radio-group>
+              <el-form-item v-if="codeMode === 'existing'" label="客户编码" required :error="fieldErrors.customer_code_id">
+                <el-select v-model="form.customer_code_id" filterable placeholder="请选择客户编码">
+                  <el-option v-for="item in codes" :key="item.id" :value="item.id" :label="codeOptionLabel(item)" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-else label="新客户编码" required :error="fieldErrors.new_code">
+                <el-input v-model.trim="form.new_code" maxlength="40" placeholder="例如 BB-001，可修改建议值" @blur="normalizeCodeInput" />
+                <small class="field-help">格式为 BB- 加至少 3 位正整数；1、BB-1 会规范为 BB-001。</small>
+              </el-form-item>
+            </FormSection>
+            <FormSection v-else title="客户编码" description="资料创建后不可更换所属编码。">
+              <div class="form-code-summary"><span>当前编码</span><strong>{{ code?.code || profile?.code || '未填写' }}</strong></div>
+            </FormSection>
 
-      <section class="form-section">
-        <div class="section-heading"><div><h3>客户资料</h3><p>除客户编码外，其他字段均可留空。</p></div></div>
-        <div class="customer-form-grid">
-          <el-form-item label="客户简称"><el-input v-model.trim="form.short_name" maxlength="160" autofocus /></el-form-item>
-          <el-form-item label="客户名称"><el-input v-model.trim="form.name" maxlength="160" /></el-form-item>
-          <el-form-item class="span-two" label="地址"><el-input v-model.trim="form.address" maxlength="255" /></el-form-item>
-          <el-form-item label="电话"><el-input v-model.trim="form.phone" maxlength="60" inputmode="tel" /></el-form-item>
-          <el-form-item label="业务员"><el-input v-model.trim="form.salesperson" maxlength="120" /></el-form-item>
-        </div>
-      </section>
+            <FormSection title="基本资料" description="除客户编码外，其他字段均可留空。">
+              <FormGrid columns="two">
+                <el-form-item label="客户简称"><el-input v-model.trim="form.short_name" maxlength="160" autofocus /></el-form-item>
+                <el-form-item label="客户名称"><el-input v-model.trim="form.name" maxlength="160" /></el-form-item>
+                <el-form-item class="form-grid-full" label="地址"><el-input v-model.trim="form.address" maxlength="255" type="textarea" :autosize="{minRows: 2, maxRows: 4}" /></el-form-item>
+                <el-form-item label="电话"><el-input v-model.trim="form.phone" maxlength="60" inputmode="tel" /></el-form-item>
+                <el-form-item label="业务员"><el-input v-model.trim="form.salesperson" maxlength="120" /></el-form-item>
+              </FormGrid>
+            </FormSection>
 
-      <section class="form-section">
-        <div class="section-heading"><div><h3>联系人信息</h3><p>联系人及联系电话随当前客户资料一起维护。</p></div></div>
-        <div class="customer-form-grid">
-          <el-form-item label="联系人"><el-input v-model.trim="form.contact_name" maxlength="120" /></el-form-item>
-          <el-form-item label="联系人电话"><el-input v-model.trim="form.contact_phone" maxlength="60" inputmode="tel" /></el-form-item>
-        </div>
-      </section>
-
-
+            <FormSection title="联系人信息" description="联系人及联系电话随当前客户资料一起维护。">
+              <FormGrid columns="two">
+                <el-form-item label="联系人"><el-input v-model.trim="form.contact_name" maxlength="120" /></el-form-item>
+                <el-form-item label="联系人电话"><el-input v-model.trim="form.contact_phone" maxlength="60" inputmode="tel" /></el-form-item>
+              </FormGrid>
+            </FormSection>
+          </FormPanelContent>
         </el-form>
     </div>
     <template #footer>
@@ -134,6 +126,9 @@ import {useWorkspaceContext} from '../../composables/workspaceContext'
 import PropertyList from '../ui/PropertyList.vue'
 import PropertyItem from '../ui/PropertyItem.vue'
 import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import FormPanelContent from '../ui/FormPanelContent.vue'
+import FormSection from '../ui/FormSection.vue'
+import FormGrid from '../ui/FormGrid.vue'
 
 export interface CustomerProfileFormValue {
   customer_code_id: number | undefined
@@ -172,7 +167,7 @@ const emit = defineEmits<{
 
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
 const {setPageDetailPanelVisible} = useWorkspaceContext()
-const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(toRef(props, 'modelValue'), computed(() => props.mode !== 'view'))
+const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(toRef(props, 'modelValue'), computed(() => props.mode === 'view' ? {complexity: 'detail' as const} : {complexity: 'standard-form' as const}))
 const codeMode = ref<'existing' | 'new'>('existing')
 const form = reactive<CustomerProfileFormValue>(emptyForm())
 const baseline = ref('')
@@ -268,7 +263,20 @@ async function requestClose() {
   visible.value = false
   return true
 }
-function restoreFocus() { props.returnFocus?.focus?.() }
+function restoreFocus() {
+  void nextTick(() => {
+    const original = props.returnFocus
+    if (original?.isConnected) {
+      original.focus({preventScroll: true})
+      return
+    }
+    const profileID = props.profile?.id
+    const replacement = profileID === undefined
+      ? null
+      : document.querySelector<HTMLElement>(`[data-customer-profile-trigger="${profileID}"]`)
+    replacement?.focus({preventScroll: true})
+  })
+}
 
 defineExpose({dirty, requestClose})
 </script>
@@ -284,7 +292,6 @@ defineExpose({dirty, requestClose})
 .text-cell { font-family: var(--bb-font-mono); }
 .customer-detail-value { display: inline; white-space: normal; }
 .customer-detail-value.is-empty { color: var(--bb-text-placeholder); }
-.form-section,
 .sibling-profiles { display: grid; gap: var(--bb-space-4); border-top: 1px solid var(--bb-border-default); padding: var(--bb-space-5) 0 0; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-3); }
 .section-heading h3 { margin: 0; font-size: var(--bb-font-size-16); }
@@ -300,14 +307,10 @@ defineExpose({dirty, requestClose})
 .code-mode-switch :deep(.el-radio-button__inner:hover) { color: var(--bb-text-primary); }
 .code-mode-switch :deep(.el-radio-button.is-active .el-radio-button__inner) { border-color: var(--bb-border-default) !important; background: var(--bb-bg-surface); box-shadow: var(--bb-shadow-xs) !important; color: var(--bb-text-primary); font-weight: var(--bb-font-weight-semibold); }
 .code-mode-switch :deep(.el-radio-button__original-radio:focus-visible + .el-radio-button__inner) { outline: 2px solid var(--bb-focus-color); outline-offset: 1px; }
-.customer-form-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
-.customer-form-grid .span-two { grid-column: 1 / -1; }
-.form-code-summary { display: grid; grid-template-columns: auto 1fr; gap: var(--bb-space-1) var(--bb-space-3); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-subtle); padding: var(--bb-space-4); }
+.form-code-summary { display: flex; min-width: 0; align-items: baseline; gap: var(--bb-space-3); border-bottom: 1px solid var(--bb-border-subtle); padding-bottom: var(--bb-space-3); }
 .form-code-summary span,
 .form-code-summary small { color: var(--bb-text-secondary); }
 .form-code-summary strong { font-family: var(--bb-font-mono); }
-.form-code-summary small { grid-column: 1 / -1; }
 .field-help { display: block; margin-top: var(--bb-space-1); color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
 .customer-drawer-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); margin-top: 0; }
-.form-section:first-child { border-top: 0; padding-top: 0; }
 </style>

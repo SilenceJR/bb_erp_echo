@@ -1,7 +1,7 @@
 <template>
   <section
     class="workspace"
-    :class="[`sidebar-${sidebarMode}`, {'has-docked-detail': detailPanelDocked}]"
+    :class="[`sidebar-${sidebarMode}`, {'has-docked-detail': detailPanelDocked, 'compact-dock-navigation': compactDockNavigationHidden}]"
     :style="{'--bb-detail-panel-width': `${detailPanelWidth}px`}"
   >
     <aside
@@ -12,20 +12,20 @@
       aria-label="系统导航"
       :aria-hidden="navigationInactive"
       :inert="navigationInactive"
-      :role="isNarrow ? 'dialog' : undefined"
-      :aria-modal="isNarrow && mobileNavOpen ? 'true' : undefined"
-      :tabindex="isNarrow ? -1 : undefined"
+      :role="usesOverlayNavigation ? 'dialog' : undefined"
+      :aria-modal="usesOverlayNavigation && mobileNavOpen ? 'true' : undefined"
+      :tabindex="usesOverlayNavigation ? -1 : undefined"
     >
       <div class="sidebar-brand">
         <img src="/bobang-logo-hd.png" alt="" />
-        <div v-if="isNarrow || sidebarMode !== 'icon'"><strong>博邦光电</strong><span>ERP 业务工作台</span></div>
+        <div v-if="usesOverlayNavigation || sidebarMode !== 'icon'"><strong>博邦光电</strong><span>ERP 业务工作台</span></div>
 
       </div>
       <AppNavigation
         :active-key="activeKey"
         :business-items="businessItems"
         :system-items="systemItems"
-        :mode="isNarrow ? 'full' : sidebarMode"
+        :mode="usesOverlayNavigation ? 'full' : sidebarMode"
         @select="handleModuleSelect"
         @settings="openSettings"
       />
@@ -40,7 +40,7 @@
           :aria-label="sidebarToggleLabel"
           :title="sidebarToggleLabel"
           aria-controls="app-navigation"
-          :aria-expanded="isNarrow ? mobileNavOpen : undefined"
+          :aria-expanded="usesOverlayNavigation ? mobileNavOpen : undefined"
           :tabindex="mobileNavOpen ? -1 : 0"
           @click="toggleSidebar"
         >
@@ -100,7 +100,7 @@ import AppNavigation from '../ui/AppNavigation.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
 import {Menu} from '@element-plus/icons-vue'
-import {clientSidebarMode, clientViewport, activeDetailWidth, activeDetailDocked} from '../../composables/detailLayout'
+import {clientSidebarMode, clientViewport, activeDetailWidth, activeDetailDocked, requestActiveDetailClose} from '../../composables/detailLayout'
 
 const {
   token, currentUser, activeKey, activeModule, businessItems, systemItems, userInitial,
@@ -116,14 +116,18 @@ const sidebarToggle = ref<{ref?: HTMLElement; $el?: HTMLElement} | null>(null)
 const viewportWidth = clientViewport
 const sidebarMode = clientSidebarMode
 const isNarrow = computed(() => viewportWidth.value <= 1023)
-const navigationInactive = computed(() => isNarrow.value ? !mobileNavOpen.value : sidebarMode.value === 'hidden')
-const effectiveSidebarWidth = computed(() => isNarrow.value || sidebarMode.value === 'hidden' ? 0 : sidebarMode.value === 'icon' ? 64 : 224)
+const configuredSidebarWidth = computed(() => sidebarMode.value === 'hidden' ? 0 : sidebarMode.value === 'icon' ? 64 : 224)
+const compactDockNavigationHidden = computed(() => detailPanelDocked.value && viewportWidth.value >= 1024 && viewportWidth.value - activeDetailWidth.value - configuredSidebarWidth.value < 720)
+const usesOverlayNavigation = computed(() => isNarrow.value || compactDockNavigationHidden.value)
+const navigationInactive = computed(() => usesOverlayNavigation.value ? !mobileNavOpen.value : sidebarMode.value === 'hidden')
+const effectiveSidebarWidth = computed(() => isNarrow.value || compactDockNavigationHidden.value ? 0 : configuredSidebarWidth.value)
 const detailPanelVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value || pageDetailPanelVisible.value)
 const imageDetailVisible = computed(() => warehouseDrawerVisible.value || workorderDrawerVisible.value)
-const detailPanelWidth = activeDetailWidth
+const detailPanelWidth = computed(() => Math.min(activeDetailWidth.value, viewportWidth.value))
 const detailPanelDocked = activeDetailDocked
 const sidebarToggleLabel = computed(() => isNarrow.value
   ? mobileNavOpen.value ? '关闭业务导航' : '打开业务导航'
+  : compactDockNavigationHidden.value ? mobileNavOpen.value ? '关闭业务导航' : '打开业务导航'
   : sidebarMode.value === 'full' ? '切换为图标导航' : sidebarMode.value === 'icon' ? '隐藏业务导航' : '展开完整业务导航')
 
 function syncViewport() {
@@ -132,7 +136,7 @@ function syncViewport() {
 }
 
 function toggleSidebar() {
-  if (isNarrow.value) {
+  if (usesOverlayNavigation.value) {
     if (mobileNavOpen.value) closeMobileNavigation(true)
     else {
       restoreFocusAfterMobileClose.value = true
@@ -149,8 +153,9 @@ function handleModuleSelect(key: string) {
   switchModule(key)
 }
 
-function openSettings() {
+async function openSettings() {
   closeMobileNavigation(false)
+  if (settingsVisible.value || !(await requestActiveDetailClose())) return
   settingsVisible.value = true
 }
 
@@ -180,6 +185,7 @@ function handleNavigationKeydown(event: KeyboardEvent) {
   if (!mobileNavOpen.value || event.defaultPrevented || eventBelongsToElementLayer(event)) return
   if (event.key === 'Escape') {
     event.preventDefault()
+    event.stopImmediatePropagation()
     closeMobileNavigation(true)
     return
   }
@@ -237,10 +243,14 @@ watch(mobileNavOpen, async (open, wasOpen) => {
       delete element.dataset.bbNavigationInert
     })
   }
-  if (!open && wasOpen && isNarrow.value && restoreFocusAfterMobileClose.value) {
+  if (!open && wasOpen && usesOverlayNavigation.value && restoreFocusAfterMobileClose.value) {
     await nextTick()
     focusSidebarToggle()
   }
+})
+
+watch(compactDockNavigationHidden, (hidden) => {
+  if (!hidden) mobileNavOpen.value = false
 })
 
 onMounted(() => {

@@ -4,13 +4,28 @@
         drawer-class="workspace-detail-drawer"
         :docked="detailPanelDocked"
         :size="detailPanelSize"
-        title="物品详情"
-        :before-close="handleWarehouseBeforeClose"
-        docked-auto-focus="panel"
+        :title="showQuickSupplier ? '新增供应商' : '物品详情'"
+        :before-close="handleWarehousePanelBeforeClose"
+        :close-on-press-escape="!movementSubmitting && !quickSupplierSubmitting"
+        :show-close="!movementSubmitting && !quickSupplierSubmitting"
+        :docked-auto-focus="showQuickSupplier ? 'first-editable' : 'panel'"
         destroy-on-close
         @closed="resetWarehouseItem"
       >
-        <div v-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
+        <el-form v-if="showQuickSupplier" id="quick-supplier-editor" class="quick-supplier-editor" label-position="top" :disabled="quickSupplierSubmitting" @submit.prevent="createQuickSupplier">
+          <FormPanelContent>
+            <FormSection title="供应商资料" description="保存后将自动选入当前采购入库单。">
+              <FormGrid columns="one">
+                <el-form-item label="供应商名称" required><el-input id="quick-supplier-name" v-model.trim="quickSupplier.name" /></el-form-item>
+                <el-form-item label="供应商编码" required><el-input v-model.trim="quickSupplier.code" /></el-form-item>
+                <el-form-item label="联系人"><el-input v-model.trim="quickSupplier.contact" /></el-form-item>
+                <el-form-item label="联系电话"><el-input v-model.trim="quickSupplier.phone" /></el-form-item>
+              </FormGrid>
+            </FormSection>
+            <el-alert v-if="quickSupplierError" :title="quickSupplierError" type="error" :closable="false" show-icon />
+          </FormPanelContent>
+        </el-form>
+        <div v-else-if="selectedWarehouseItem" class="item-drawer" aria-label="物品详情">
           <el-alert v-if="moduleUnavailable" title="仓库暂不可用" description="已填写内容仍保留，当前不能提交。请确认后再关闭。" type="warning" :closable="false" show-icon />
           <div class="drawer-heading">
             <div>
@@ -151,27 +166,24 @@
           </template>
         </div>
         <template #footer>
-          <el-button :disabled="movementSubmitting" @click="closeWarehouseItem">关闭</el-button>
-          <template v-if="movementMode">
-            <el-button :disabled="movementSubmitting" @click="cancelMovement">取消办理</el-button>
-            <el-button type="primary" native-type="submit" form="warehouse-movement-editor" :loading="movementSubmitting" :disabled="!movementCanSubmit || Boolean(moduleUnavailable)">{{ movementSubmitLabel }}</el-button>
+          <template v-if="showQuickSupplier">
+            <el-button :disabled="quickSupplierSubmitting" @click="closeSupplier()">返回入库办理</el-button>
+            <el-button type="primary" native-type="submit" form="quick-supplier-editor" :loading="quickSupplierSubmitting">保存并选择</el-button>
+          </template>
+          <template v-else>
+            <el-button :disabled="movementSubmitting" @click="closeWarehouseItem">关闭</el-button>
+            <template v-if="movementMode">
+              <el-button :disabled="movementSubmitting" @click="cancelMovement">取消办理</el-button>
+              <el-button type="primary" native-type="submit" form="warehouse-movement-editor" :loading="movementSubmitting" :disabled="!movementCanSubmit || Boolean(moduleUnavailable)">{{ movementSubmitLabel }}</el-button>
+            </template>
           </template>
         </template>
       </ResponsiveDetailCarrier>
 
-  <ResponsiveDetailCarrier v-model="showQuickSupplier" title="新增供应商" :size="supplierPanel.size.value" :docked="supplierPanel.docked.value" docked-auto-focus="first-editable" :before-close="closeSupplier" :close-on-click-modal="!quickSupplierSubmitting" :close-on-press-escape="!quickSupplierSubmitting">
-    <el-form id="quick-supplier-editor" label-position="top" :disabled="quickSupplierSubmitting" @submit.prevent="createQuickSupplier">
-      <el-form-item label="供应商名称" required><el-input v-model.trim="quickSupplier.name" /></el-form-item>
-      <el-form-item label="供应商编码" required><el-input v-model.trim="quickSupplier.code" /></el-form-item>
-      <el-form-item label="联系人"><el-input v-model.trim="quickSupplier.contact" /></el-form-item>
-      <el-form-item label="联系电话"><el-input v-model.trim="quickSupplier.phone" /></el-form-item>
-      <el-alert v-if="quickSupplierError" :title="quickSupplierError" type="error" :closable="false" show-icon />
-    </el-form>
-    <template #footer><el-button :disabled="quickSupplierSubmitting" @click="closeSupplier()">取消</el-button><el-button type="primary" native-type="submit" form="quick-supplier-editor" :loading="quickSupplierSubmitting">保存并选择</el-button></template>
-  </ResponsiveDetailCarrier>
 </template>
 
 <script setup lang="ts">
+import {nextTick, watch} from 'vue'
 import {useDirtyGuard} from '../../composables/useDirtyGuard'
 import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
@@ -179,6 +191,9 @@ import OperatorSelect from '../ui/OperatorSelect.vue'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import FormPanelContent from '../ui/FormPanelContent.vue'
+import FormSection from '../ui/FormSection.vue'
+import FormGrid from '../ui/FormGrid.vue'
 
 const {
   moduleUnavailable,
@@ -314,7 +329,6 @@ const {
   closeWarehouseItem,
   performWarehouseClose,
   requestWarehouseClose,
-  handleWarehouseBeforeClose,
   resetWarehouseItem,
   loadWarehouseItemDetail,
   loadItemMovements,
@@ -339,7 +353,7 @@ const {
   trendBarPercentage,
 } = useWorkspaceContext()
 const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(warehouseDrawerVisible, true)
-const supplierPanel = useResponsiveDetailPanel(showQuickSupplier, true)
+let warehouseStepScrollTop = 0
 const supplierGuard = useDirtyGuard('warehouse-supplier-editor', {
   busy: () => showQuickSupplier.value && quickSupplierSubmitting.value,
   busyMessage: '供应商正在保存，请稍候。',
@@ -352,4 +366,28 @@ async function closeSupplier(done?: () => void) {
   if (done) done()
   else showQuickSupplier.value = false
 }
+async function handleWarehousePanelBeforeClose(done: () => void) {
+  if (showQuickSupplier.value) {
+    if (!(await supplierGuard.confirmLeave())) return
+    Object.assign(quickSupplier, {name: '', code: '', contact: '', phone: ''})
+    showQuickSupplier.value = false
+  }
+  if (await requestWarehouseClose()) {
+    invalidateWarehouseRequests()
+    done()
+  }
+}
+watch(showQuickSupplier, async (open, wasOpen) => {
+  const body = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
+  if (open) warehouseStepScrollTop = body?.scrollTop || 0
+  await nextTick()
+  if (open) {
+    document.querySelector<HTMLElement>('#quick-supplier-name input, #quick-supplier-name')?.focus({preventScroll: true})
+    return
+  }
+  if (!wasOpen) return
+  const restoredBody = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
+  if (restoredBody) restoredBody.scrollTop = warehouseStepScrollTop
+  document.querySelector<HTMLElement>('.inline-link, .movement-form .el-select input')?.focus({preventScroll: true})
+})
 </script>

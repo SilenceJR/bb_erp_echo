@@ -64,6 +64,9 @@ declare module 'vue' {
     EmployeePage: typeof import('./src/components/pages/EmployeePage.vue')['default']
     FilterBar: typeof import('./src/components/ui/FilterBar.vue')['default']
     FormActionBar: typeof import('./src/components/ui/FormActionBar.vue')['default']
+    FormGrid: typeof import('./src/components/ui/FormGrid.vue')['default']
+    FormPanelContent: typeof import('./src/components/ui/FormPanelContent.vue')['default']
+    FormSection: typeof import('./src/components/ui/FormSection.vue')['default']
     GenericModuleContent: typeof import('./src/components/pages/module/GenericModuleContent.vue')['default']
     GenericRecordDetail: typeof import('./src/components/pages/module/GenericRecordDetail.vue')['default']
     ImageGallery: typeof import('./src/components/ImageGallery.vue')['default']
@@ -96,6 +99,7 @@ declare module 'vue' {
     WorkorderModuleContent: typeof import('./src/components/pages/module/WorkorderModuleContent.vue')['default']
     WorkorderProductField: typeof import('./src/components/pages/WorkorderProductField.vue')['default']
     WorkorderStockCard: typeof import('./src/components/pages/WorkorderStockCard.vue')['default']
+    WorkorderTemporaryProductStep: typeof import('./src/components/pages/WorkorderTemporaryProductStep.vue')['default']
     WorkspaceSession: typeof import('./src/components/app/WorkspaceSession.vue')['default']
   }
   export interface GlobalDirectives {

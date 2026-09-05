@@ -124,7 +124,6 @@
 .form-heading { display: grid; grid-column: 1/-1; gap: 4px; border-bottom: 1px solid var(--bb-border-default); padding-bottom: 14px; }
 .form-error { grid-column: 1/-1; }
 .form-heading span { color: var(--bb-text-secondary); font-size: 12px; }
-.form-actions { display: flex; grid-column: 1/-1; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--bb-border-default); padding-top: 16px; }
 .workorder-product-field { display: grid; grid-column: 1/-1; gap: var(--bb-space-3); min-width: 0; }
 .workorder-product-field__label { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--bb-space-3); }
 .workorder-product-field__label > div { display: grid; gap: var(--bb-space-1); }
@@ -156,25 +155,6 @@
 .temporary-product-form .el-form-item { margin-bottom: 0; }
 .temporary-product-form .el-alert { grid-column: 1/-1; }
 .temporary-product-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
-.assignment-panel { display: grid; gap: 14px; }
-.assignment-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.assignment-heading > div { display: grid; gap: 3px; }
-.assignment-heading span, .assignment-tip, .check-option small, .assignment-empty { color: var(--bb-text-secondary); font-size: 12px; }
-.assignment-tip { margin: 0; }
-.assignment-options { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 10px; }
-.assignment-option-groups { display: grid; gap: var(--bb-space-4); }
-.assignment-option-group { display: grid; gap: var(--bb-space-2); }
-.assignment-option-group__heading { display: flex; align-items: center; justify-content: space-between; gap: var(--bb-space-3); border-bottom: 1px solid var(--bb-border-subtle); padding-bottom: var(--bb-space-2); }
-.assignment-option-group__heading small { color: var(--bb-text-secondary); }
-.assignment-options .el-checkbox.check-option { display: flex; align-items: flex-start; width: 100%; height: auto; min-height: 74px; margin: 0; border: 1px solid var(--bb-border-default); border-radius: 10px; background: var(--bb-bg-surface); padding: 12px; white-space: normal; cursor: pointer; }
-.assignment-options .el-checkbox.check-option.is-checked { border-color: var(--bb-accent-icon); background: var(--bb-accent-selected-bg); }
-.assignment-options .el-checkbox.check-option.is-disabled { cursor: not-allowed; opacity: .55; }
-.assignment-options .el-checkbox__label { min-width: 0; padding-left: 10px; line-height: 1.35; }
-.check-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--bb-brand-500); }
-.check-option-copy { display: grid; gap: 3px; min-width: 0; }
-.check-option-copy strong, .check-option-copy small { overflow-wrap: anywhere; white-space: normal; }
-.check-option-copy .check-option-scope-hint { color: var(--bb-warning); font-weight: var(--bb-font-weight-semibold); }
-.assignment-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .table-action { min-height: 32px; border: 1px solid var(--bb-info-border); border-radius: 8px; background: var(--bb-info-bg); color: var(--bb-accent-text); padding: 0 10px; white-space: nowrap; }
 .table-action:hover { background: var(--bb-brand-50); }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -466,18 +446,10 @@
 
 .employee-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--bb-space-4); }
 .employee-form-grid .el-date-editor { width: 100%; }
-.business-form-drawer .el-drawer__header { margin-bottom: 0; padding: var(--bb-space-6) var(--bb-space-6) var(--bb-space-4); }
-.business-form-drawer .el-drawer__footer { padding: var(--bb-space-4) var(--bb-space-6) calc(var(--bb-space-4) + env(safe-area-inset-bottom, 0px)); }
-.business-form-drawer .el-form, .member-management-drawer .el-drawer__body { min-width: 0; }
-.el-drawer.settings-drawer { --bb-settings-inline-inset: var(--bb-space-6); overflow-x: hidden; }
-.el-drawer.settings-drawer > .el-drawer__header { margin-bottom: 0; padding: var(--bb-space-6) var(--bb-settings-inline-inset) var(--bb-space-5); }
-.workspace-detail-aside.customer-profile-drawer .customer-form-grid { grid-template-columns: 1fr; }
-.el-drawer.customer-profile-drawer > .el-drawer__body { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 .employee-departments-readonly { display: grid; gap: var(--bb-space-2); border-top: 1px solid var(--bb-border-default); padding-top: var(--bb-space-4); }
 .workorder-action-summary { display: grid; gap: var(--bb-space-2); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); background: var(--bb-bg-subtle); padding: var(--bb-space-4); }
 .employee-departments-readonly p, .workorder-action-summary small { margin: 0; color: var(--bb-text-secondary); }
 .employee-departments-readonly > div, .tag-list { display: flex; flex-wrap: wrap; gap: var(--bb-space-2); }
-.drawer-sticky-actions { position: sticky; bottom: 0; z-index: var(--bb-z-sticky); margin-top: var(--bb-space-6); border-top: 1px solid var(--bb-border-subtle); background: var(--bb-bg-surface); padding: var(--bb-space-4) 0; }
 .department-employee-options { display: grid; gap: var(--bb-space-2); margin-top: var(--bb-space-4); }
 .department-employee-options .el-checkbox { width: 100%; min-height: 52px; height: auto; margin: 0; border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-md); padding: var(--bb-space-2) var(--bb-space-3); }
 .department-employee-options .el-checkbox.is-checked { border-color: var(--bb-brand-300); background: var(--bb-brand-50); }
@@ -490,8 +462,6 @@
   .report-grid, .report-grid.lower { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 520px) {
-  .el-drawer.settings-drawer { --bb-settings-inline-inset: var(--bb-space-4); }
-  .el-drawer.settings-drawer > .el-drawer__header { padding-top: var(--bb-space-5); }
 }
 
 @media (max-width: 760px) {

@@ -4,13 +4,16 @@
         drawer-class="workspace-detail-drawer"
         :docked="detailPanelDocked"
         :size="detailPanelSize"
-        title="任务单详情"
-        :before-close="handleWorkOrderBeforeClose"
-        docked-auto-focus="panel"
+        :title="workorderPanelTitle"
+        :before-close="handleWorkorderPanelBeforeClose"
+        :close-on-press-escape="!actionSubmitting"
+        :show-close="!actionSubmitting"
+        :docked-auto-focus="actionDialogVisible ? 'first-editable' : 'panel'"
         destroy-on-close
         @closed="resetWorkOrder"
       >
-        <div v-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
+        <WorkorderActionDialog v-if="actionDialogVisible" />
+        <div v-else-if="selectedWorkOrder" class="item-drawer workorder-drawer" aria-label="任务单详情">
           <el-alert v-if="moduleUnavailable" title="任务单暂不可用" description="当前内容仍保留，暂不能办理业务。请确认后再关闭。" type="warning" :closable="false" show-icon />
           <div class="drawer-heading">
             <div>
@@ -124,13 +127,13 @@
             <p v-else class="drawer-empty">暂无流转日志</p>
           </section>
         </div>
-        <template #footer><el-button @click="closeWorkOrder">关闭</el-button></template>
+        <template #footer><div v-if="actionDialogVisible" id="workorder-action-footer"></div><el-button v-else @click="closeWorkOrder">关闭</el-button></template>
       </ResponsiveDetailCarrier>
-      <WorkorderActionDialog />
 
 </template>
 
 <script setup lang="ts">
+import {computed, nextTick, watch} from 'vue'
 import ImageGallery from '../ImageGallery.vue'
 import PageState from '../ui/PageState.vue'
 import StatusTag from '../ui/StatusTag.vue'
@@ -140,9 +143,9 @@ import {useWorkorderContext} from '../../composables/workorderContext'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
-import {Close} from '@element-plus/icons-vue'
 
 const {moduleUnavailable} = useWorkspaceContext()
+const {actionDialogVisible, actionKind, actionSubmitting, closeWorkOrderAction} = useWorkorderContext().action
 
 const {
   token, selectedWorkOrder, workorderDrawerVisible, workorderLogs,
@@ -160,4 +163,30 @@ const {
   handleWorkOrderBeforeClose, resetWorkOrder,
 } = useWorkorderContext().detail
 const {docked: detailPanelDocked, size: detailPanelSize} = useResponsiveDetailPanel(workorderDrawerVisible, true)
+const actionTitles: Record<string, string> = {dispatch: '派发任务', pause: '暂停任务', resume: '恢复任务', urgent: '调整加急状态', complete_normal: '确认正常完成', complete_forced: '强制完成任务', department_start: '开始处理部门任务', department_partial_complete: '提交部分完成', department_complete: '完成部门任务'}
+const workorderPanelTitle = computed(() => actionDialogVisible.value ? actionTitles[actionKind.value] || '任务操作确认' : '任务单详情')
+let workorderDetailScrollTop = 0
+
+async function handleWorkorderPanelBeforeClose(done: () => void) {
+  if (actionDialogVisible.value) {
+    let allowed = false
+    await closeWorkOrderAction(() => {
+      allowed = true
+      actionDialogVisible.value = false
+    })
+    if (!allowed) return
+  }
+  handleWorkOrderBeforeClose(done)
+}
+
+watch(actionDialogVisible, async (open, wasOpen) => {
+  const body = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
+  if (open) workorderDetailScrollTop = body?.scrollTop || 0
+  await nextTick()
+  if (open) return
+  if (!wasOpen) return
+  const restoredBody = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
+  if (restoredBody) restoredBody.scrollTop = workorderDetailScrollTop
+  document.querySelector<HTMLElement>('.workspace-detail-aside')?.focus({preventScroll: true})
+})
 </script>

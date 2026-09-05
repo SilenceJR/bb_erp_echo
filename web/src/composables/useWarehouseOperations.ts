@@ -39,6 +39,9 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
   function isCurrent(token: number, itemType: string, itemID: number, kind: 'detail' | 'movements') { return token === (kind === 'detail' ? detailToken : movementsToken) && warehouseDrawerVisible.value && String(selectedWarehouseItem.value?.item_type || '') === itemType && Number(selectedWarehouseItem.value?.id) === itemID }
 
   async function openWarehouseItem(item: any) {
+    const replacingCurrent = warehouseDrawerVisible.value && selectedWarehouseItem.value
+      && (Number(selectedWarehouseItem.value.id) !== Number(item.id) || String(selectedWarehouseItem.value.item_type || '') !== String(item.item_type || ''))
+    if (replacingCurrent && !(await requestWarehouseClose())) return
     selectedWarehouseItem.value = item; warehouseDetail.value = null; warehouseDetailError.value = ''; warehouseDrawerVisible.value = true
     movementMode.value = ''; showAllItemMovements.value = false; itemMovements.value = []; itemMovementsError.value = ''; deps.panelMessage.value = ''
     await Promise.allSettled([loadWarehouseItemDetail(), loadItemMovements()])

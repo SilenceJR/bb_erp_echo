@@ -92,54 +92,6 @@
       @refresh="loadWorkorderProductStock"
     />
 
-    <ResponsiveDetailCarrier
-      v-model="temporaryProductDialogVisible"
-      title="临时添加产品档案"
-      :size="productPanel.size.value" :docked="productPanel.docked.value" docked-auto-focus="first-editable"
-      append-to-body
-      :close-on-click-modal="!temporaryProductSubmitting"
-      :close-on-press-escape="!temporaryProductSubmitting"
-      :show-close="!temporaryProductSubmitting"
-      :before-close="closeTemporaryProductWithGuard"
-    >
-      <el-alert
-        title="保存后会成为正式产品档案，初始库存为 0，不会生成入库流水。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-form id="temporary-product-form" class="temporary-product-form" label-position="top" :disabled="temporaryProductSubmitting" @submit.prevent="createTemporaryProduct">
-        <el-form-item label="产品名称" required>
-          <el-input v-model.trim="temporaryProductForm.name" maxlength="100" show-word-limit autocomplete="off" />
-        </el-form-item>
-        <el-form-item label="产品编码" required>
-          <el-input v-model.trim="temporaryProductForm.code" maxlength="100" show-word-limit autocomplete="off" placeholder="请输入唯一编码" />
-        </el-form-item>
-        <el-form-item label="单位" required>
-          <el-input v-model.trim="temporaryProductForm.unit" maxlength="20" autocomplete="off" />
-        </el-form-item>
-        <el-form-item label="规格">
-          <el-input v-model.trim="temporaryProductForm.spec" maxlength="200" show-word-limit autocomplete="off" placeholder="选填" />
-        </el-form-item>
-        <OperatorSelect
-          v-model="temporaryProductForm.operator_employee_id"
-          :department="operatorDirectory.department.value"
-          :employees="operatorDirectory.employees.value"
-          :loading="operatorDirectory.loading.value"
-          :unavailable-reason="operatorDirectory.unavailableReason.value"
-          :retryable="operatorDirectory.retryable.value"
-          @load="operatorDirectory.load"
-          @retry="operatorDirectory.load(true)"
-        />
-        <el-alert v-if="temporaryProductError" :title="temporaryProductError" type="error" :closable="false" show-icon />
-      </el-form>
-      <template #footer>
-        <div class="temporary-product-actions">
-          <el-button :disabled="temporaryProductSubmitting" @click="closeTemporaryProductWithGuard()">取消</el-button>
-          <el-button type="primary" native-type="submit" form="temporary-product-form" :loading="temporaryProductSubmitting" :disabled="!temporaryProductForm.operator_employee_id || Boolean(operatorDirectory.unavailableReason.value)">保存并选择</el-button>
-        </div>
-      </template>
-    </ResponsiveDetailCarrier>
   </div>
 </template>
 
@@ -148,19 +100,11 @@ import {computed, nextTick, type DirectiveBinding, type ObjectDirective} from 'v
 import {useWorkorderContext} from '../../composables/workorderContext'
 import StatusTag from '../ui/StatusTag.vue'
 import WorkorderStockCard from './WorkorderStockCard.vue'
-import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
-import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
-import OperatorSelect from '../ui/OperatorSelect.vue'
 
 const {
-  operatorDirectory,
   formState,
   formError,
   loading,
-  temporaryProductForm,
-  temporaryProductDialogVisible,
-  temporaryProductSubmitting,
-  temporaryProductError,
   workorderProductOptions,
   workorderProductSearchLoading,
   workorderProductSearchError,
@@ -175,11 +119,7 @@ const {
   handleWorkorderProductSelect,
   loadWorkorderProductStock,
   openTemporaryProductDialog,
-  closeTemporaryProductWithGuard,
-  createTemporaryProduct,
 } = useWorkorderContext().product
-
-const productPanel = useResponsiveDetailPanel(temporaryProductDialogVisible, true)
 const canCreateTemporaryProduct = computed(() => (
   hasPermission('warehouse:read')
   && hasPermission('workorder:write')

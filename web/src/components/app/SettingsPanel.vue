@@ -1,23 +1,18 @@
 <template>
-  <el-drawer
+  <ResponsiveDetailCarrier
     v-model="visible"
-    class="settings-drawer"
+    drawer-class="settings-drawer workspace-detail-drawer"
     title="设置"
-    size="min(520px, 100%)"
+    :docked="settingsPanel.docked.value"
+    :size="settingsPanel.size.value"
+    docked-auto-focus="panel"
     destroy-on-close
   >
-    <div class="settings-content">
-      <section class="settings-section" aria-labelledby="appearance-title">
-        <div class="settings-section__heading">
-          <div>
-            <h2 id="appearance-title">外观</h2>
-          </div>
-          <small>仅保存在此设备</small>
-        </div>
-
+    <FormPanelContent class="settings-content">
+      <FormSection title="外观" description="仅保存在此设备。">
         <div class="setting-field">
           <div><strong>显示模式</strong></div>
-          <el-radio-group v-model="theme" aria-label="显示模式" @change="saveAppearance">
+          <el-radio-group v-model="theme" class="theme-mode-switch" aria-label="显示模式" @change="saveAppearance">
             <el-radio-button value="light">亮色</el-radio-button>
             <el-radio-button value="dark">暗色</el-radio-button>
           </el-radio-group>
@@ -49,20 +44,16 @@
             </button>
           </div>
         </div>
-      </section>
+      </FormSection>
 
-      <section class="settings-section" aria-labelledby="connection-title">
+      <FormSection title="连接与服务">
         <div class="settings-section__heading">
-          <div>
-            <h2 id="connection-title">连接与服务</h2>
-          </div>
           <StatusTag :label="healthStatusLabel" :tone="connectionTone" />
         </div>
-
-        <dl class="connection-details">
-          <div><dt>服务器</dt><dd>{{ currentServer?.server_name || 'ERP 服务器' }}</dd></div>
-          <div><dt>地址</dt><dd class="is-mono">{{ currentServer?.origin || '当前站点' }}</dd></div>
-          <div><dt>服务端版本</dt><dd>{{ currentServer?.server_version || '未提供' }}</dd></div>
+        <dl class="connection-details" aria-label="连接与服务事实">
+          <div v-if="currentServer?.server_name"><dt>服务器</dt><dd>{{ currentServer.server_name }}</dd></div>
+          <div v-if="currentServer?.origin"><dt>地址</dt><dd class="is-mono">{{ currentServer.origin }}</dd></div>
+          <div v-if="currentServer?.server_version"><dt>服务端版本</dt><dd>{{ currentServer.server_version }}</dd></div>
           <div><dt>最近检查</dt><dd>{{ lastCheckText }}</dd></div>
         </dl>
 
@@ -74,13 +65,13 @@
           :closable="false"
           show-icon
         />
-        <div class="connection-actions">
+        <div class="connection-actions" aria-label="连接操作">
           <el-button :loading="healthStatus === 'checking'" @click="loadHealth">重新检查</el-button>
           <el-button v-if="canChangeServer" type="primary" plain @click="requestServerChange">切换服务器</el-button>
         </div>
-      </section>
-    </div>
-  </el-drawer>
+      </FormSection>
+    </FormPanelContent>
+  </ResponsiveDetailCarrier>
 </template>
 
 <script setup lang="ts">
@@ -96,10 +87,15 @@ import {
 } from '../../platform/appearance'
 import {useStartupConnectionContext, useWorkspaceContext} from '../../composables/workspaceContext'
 import StatusTag from '../ui/StatusTag.vue'
+import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
+import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
+import FormPanelContent from '../ui/FormPanelContent.vue'
+import FormSection from '../ui/FormSection.vue'
 
 const props = defineProps<{modelValue: boolean}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
+const settingsPanel = useResponsiveDetailPanel(visible, {complexity: 'standard-form'})
 
 const {healthStatus, healthStatusLabel, lastHealthCheckAt, loadHealth, formatDate} = useWorkspaceContext()
 const {canChangeServer, changeServer, currentServer} = useStartupConnectionContext()
@@ -153,26 +149,36 @@ async function requestServerChange() {
 </script>
 
 <style scoped>
-.settings-content { display: grid; width: 100%; min-width: 0; gap: 0; padding-bottom: var(--bb-space-8); }
-.settings-section { display: grid; gap: var(--bb-space-5); padding: 0 0 var(--bb-space-5); }
-.settings-section + .settings-section { border-top: 1px solid var(--bb-border-default); padding-top: var(--bb-space-5); }
-.settings-section__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--bb-space-3); }
-.settings-section__heading > div { display: grid; min-width: 0; gap: var(--bb-space-1); }
-.settings-section__heading span { color: var(--bb-accent-text); font-size: var(--bb-font-size-12); font-weight: var(--bb-font-weight-bold); letter-spacing: .08em; }
-.settings-section__heading h2 { margin: 0; font-size: var(--bb-font-size-20); }
-.settings-section__heading > small { color: var(--bb-text-secondary); }
+.settings-content { gap: var(--bb-space-8); padding-bottom: var(--bb-space-6); }
+.settings-section__heading { display: flex; justify-content: flex-end; }
 .setting-field { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--bb-space-4); }
 .setting-field.is-stacked { display: grid; }
 .setting-field > div:first-child { display: grid; gap: var(--bb-space-1); }
 .setting-field small, .settings-note { color: var(--bb-text-secondary); line-height: var(--bb-line-height-base); }
+.theme-mode-switch {
+  display: flex;
+  width: 160px;
+  flex: 0 0 160px;
+  --el-radio-button-checked-bg-color: var(--bb-bg-elevated);
+  --el-radio-button-checked-border-color: var(--bb-border-strong);
+  --el-radio-button-checked-text-color: var(--bb-accent-text);
+}
+.theme-mode-switch :deep(.el-radio-button) { flex: 1 1 50%; }
+.theme-mode-switch :deep(.el-radio-button__inner) { width: 100%; padding-inline: 8px; }
+.theme-mode-switch :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  border-color: var(--bb-border-strong);
+  background: var(--bb-bg-elevated);
+  box-shadow: -1px 0 0 0 var(--bb-border-strong);
+  color: var(--bb-accent-text);
+}
 .accent-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--bb-space-2); }
-.accent-option { display: flex; align-items: center; min-height: 56px; gap: 8px; border: 1px solid var(--bb-border-default); border-radius: 6px; background: var(--bb-bg-surface); padding: 12px; color: var(--bb-text-primary); text-align: left; cursor: pointer; transition: background-color 120ms, border-color 120ms; }
+.accent-option { display: grid; min-height: 64px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--bb-border-default); border-radius: 6px; background: var(--bb-bg-surface); padding: 12px; color: var(--bb-text-primary); text-align: left; cursor: pointer; transition: background-color 120ms, border-color 120ms; }
 .accent-option:hover { border-color: var(--bb-border-strong); }
 .accent-option.active { border-color: var(--bb-border-strong); background: var(--bb-bg-subtle); box-shadow: inset 2px 0 0 var(--bb-action-primary); }
 .accent-option:focus-visible { outline: 2px solid var(--bb-focus-color); outline-offset: 2px; }
-.accent-option > span { width: 16px; height: 16px; flex: none; border-radius: 50%; background: #135dad; }
-.accent-option.is-teal > span { background: #0e675b; }
-.accent-option.is-violet > span { background: #552d98; }
+.accent-option > span { width: 16px; height: 16px; border-radius: 50%; background: var(--bb-accent-swatch-bobbang); }
+.accent-option.is-teal > span { background: var(--bb-accent-swatch-teal); }
+.accent-option.is-violet > span { background: var(--bb-accent-swatch-violet); }
 .accent-option small { margin-left: auto; font-size: 12px; }
 .connection-details { display: grid; gap: var(--bb-space-3); margin: 0; }
 .connection-details > div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--bb-space-3); border-bottom: 1px solid var(--bb-border-subtle); padding-bottom: var(--bb-space-3); }
@@ -183,6 +189,7 @@ async function requestServerChange() {
 .settings-note { margin: 0; font-size: var(--bb-font-size-12); }
 @media (max-width: 520px) {
   .setting-field { display: grid; }
-  .accent-options { grid-template-columns: 1fr; }
+  .theme-mode-switch { width: 160px; }
+  .accent-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>

@@ -26,6 +26,7 @@
     :subtitle="detailSubtitle"
     :item="detailRow"
     :fields="detailFields"
+    @closed="resolveDetailClosed"
   >
     <template #footer>
       <el-button @click="detailVisible = false">关闭</el-button>
@@ -61,6 +62,7 @@ const detailFields = computed<GenericRecordDetailField[]>(() => {
   }))
 })
 const actionColumnWidth = computed(() => hasAssignmentAction.value || (activeKey.value === 'users' && canWriteActive.value) ? 250 : 100)
+let detailCloseResolver: (() => void) | null = null
 
 watch(detailVisible, (visible) => setPageDetailPanelVisible(visible), {immediate: true, flush: 'sync'})
 watch(activeKey, () => { detailVisible.value = false; detailRow.value = null })
@@ -78,14 +80,25 @@ async function openDetail(row: Record<string, unknown>) {
 async function openDetailAssignment() {
   const row = detailRow.value
   if (!row) return
-  detailVisible.value = false
+  await closeDetailPanel()
   await openAssignment(row)
 }
 
-function openDetailAffiliation() {
+async function openDetailAffiliation() {
   const row = detailRow.value
   if (!row) return
-  detailVisible.value = false
+  await closeDetailPanel()
   openUserAffiliation(row)
+}
+
+function closeDetailPanel() {
+  if (!detailVisible.value) return Promise.resolve()
+  detailVisible.value = false
+  return new Promise<void>((resolve) => { detailCloseResolver = resolve })
+}
+
+function resolveDetailClosed() {
+  detailCloseResolver?.()
+  detailCloseResolver = null
 }
 </script>

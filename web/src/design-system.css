@@ -26,6 +26,9 @@
   --bb-accent-selected-bg: #EAF2FC;
   --bb-accent-selected-text: #135DAD;
   --bb-focus-color: #135DAD;
+  --bb-accent-swatch-bobbang: #135DAD;
+  --bb-accent-swatch-teal: #0B7069;
+  --bb-accent-swatch-violet: #6844B5;
 
   /* Neutral and semantic surfaces. */
   --bb-text-primary: #172536;

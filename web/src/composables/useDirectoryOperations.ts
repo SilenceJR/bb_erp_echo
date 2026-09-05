@@ -197,8 +197,16 @@ export function useDirectoryOperations(d: Dependencies) {
     } else if (!d.showCreateForm.value) { d.invalidateWorkorderProductSearch(); d.closeTemporaryProductDialog() }
   }
 
-  function editSupplier(value: unknown) {
+  async function editSupplier(value: unknown) {
     const item = value as BasicItem
+    if (d.showCreateForm.value && Number(d.editingSupplier.value?.id || 0) === Number(item.id)) return
+    if (d.showCreateForm.value && d.loading.value) {
+      ElMessage.warning('资料正在保存，请等待完成后再切换。')
+      return
+    }
+    if (d.showCreateForm.value && createFormDirty()) {
+      try { await appMessageBox.confirm('当前供应商资料尚未保存，切换后修改将丢失。', '切换编辑对象？', {confirmButtonText: '放弃并切换', cancelButtonText: '继续编辑', type: 'warning'}) } catch { return }
+    }
     d.editingSupplier.value = item
     clearForm()
     for (const key of ['name', 'code', 'contact', 'phone', 'address', 'status']) {

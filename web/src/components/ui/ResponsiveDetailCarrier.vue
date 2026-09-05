@@ -1,10 +1,10 @@
 <template>
-  <Teleport v-if="renderDocked" defer to="#workspace-detail-host">
+  <Teleport v-if="preferDocked" defer to="#workspace-detail-host">
     <Transition name="workspace-detail-panel" appear @after-leave="handleDockedAfterLeave">
       <aside ref="dockedAside" v-if="dockedContentVisible" :class="['workspace-detail-aside', drawerClass]" :aria-label="title" tabindex="-1">
         <header v-if="withHeader" class="workspace-detail-aside__header">
           <h2>{{ title }}</h2>
-          <el-button circle :aria-label="`关闭${title}`" @click="requestClose"><el-icon><Close /></el-icon></el-button>
+          <el-button v-if="showClose && closeOnPressEscape" circle :aria-label="`关闭${title}`" @click="requestClose"><el-icon><Close /></el-icon></el-button>
         </header>
         <div class="detail-body"><slot /></div>
         <footer v-if="$slots.footer" class="detail-footer"><slot name="footer" /></footer>
@@ -16,9 +16,11 @@
     ref="overlayDrawer"
     v-model="visible"
     :class="[drawerClass, 'unified-detail', carrierClass]"
+    modal-class="workspace-detail-overlay"
     :size="size"
     :title="title"
     :with-header="withHeader"
+    :show-close="showClose && closeOnPressEscape"
     :close-on-click-modal="closeOnClickModal"
     :close-on-press-escape="closeOnPressEscape"
     :before-close="beforeClose"
@@ -26,8 +28,8 @@
     @closed="emit('closed')"
     @opened="focusOverlayEntry"
   >
-    <slot />
-    <template v-if="$slots.footer" #footer><slot name="footer" /></template>
+    <div class="detail-body"><slot /></div>
+    <template v-if="$slots.footer" #footer><div class="detail-footer"><slot name="footer" /></div></template>
   </el-drawer>
 </template>
 
@@ -35,6 +37,7 @@
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch, useId} from 'vue'
 import {Close} from '@element-plus/icons-vue'
 import {shouldRequestDockedDetailClose} from '../../platform/detailPanel'
+import type {DetailCloseRequest} from '../../composables/detailLayout'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -46,7 +49,9 @@ const props = withDefaults(defineProps<{
   closeOnClickModal?: boolean
   closeOnPressEscape?: boolean
   destroyOnClose?: boolean
-  beforeClose?: (done: () => void) => void
+  showClose?: boolean
+  preferDocked?: boolean
+  beforeClose?: (done: () => void) => void | Promise<void>
   dockedAutoFocus?: 'preserve' | 'panel' | 'first-editable'
 }>(), {
   drawerClass: 'workspace-detail-drawer',
@@ -54,6 +59,8 @@ const props = withDefaults(defineProps<{
   closeOnClickModal: true,
   closeOnPressEscape: true,
   destroyOnClose: true,
+  showClose: true,
+  preferDocked: true,
   beforeClose: undefined,
   dockedAutoFocus: 'preserve',
 })
@@ -63,15 +70,24 @@ const emit = defineEmits<{
   (event: 'closed'): void
 }>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
-const renderDocked = ref(props.modelValue && props.docked)
 const dockedContentVisible = ref(props.modelValue && props.docked)
 const dockedClosePending = ref(false)
 const dockedAside = ref<HTMLElement | null>(null)
 const overlayDrawer = ref<{ $el: HTMLElement } | null>(null)
 const returnFocus = ref<HTMLElement | null>(null)
+const lastPanelFocus = ref<HTMLElement | null>(null)
 const carrierClass = `detail-${useId().replace(/[^a-zA-Z0-9_-]/g, '-')}`
 let continuity: {scrollTop: number; focusKey: string; policy: string; selectionStart: number | null; selectionEnd: number | null} | null = null
 const editableSelector = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), button:not([disabled]), [tabindex="0"]'
+function resolveReturnFocus() {
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  if (!active) return null
+  if (active.closest('.sidebar')) return document.querySelector<HTMLElement>('.sidebar-mode-toggle') || active
+  if (active.closest('.el-popper, .el-overlay')) {
+    return document.querySelector<HTMLElement>('[aria-haspopup][aria-expanded="true"], .topbar .user-avatar') || active
+  }
+  return active
+}
 function focusKey(element: Element | null) {
   if (!element) return ''
   const label = element.closest('.el-form-item')?.querySelector('label')?.textContent?.trim()
@@ -112,13 +128,19 @@ watch(() => props.docked, () => {
 }, {flush: 'sync'})
 
 watch(() => [props.modelValue, props.docked] as const, ([open, docked], [wasOpen, wasDocked]) => {
-  if (open && !wasOpen && document.activeElement instanceof HTMLElement) returnFocus.value = document.activeElement
+  if (open && !wasOpen) returnFocus.value = resolveReturnFocus()
   if (open && docked) {
     const enteringDock = !wasOpen || !wasDocked
     dockedClosePending.value = false
-    renderDocked.value = true
     dockedContentVisible.value = true
     if (enteringDock) void nextTick(focusDockedEntry)
+    return
+  }
+  // The rail is not a history stack. A new surface replaces the current one;
+  // use the normal close path so dirty-state and submitting guards still run.
+  if (open && !docked && wasOpen && wasDocked && props.preferDocked) {
+    dockedContentVisible.value = false
+    requestClose()
     return
   }
   if (!open && wasOpen && wasDocked) {
@@ -128,7 +150,6 @@ watch(() => [props.modelValue, props.docked] as const, ([open, docked], [wasOpen
   }
   dockedClosePending.value = false
   dockedContentVisible.value = false
-  renderDocked.value = false
 })
 
 watch(() => props.dockedAutoFocus, async (policy, previousPolicy) => {
@@ -138,20 +159,44 @@ watch(() => props.dockedAutoFocus, async (policy, previousPolicy) => {
   else focusOverlayEntry()
 }, {flush: 'post'})
 
+function requestCloseWithResult() {
+  return new Promise<boolean>((resolve) => {
+    let settled = false
+    const done = () => {
+      if (settled) return
+      settled = true
+      visible.value = false
+      resolve(true)
+    }
+    if (!props.beforeClose) {
+      done()
+      return
+    }
+    const result = props.beforeClose(done)
+    if (result instanceof Promise) {
+      void result.finally(() => {
+        if (!settled) {
+          settled = true
+          resolve(false)
+          const target = lastPanelFocus.value
+          void nextTick(() => (target?.isConnected ? target : dockedAside.value)?.focus({preventScroll: true}))
+        }
+      })
+    }
+  })
+}
+
 function requestClose() {
-  const done = () => { visible.value = false }
-  if (props.beforeClose) props.beforeClose(done)
-  else done()
+  void requestCloseWithResult()
 }
 
 function handleDockedAfterLeave() {
-  renderDocked.value = false
   if (!dockedClosePending.value) return
   dockedClosePending.value = false
-  emit('closed')
   const target = returnFocus.value
   returnFocus.value = null
-  if (target?.isConnected) void nextTick(() => target.focus({preventScroll: true}))
+  if (target?.isConnected) target.focus({preventScroll: true})
+  emit('closed')
 }
 
 function focusOverlayEntry() {
@@ -183,7 +228,7 @@ function focusEntry(panel: HTMLElement) {
 }
 
 function hasVisibleFloatingLayer() {
-  return [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper')].some((element) => {
+  return [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper, .sidebar.is-mobile-open, .mobile-nav-backdrop')].some((element) => {
     const style = window.getComputedStyle(element)
     return style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none'
   })
@@ -202,11 +247,29 @@ function handleDockedEscape(event: KeyboardEvent) {
   requestClose()
 }
 
+function handleExternalCloseRequest(event: Event) {
+  if (!props.modelValue || !props.docked) return
+  const request = (event as CustomEvent<DetailCloseRequest>).detail
+  if (!request?.resolve) return
+  void requestCloseWithResult().then(request.resolve)
+}
+
+function rememberPanelFocus(event: FocusEvent) {
+  const target = event.target instanceof HTMLElement ? event.target : null
+  if (target && dockedAside.value?.contains(target)) lastPanelFocus.value = target
+}
+
 onMounted(() => {
   document.addEventListener('keydown', handleDockedEscape)
+  document.addEventListener('focusin', rememberPanelFocus)
+  document.addEventListener('bb:request-active-detail-close', handleExternalCloseRequest)
   if (props.modelValue && props.docked) void nextTick(focusDockedEntry)
 })
-onBeforeUnmount(() => document.removeEventListener('keydown', handleDockedEscape))
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleDockedEscape)
+  document.removeEventListener('focusin', rememberPanelFocus)
+  document.removeEventListener('bb:request-active-detail-close', handleExternalCloseRequest)
+})
 </script>
 
 <style scoped>
@@ -221,11 +284,17 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleDockedEscape
   padding: 0;
   scrollbar-gutter: stable;
 }
-.workspace-detail-aside__header { display: flex; flex: 0 0 auto; min-height: 72px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--bb-border-subtle); padding: 16px 24px; }
-.detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px; }
-.detail-footer { flex: 0 0 auto; display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 72px; border-top: 1px solid var(--bb-border-subtle); padding: 16px 24px; }
+.workspace-detail-aside__header { display: flex; flex: 0 0 72px; width: 100%; height: 72px; min-height: 72px; box-sizing: border-box; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--bb-border-subtle); padding: 16px 24px; }
+.detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px)); scrollbar-gutter: stable; }
+.detail-footer { flex: 0 0 72px; display: flex; width: 100%; height: 72px; min-height: 72px; box-sizing: border-box; justify-content: flex-end; align-items: center; gap: 8px; border-top: 1px solid var(--bb-border-subtle); padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px)); }
+.detail-footer > .form-actions,
+.detail-footer > .assignment-actions { flex: 1 1 auto; }
 .workspace-detail-aside__header h2 { margin: 0; color: var(--bb-text-primary); font-size: var(--bb-font-size-16); font-weight: var(--bb-font-weight-bold); }
 .workspace-detail-aside__header :deep(.el-button) { flex: 0 0 auto; }
+.unified-detail :deep(.el-drawer__body) { display: flex; min-height: 0; flex-direction: column; overflow: hidden; padding: 0; }
+.unified-detail :deep(.el-drawer__footer) { min-height: 0; padding: 0; }
+.unified-detail :deep(.detail-body) { min-width: 0; }
+.unified-detail :deep(.detail-footer) { width: 100%; box-sizing: border-box; }
 .workspace-detail-panel-enter-active,
 .workspace-detail-panel-leave-active { transition: opacity var(--bb-duration-base) var(--bb-ease-standard), transform var(--bb-duration-base) var(--bb-ease-standard); }
 .workspace-detail-panel-enter-from { transform: translateX(6px); }

@@ -242,8 +242,17 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     return requestToken === logsToken && workorderDrawerVisible.value && Number(selectedWorkOrder.value?.id) === workorderID
   }
 
-  function openWorkOrder(value: unknown) {
+  async function openWorkOrder(value: unknown) {
     const item = value as BasicItem
+    if (workorderDrawerVisible.value && Number(selectedWorkOrder.value?.id) === Number(item.id) && !actionDialogVisible.value) return
+    if (actionDialogVisible.value) {
+      let allowed = false
+      await closeWorkOrderAction(() => {
+        allowed = true
+        actionDialogVisible.value = false
+      })
+      if (!allowed) return
+    }
     selectedWorkOrder.value = item
     workorderLogs.value = []
     workorderLogsError.value = ''

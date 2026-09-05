@@ -758,6 +758,32 @@ async function openAssignment(row: any) {
     if (hint) ElMessage.warning(hint)
     return
   }
+  if (affiliationTarget.value) {
+    if (affiliationSaving.value) {
+      ElMessage.warning('账号归属正在保存，请等待完成后再切换。')
+      return
+    }
+    if (affiliationDepartmentID.value !== affiliationInitial.value.departmentID || affiliationTerminalID.value !== affiliationInitial.value.terminalID) {
+      try { await appMessageBox.confirm('当前账号归属尚未保存，切换后修改将丢失。', '切换操作？', {confirmButtonText: '放弃并切换', cancelButtonText: '继续编辑', type: 'warning'}) } catch { return }
+    }
+    affiliationError.value = ''
+    affiliationTarget.value = null
+  }
+  if (assignmentTarget.value && Number(assignmentTarget.value.id) === Number(row.id) && assignmentModuleKey.value === activeKey.value) return
+  if (assignmentTarget.value) {
+    if (assignmentSaving.value) {
+      ElMessage.warning('权限配置正在保存，请等待完成后再切换。')
+      return
+    }
+    const currentConfig = assignmentConfig.value
+    const original = currentConfig && Array.isArray(assignmentTarget.value[currentConfig.selectedKey])
+      ? (assignmentTarget.value[currentConfig.selectedKey] as unknown[]).map(Number).sort((left, right) => left - right).join(',')
+      : ''
+    const selected = [...selectedAssignmentIDs.value].map(Number).sort((left, right) => left - right).join(',')
+    if (original !== selected) {
+      try { await appMessageBox.confirm('当前权限配置尚未保存，切换后修改将丢失。', '切换配置对象？', {confirmButtonText: '放弃并切换', cancelButtonText: '继续配置', type: 'warning'}) } catch { return }
+    }
+  }
   assignmentTarget.value = row
   assignmentModuleKey.value = activeKey.value
   assignmentOptionsError.value = ''
@@ -866,10 +892,35 @@ async function saveAssignment() {
   }
 }
 
-function openUserAffiliation(row: any) {
+async function openUserAffiliation(row: any) {
   if (!canEditUserAffiliation.value) {
     ElMessage.warning('修正账号归属需要部门查看和终端查看权限。')
     return
+  }
+  if (assignmentTarget.value) {
+    if (assignmentSaving.value) {
+      ElMessage.warning('权限配置正在保存，请等待完成后再切换。')
+      return
+    }
+    const currentConfig = assignmentConfig.value
+    const original = currentConfig && Array.isArray(assignmentTarget.value[currentConfig.selectedKey])
+      ? (assignmentTarget.value[currentConfig.selectedKey] as unknown[]).map(Number).sort((left, right) => left - right).join(',')
+      : ''
+    const selected = [...selectedAssignmentIDs.value].map(Number).sort((left, right) => left - right).join(',')
+    if (original !== selected) {
+      try { await appMessageBox.confirm('当前权限配置尚未保存，切换后修改将丢失。', '切换操作？', {confirmButtonText: '放弃并切换', cancelButtonText: '继续配置', type: 'warning'}) } catch { return }
+    }
+    closeAssignment()
+  }
+  if (affiliationTarget.value && Number(affiliationTarget.value.id) === Number(row.id)) return
+  if (affiliationTarget.value) {
+    if (affiliationSaving.value) {
+      ElMessage.warning('账号归属正在保存，请等待完成后再切换。')
+      return
+    }
+    if (affiliationDepartmentID.value !== affiliationInitial.value.departmentID || affiliationTerminalID.value !== affiliationInitial.value.terminalID) {
+      try { await appMessageBox.confirm('当前账号归属尚未保存，切换后修改将丢失。', '切换账号？', {confirmButtonText: '放弃并切换', cancelButtonText: '继续编辑', type: 'warning'}) } catch { return }
+    }
   }
   affiliationTarget.value = row
   affiliationDepartmentID.value = row.department_id ? Number(row.department_id) : undefined

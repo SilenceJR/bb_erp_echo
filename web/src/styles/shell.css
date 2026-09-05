@@ -92,15 +92,27 @@
   .content:has(.customer-desktop-table) { --bb-content-max-width: min(var(--bb-content-wide-width), 100%); }
 }
 
+/* At compact desktop widths the single detail rail gets priority over the
+   persistent navigation rail. The user's sidebar mode is not mutated and is
+   restored as soon as the detail surface closes. */
+.workspace.compact-dock-navigation.has-docked-detail,
+.workspace.compact-dock-navigation.sidebar-icon.has-docked-detail,
+.workspace.compact-dock-navigation.sidebar-hidden.has-docked-detail { grid-template-columns: 0 minmax(0, 1fr) var(--bb-detail-panel-width); }
+.workspace.compact-dock-navigation.has-docked-detail .sidebar { border: 0; padding-inline: 0; opacity: 0; pointer-events: none; }
+.workspace.compact-dock-navigation.has-docked-detail .sidebar.is-mobile-open { position: fixed; z-index: 1060; inset: 0 auto 0 0; width: min(300px, 88vw); height: 100dvh; border-right: 1px solid var(--bb-border-subtle); background: var(--bb-bg-navigation); padding: 0 var(--bb-space-2); opacity: 1; pointer-events: auto; box-shadow: var(--bb-shadow-lg); }
+.workspace.compact-dock-navigation .mobile-nav-backdrop { position: fixed; z-index: 1055; inset: 0; display: block; border: 0; background: var(--bb-bg-overlay); }
+
 @media (max-width: 1023px) {
   .login-layout { grid-template-columns: 1fr; min-height: auto; }
-  .workspace, .workspace.sidebar-icon, .workspace.sidebar-hidden, .workspace.has-docked-detail, .workspace.sidebar-icon.has-docked-detail, .workspace.sidebar-hidden.has-docked-detail { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--bb-shell-header-height) minmax(0, 1fr); }
-  .topbar { grid-column: 1; padding: 0 var(--bb-space-3); }
+  .workspace, .workspace.sidebar-icon, .workspace.sidebar-hidden { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--bb-shell-header-height) minmax(0, 1fr); }
+  .workspace.has-docked-detail, .workspace.sidebar-icon.has-docked-detail, .workspace.sidebar-hidden.has-docked-detail { grid-template-columns: minmax(0, 1fr) var(--bb-detail-panel-width); }
+  .topbar { grid-column: 1 / -1; padding: 0 var(--bb-space-3); }
   .sidebar { position: fixed; z-index: 1060; inset: 0 auto 0 0; width: min(300px, 88vw); height: 100dvh; opacity: 1; pointer-events: auto; transform: translateX(-102%); box-shadow: var(--bb-shadow-lg); transition: transform var(--bb-duration-slow) var(--bb-ease-standard); }
   .sidebar.is-mobile-open { transform: translateX(0); }
   .sidebar-brand img { display: block; }
   .mobile-nav-backdrop { position: fixed; z-index: 1055; inset: 0; display: block; border: 0; background: var(--bb-bg-overlay); }
   .content { grid-column: 1; padding: var(--bb-space-6) var(--bb-space-3) 40px; }
+  .workspace-detail-host { grid-column: 2; }
   .service-notice { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .user-copy { display: none; }
 }
@@ -116,5 +128,5 @@
   .startup-actions { align-items: stretch; flex-direction: column-reverse; }
   .startup-actions .el-button { width: 100%; margin: 0; }
   .service-notice { max-width: 132px; padding-inline: var(--bb-space-2); }
-  .workspace-detail-drawer { width: 100% !important; }
+  .el-drawer.unified-detail.workspace-detail-drawer { width: calc(100vw - 32px) !important; max-width: calc(100vw - 32px); margin-right: 16px; }
 }

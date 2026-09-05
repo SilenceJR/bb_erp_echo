@@ -60,7 +60,7 @@
           <el-table-column label="联系人" min-width="140"><template #default="{row}">{{ row.default_profile?.contact_name || '—' }}</template></el-table-column>
           <el-table-column label="联系电话" min-width="150"><template #default="{row}"><span class="text-cell">{{ row.default_profile?.contact_phone || '—' }}</span></template></el-table-column>
           <el-table-column v-if="!drawerVisible" label="业务员" min-width="120"><template #default="{row}">{{ row.default_profile?.salesperson || '—' }}</template></el-table-column>
-          <el-table-column label="操作" width="100" align="center" fixed="right"><template #default="{row}"><el-button v-if="row.default_profile" link type="primary" @click="openProfile(row.default_profile, asCustomerCode(row), $event)">详情</el-button><span v-else>—</span></template></el-table-column>
+          <el-table-column label="操作" width="100" align="center" fixed="right"><template #default="{row}"><el-button v-if="row.default_profile" link type="primary" :data-customer-profile-trigger="row.default_profile.id" @click="openProfile(row.default_profile, asCustomerCode(row), $event)">详情</el-button><span v-else>—</span></template></el-table-column>
         </el-table>
       </section>
 

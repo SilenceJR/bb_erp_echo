@@ -1,6 +1,5 @@
 <template>
-  <ResponsiveDetailCarrier v-model="actionDialogVisible" :title="title" :size="actionPanel.size.value" :docked="actionPanel.docked.value" docked-auto-focus="first-editable" :close-on-click-modal="!actionSubmitting" :close-on-press-escape="!actionSubmitting" :before-close="beforeClose">
-    <div v-if="actionDialogVisible" key="workorder-action-content" class="workorder-dialog-motion">
+  <div v-if="actionDialogVisible" key="workorder-action-content" class="workorder-dialog-motion">
     <el-form id="workorder-action-form" label-position="top" :disabled="actionSubmitting" @submit.prevent="!moduleUnavailable && submitWorkOrderAction()">
       <el-alert v-if="moduleUnavailable" title="任务单暂不可用，已填写内容仍保留，当前不能提交。" type="warning" :closable="false" show-icon />
       <el-alert v-if="impactMessage" :title="impactMessage" :type="dangerous ? 'warning' : 'info'" :closable="false" show-icon />
@@ -11,23 +10,17 @@
       <el-form-item v-if="needsRemark" label="本次备注"><el-input v-model.trim="actionForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="选填" /></el-form-item>
       <OperatorSelect id="workorder-action-operator" v-model="actionForm.operator_employee_id" :department="operatorDirectory.department.value" :employees="operatorDirectory.employees.value" :loading="operatorDirectory.loading.value" :unavailable-reason="operatorDirectory.unavailableReason.value" :retryable="operatorDirectory.retryable.value" :invalid="Boolean(actionFieldErrors.operator)" :validation-error="actionFieldErrors.operator" @update:model-value="clearOperatorError" @load="operatorDirectory.load" @retry="operatorDirectory.load(true)" />
     </el-form>
-    </div>
-    <template #footer><div class="form-actions"><el-button :disabled="actionSubmitting" @click="closeWorkOrderAction()">取消</el-button><el-button native-type="submit" form="workorder-action-form" :type="confirmType" :loading="actionSubmitting" :disabled="confirmDisabled">{{ confirmText }}</el-button></div></template>
-  </ResponsiveDetailCarrier>
+  </div>
+  <Teleport v-if="actionDialogVisible" defer to="#workorder-action-footer"><div class="form-actions"><el-button :disabled="actionSubmitting" @click="closeWorkOrderAction()">返回任务详情</el-button><el-button native-type="submit" form="workorder-action-form" :type="confirmType" :loading="actionSubmitting" :disabled="confirmDisabled">{{ confirmText }}</el-button></div></Teleport>
 </template>
 <script setup lang="ts">
 import {computed, watch} from 'vue'
 import {useWorkorderContext} from '../../composables/workorderContext'
 import OperatorSelect from '../ui/OperatorSelect.vue'
-import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
-import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
 
 const {operatorDirectory, selectedWorkOrder, actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError, actionFieldErrors, actionForm, closeWorkOrderAction, submitWorkOrderAction, departmentName, formatQuantity} = useWorkorderContext().action
 const {moduleUnavailable} = useWorkspaceContext()
-const actionPanel = useResponsiveDetailPanel(actionDialogVisible, true)
-const titles: Record<string, string> = {dispatch: '派发任务', pause: '暂停任务', resume: '恢复任务', urgent: '调整加急状态', complete_normal: '确认正常完成', complete_forced: '强制完成任务', department_start: '开始处理部门任务', department_partial_complete: '提交部分完成', department_complete: '完成部门任务'}
-const title = computed(() => titles[actionKind.value] || '任务操作确认')
 const dangerous = computed(() => actionKind.value === 'complete_forced')
 const statusLabels: Record<string, string> = {draft: '草稿', received: '已收到', processing: '处理中', paused: '已暂停', partial_completed: '部分完成', pending_close: '待办公室确认', completed: '完成', completed_normal: '正常完成', completed_forced: '强制完成'}
 const currentStatus = computed(() => String(actionTarget.value?.status || selectedWorkOrder.value?.status || ''))
@@ -67,7 +60,6 @@ const confirmText = computed(() => {
   const labels: Record<string, string> = {dispatch: '确认派发', pause: '确认暂停', resume: '确认恢复', complete_normal: '确认正常完成', complete_forced: '确认强制完成', department_start: '确认开始处理', department_partial_complete: '提交部分完成', department_complete: '确认部门完成'}
   return labels[actionKind.value] || '确认操作'
 })
-function beforeClose(done: () => void) { void closeWorkOrderAction(done) }
 function clearOperatorError() { actionFieldErrors.operator = '' }
 watch(() => actionForm.reason, () => { actionFieldErrors.reason = '' })
 watch(() => actionForm.completed_quantity, () => { actionFieldErrors.quantity = '' })
