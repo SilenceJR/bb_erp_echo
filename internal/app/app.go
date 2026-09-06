@@ -129,18 +129,42 @@ func (v *Validator) Validate(i any) error {
 //
 // 参数说明：无。
 // 返回说明：返回可启动的 App；任一初始化步骤失败时返回错误。
-func New() (*App, error) {
+func New() (created *App, resultErr error) {
+	var logSystem *erplogger.System
+	var db *gorm.DB
+	defer func() {
+		if resultErr == nil {
+			return
+		}
+		var cleanupErrors []error
+		if db != nil {
+			if sqlDB, err := db.DB(); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("get sql database after initialization failure: %w", err))
+			} else if err := sqlDB.Close(); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("close database after initialization failure: %w", err))
+			}
+		}
+		if logSystem != nil {
+			if err := logSystem.Close(); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("close logs after initialization failure: %w", err))
+			}
+		}
+		if len(cleanupErrors) > 0 {
+			resultErr = errors.Join(append([]error{resultErr}, cleanupErrors...)...)
+		}
+	}()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	logSystem, err := erplogger.New(cfg.Log)
+	logSystem, err = erplogger.New(cfg.Log)
 	if err != nil {
 		return nil, err
 	}
 
-	db, err := database.Open(cfg.Database.Path)
+	db, err = database.Open(cfg.Database.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +403,16 @@ func (l *readyListener) Accept() (net.Conn, error) {
 // 参数说明：无。
 // 返回说明：服务启动失败或优雅关闭失败时返回错误。
 func (a *App) Run() error {
-	runContext, cancelRun := context.WithCancel(context.Background())
+	runContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return a.RunContext(runContext, nil)
+}
+
+// RunContext 启动服务，直到上下文取消或 HTTP/UDP 服务异常退出。
+// ready 在 HTTP、数据库和 UDP 发现均可用后关闭；传 nil 表示不需要就绪通知。
+// 调用返回前会完成优雅关闭，便于托盘程序在同一进程内串行重启服务。
+func (a *App) RunContext(ctx context.Context, ready chan<- struct{}) error {
+	runContext, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	discoveryEnabled := a.DiscoveryService != nil && a.DiscoveryService.Enabled()
 	if discoveryEnabled {
@@ -418,10 +451,9 @@ func (a *App) Run() error {
 			return a.shutdownAfterRunError(fmt.Errorf("start discovery service: %w", err))
 		}
 	}
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(stop)
+	if ready != nil {
+		close(ready)
+	}
 	var discoveryErrors <-chan error
 	if a.DiscoveryService != nil {
 		discoveryErrors = a.DiscoveryService.Errors()
@@ -438,7 +470,7 @@ func (a *App) Run() error {
 			return a.shutdownAfterRunError(errors.New("discovery service stopped unexpectedly"))
 		}
 		return a.shutdownAfterRunError(err)
-	case <-stop:
+	case <-ctx.Done():
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		cancelRun()

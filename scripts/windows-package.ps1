@@ -41,7 +41,16 @@ try {
   Push-Location web
   try { npm ci; npm run build } finally { Pop-Location }
   $env:CGO_ENABLED = '1'
-  go build -tags nodynamic -trimpath -ldflags "-s -w -X bb_erp_echo/internal/buildinfo.Version=$Version" -o (Join-Path $outputRoot 'bb-erp-server.exe') ./cmd/server
+  $serverResource = Join-Path $repoRoot 'cmd/server-tray/rsrc_windows_amd64.syso'
+  Push-Location (Join-Path $repoRoot 'cmd/server-tray')
+  try {
+    windres -i server-tray.rc -O coff -o $serverResource
+  } finally { Pop-Location }
+  try {
+    go build -tags nodynamic -trimpath -ldflags "-s -w -H=windowsgui -X bb_erp_echo/internal/buildinfo.Version=$Version" -o (Join-Path $outputRoot 'bb-erp-server.exe') ./cmd/server-tray
+  } finally {
+    Remove-Item -LiteralPath $serverResource -Force -ErrorAction SilentlyContinue
+  }
   $tauriConfigPath = Join-Path $outputRoot 'tauri-version.json'
   Write-Utf8NoBom $tauriConfigPath (@{version=$Version;bundle=@{active=$false}} | ConvertTo-Json -Compress)
   $env:BB_ERP_UPDATE_PUBLIC_KEY = $publicKey
@@ -59,20 +68,25 @@ Copy-Item -LiteralPath $serverExe -Destination (Join-Path $serverStage 'bb-erp-s
 Copy-Item -LiteralPath (Join-Path $repoRoot 'web/dist') -Destination (Join-Path $serverStage 'web/dist') -Recurse
 Write-Utf8NoBom (Join-Path $serverStage 'update-public.key') $publicKey
 Write-Utf8NoBom (Join-Path $serverStage 'version.json') (([ordered]@{version=$Version;server_version=$Version}) | ConvertTo-Json -Compress)
-Set-Content -LiteralPath (Join-Path $serverStage '启动服务端.bat') -Encoding ASCII -Value @'
-@echo off
-cd /d "%~dp0"
-set BB_ERP_APP_ENVIRONMENT=production
-set BB_ERP_HTTP_HOST=0.0.0.0
-set BB_ERP_HTTP_PORT=8080
-set BB_ERP_DATABASE_PATH=data\erp.db
-set BB_ERP_LOG_DIR=logs
-set BB_ERP_FILES_ROOT_DIR=static\uploads
-set BB_ERP_WEB_ENABLED=true
-set BB_ERP_WEB_DIST_DIR=web\dist
-set BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
-bb-erp-server.exe
-pause
+Set-Content -LiteralPath (Join-Path $serverStage '启动服务端.vbs') -Encoding Unicode -Value @'
+Option Explicit
+Dim shell, environment, fileSystem, serverDirectory
+Set shell = CreateObject("WScript.Shell")
+Set environment = shell.Environment("Process")
+Set fileSystem = CreateObject("Scripting.FileSystemObject")
+serverDirectory = fileSystem.GetParentFolderName(WScript.ScriptFullName)
+environment("BB_ERP_APP_ENVIRONMENT") = "production"
+environment("BB_ERP_HTTP_HOST") = "0.0.0.0"
+environment("BB_ERP_HTTP_PORT") = "8080"
+environment("BB_ERP_DATABASE_PATH") = "data\erp.db"
+environment("BB_ERP_LOG_DIR") = "logs"
+environment("BB_ERP_LOG_CONSOLE") = "false"
+environment("BB_ERP_FILES_ROOT_DIR") = "static\uploads"
+environment("BB_ERP_WEB_ENABLED") = "true"
+environment("BB_ERP_WEB_DIST_DIR") = "web\dist"
+environment("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE") = "update-public.key"
+shell.CurrentDirectory = serverDirectory
+shell.Run Chr(34) & fileSystem.BuildPath(serverDirectory, "bb-erp-server.exe") & Chr(34), 0, False
 '@
 
 $env:RELEASE_CLIENT_EXE = $clientExe
@@ -87,13 +101,33 @@ Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
 
 Copy-Item -LiteralPath $serverStage -Destination (Join-Path $allInOneStage 'server') -Recurse
 Copy-Item -LiteralPath $clientUpdateStage -Destination (Join-Path $allInOneStage 'client') -Recurse
-Set-Content -LiteralPath (Join-Path $allInOneStage '启动系统.bat') -Encoding ASCII -Value @'
-@echo off
-start "BB ERP Server" /d "%~dp0server" "%~dp0server\启动服务端.bat"
-timeout /t 3 /nobreak >nul
-start "BB ERP Client" "%~dp0client\bb_erp_client.exe"
+Set-Content -LiteralPath (Join-Path $allInOneStage '启动系统.vbs') -Encoding Unicode -Value @'
+Option Explicit
+Dim shell, fileSystem, rootDirectory, request, deadline, ready
+Set shell = CreateObject("WScript.Shell")
+Set fileSystem = CreateObject("Scripting.FileSystemObject")
+rootDirectory = fileSystem.GetParentFolderName(WScript.ScriptFullName)
+shell.Run Chr(34) & fileSystem.BuildPath(rootDirectory, "server\启动服务端.vbs") & Chr(34), 0, False
+deadline = DateAdd("s", 60, Now)
+ready = False
+Do While Now < deadline And Not ready
+  On Error Resume Next
+  Set request = CreateObject("WinHttp.WinHttpRequest.5.1")
+  request.SetTimeouts 2000, 2000, 2000, 2000
+  request.Open "GET", "http://127.0.0.1:8080/ready", False
+  request.Send
+  ready = (Err.Number = 0 And request.Status = 200 And InStr(request.ResponseText, Chr(34) & "status" & Chr(34) & ":" & Chr(34) & "ready" & Chr(34)) > 0)
+  Err.Clear
+  On Error GoTo 0
+  If Not ready Then WScript.Sleep 500
+Loop
+If Not ready Then
+  MsgBox "博邦服务未在 60 秒内就绪，请查看服务端托盘状态和日志。", 16, "博邦 ERP"
+  WScript.Quit 1
+End If
+shell.Run Chr(34) & fileSystem.BuildPath(rootDirectory, "client\bb_erp_client.exe") & Chr(34), 1, False
 '@
-Write-Utf8NoBom (Join-Path $allInOneStage 'README.txt') "博邦 ERP Windows 完整包`r`n版本：$Version`r`n解压后运行 启动系统.bat。服务端数据目录升级时必须保留。"
+Write-Utf8NoBom (Join-Path $allInOneStage 'README.txt') "博邦 ERP Windows 完整包`r`n版本：$Version`r`n解压后运行 启动系统.vbs。服务端数据目录升级时必须保留。"
 
 Compress-Directory $serverStage (Join-Path $outputRoot "bb-erp-server-windows-v$Version.zip")
 Compress-Directory $clientUpdateStage (Join-Path $outputRoot "bb-erp-client-update-windows-v$Version.zip")

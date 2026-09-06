@@ -1,5 +1,11 @@
 # Go 后端状态
 
+## Windows 服务端托盘化（2026-09-07）
+
+Windows 正式服务端改为无控制台的单实例托盘入口，保留原控制台入口供开发与非 Windows 环境使用。托盘以 `/ready` 为就绪边界，显示全部有效私网 IPv4 地址，并提供检查、串行重启、日志/服务目录和带确认的优雅退出。本轮不改变 HTTP API、权限、数据库或客户端协议。Windows 真机托盘、通知、高对比菜单、多网卡变更和 Server 2016 行为必须作为独立发布验收，不由本机静态检查代替。
+
+已通过 `go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/servertray ./internal/app ./internal/discovery`、Windows amd64 GUI 子系统语法交叉构建、Windows 包静态契约检查与 `git diff --check`。交叉构建使用 `CGO_ENABLED=0` 仅验证 Windows 条件代码和 PE GUI 子系统；正式 SQLite `CGO_ENABLED=1`、`windres` EXE 图标、VBS 启动器与托盘运行态仍待 Windows CI/真机验收。
+
 ## 内网单 EXE 更新重构（2026-09-07）
 
 本轮替换旧更新契约：服务端不再调度外部清单、下载自身升级包或提供系统更新权限；客户端只通过匿名 protocol v1 单 EXE 接口检查和下载。后端测试已覆盖固定 `../client` 投放目录、严格签名信封、哈希/大小、原子缓存快照、并发刷新、204/503 及 Range/ETag；Swagger 三份产物已重新生成。本机静态/单元测试不能替代 Windows 内网下载、替换、启动确认和回滚验收。
