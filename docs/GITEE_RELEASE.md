@@ -12,6 +12,8 @@
 - `bb-erp-client-update-windows-v<版本>.zip`：投放到服务器根目录的 `client` 目录。
 - `bb-erp-server-windows-v<版本>.zip`：管理员人工替换服务端程序。
 
+Artifact 文件名与服务端版本使用发布标签；客户端 EXE 和 `client-update.json` 内的更新版本独立取自 `client/src-tauri/tauri.conf.json`。这使服务端发布版本与客户端升级版本可以独立递增；CI 必须检查签名更新清单与客户端源码版本一致。
+
 客户端更新包固定包含 `bb_erp_client.exe`、`client-update.json` 和操作说明。清单是严格 JSON 信封 `{payload, signature}`；其 Base64 payload 只包含 `version`、`target: windows-x86_64` 和单个 `artifact`，artifact 只包含 `kind: portable`、`size`、`sha256`、`signature`。CI 使用受控私钥分别签署 EXE 与清单载荷，并立即用客户端内置公钥验签。私钥不得复制到服务器。
 
 ## 客户端投放

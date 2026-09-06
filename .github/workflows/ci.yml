@@ -169,6 +169,8 @@ jobs:
           $payloadPath = Join-Path $root 'client/payload.json'
           [IO.File]::WriteAllBytes($payloadPath, [Convert]::FromBase64String($manifest.payload))
           $payload = Get-Content $payloadPath -Raw | ConvertFrom-Json
+          $clientVersion = (Get-Content 'client/src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
+          if ($payload.version -ne $clientVersion) { throw "Client update version $($payload.version) does not match source version $clientVersion." }
           $exe = Join-Path $root 'client/bb_erp_client.exe'
           if ((Get-Item $exe).Length -ne $payload.artifact.size) { throw 'Packaged EXE size mismatch.' }
           if ((Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $payload.artifact.sha256) { throw 'Packaged EXE hash mismatch.' }

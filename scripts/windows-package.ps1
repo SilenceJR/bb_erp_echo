@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$Version,
+  [ValidatePattern('^$|^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$ClientVersion = '',
   [string]$OutputDir = 'release-build'
 )
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,13 @@ $stageRoot = Join-Path $outputRoot 'packages'
 $serverStage = Join-Path $stageRoot 'server'
 $clientUpdateStage = Join-Path $stageRoot 'client-update'
 $allInOneStage = Join-Path $stageRoot 'all-in-one'
+$clientConfigPath = Join-Path $repoRoot 'client/src-tauri/tauri.conf.json'
+if (-not $ClientVersion) {
+  $ClientVersion = (Get-Content -LiteralPath $clientConfigPath -Raw | ConvertFrom-Json).version
+}
+if ($ClientVersion -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+  throw "客户端版本必须是 MAJOR.MINOR.PATCH，当前值：$ClientVersion"
+}
 
 function Require-File([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw $Message }
@@ -52,7 +60,7 @@ try {
     Remove-Item -LiteralPath $serverResource -Force -ErrorAction SilentlyContinue
   }
   $tauriConfigPath = Join-Path $outputRoot 'tauri-version.json'
-  Write-Utf8NoBom $tauriConfigPath (@{version=$Version;bundle=@{active=$false}} | ConvertTo-Json -Compress)
+  Write-Utf8NoBom $tauriConfigPath (@{version=$ClientVersion;bundle=@{active=$false}} | ConvertTo-Json -Compress)
   $env:BB_ERP_UPDATE_PUBLIC_KEY = $publicKey
   Push-Location client
   try { npm ci; npm run desktop:build -- --no-bundle --config $tauriConfigPath } finally { Pop-Location }
@@ -91,7 +99,7 @@ shell.Run Chr(34) & fileSystem.BuildPath(serverDirectory, "bb-erp-server.exe") &
 
 $env:RELEASE_CLIENT_EXE = $clientExe
 $env:RELEASE_OUTPUT_DIR = $clientUpdateStage
-$env:RELEASE_VERSION = $Version
+$env:RELEASE_VERSION = $ClientVersion
 $env:TAURI_UPDATER_PUBLIC_KEY = $publicKey
 $env:TAURI_SIGNING_PRIVATE_KEY = $signingPrivateKey
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $signingPassword

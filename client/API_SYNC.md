@@ -1,5 +1,9 @@
 # API 同步说明
 
+## Windows 发布与客户端版本
+
+Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及签名 `client-update.json` 的版本独立取自 `src-tauri/tauri.conf.json`。`package.json`/lock、Cargo manifest/lock 和 Tauri 配置必须保持同一客户端版本；CI 会检查更新清单与该源码版本一致。当前客户端版本为 `0.1.1`。
+
 ## 2026-09-05 Astra 整改验证边界
 
 本轮不改变 API、权限、账号初始化和模块过渡契约。详情、新增和编辑共用面板载体；查看 420px，表单/图片 520px；停靠条件统一为视口至少 1440px 且扣除导航、面板、分隔及中央 48px 内边距后至少保留 720px。详情和表单采用同一套空间过渡、焦点恢复和未保存保护。Tauri 前端与 macOS 应用构建已通过；macOS原生启动、发现及进入登录页已验证，但已认证原生业务流、Windows及脱敏真实样本验收未完成。详见 [逐页验收记录](../docs/ASTRA_ACCEPTANCE.md)，不得以构建代替成品运行验收。

@@ -6,7 +6,7 @@ manifest="$script_dir/build-client-update.sh"
 for pattern in 'bb-erp-client-update-windows-v\$Version.zip' 'bb-erp-all-in-one-windows-v\$Version.zip' 'client-update.json' 'bb_erp_client.exe' 'update-public.key'; do
   rg -q "$pattern" "$package" "$manifest" || { echo "windows package missing: $pattern" >&2; exit 1; }
 done
-for pattern in './cmd/server-tray' 'H=windowsgui' 'BB_ERP_LOG_CONSOLE.*false' 'WinHttp\.WinHttpRequest\.5\.1' '启动服务端\.vbs' '启动系统\.vbs' 'windres.*server-tray\.rc'; do
+for pattern in './cmd/server-tray' 'H=windowsgui' 'BB_ERP_LOG_CONSOLE.*false' 'WinHttp\.WinHttpRequest\.5\.1' '启动服务端\.vbs' '启动系统\.vbs' 'windres.*server-tray\.rc' 'ClientVersion' 'RELEASE_VERSION = \$ClientVersion'; do
   rg -q "$pattern" "$package" || { echo "Windows tray package missing: $pattern" >&2; exit 1; }
 done
 if rg -q '^pause$|timeout /t 3|启动服务端\.bat|启动系统\.bat' "$package"; then
