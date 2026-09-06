@@ -27,54 +27,41 @@ export interface NativeFileDragDetail {
   error?: string
 }
 
-// 更新中心状态字段保持可选，以容忍服务端停用更新或尚未完成首次检查。
-export interface UpdatePackageStatus {
-  current_version?: string
-  latest_version?: string
-  available?: boolean
-  cached?: boolean
-  file_name?: string
-  download_path?: string
-  download_url?: string
-  size?: number
-  sha256?: string
-  message?: string
-}
+export type DesktopUpdateErrorCode =
+  | 'server_unreachable'
+  | 'server_unavailable'
+  | 'not_published'
+  | 'integrity_failure'
+  | 'directory_not_writable'
+  | 'unsupported_platform'
+  | 'plan_changed'
+  | 'rolled_back'
+  | 'unknown'
 
-export interface SystemUpdateStatus {
-  enabled?: boolean
-  manifest_url?: string
-  source?: string
-  reachable?: boolean
-  checking?: boolean
-  check_interval?: string
-  last_attempt_at?: string
-  last_success_at?: string
-  next_check_at?: string
-  last_error?: string
-  error?: string
-  server?: UpdatePackageStatus
-  server_update?: UpdatePackageStatus
-  client_protocol_version?: number
-  client_full_cached?: boolean
-  client_cache_bytes?: number
-  [key: string]: unknown
-}
-
-export type DesktopUpdateState = 'Idle' | 'Checking' | 'Ready' | 'Downloading' | 'Verifying' | 'Applying' | 'Restarting' | 'Failed'
+export type DesktopUpdateState =
+  | 'Idle'
+  | 'Checking'
+  | 'Ready'
+  | 'Downloading'
+  | 'Verifying'
+  | 'Applying'
+  | 'Restarting'
+  | 'Updated'
+  | 'RolledBack'
+  | 'Failed'
 
 // 桌面升级计划由 Rust 校验后返回。Vue 只展示计划摘要，不读取资源 URL、
 // 本地路径或签名内容，避免把安全决策下放到 WebView。
 export interface DesktopUpdatePlan {
-  current_version?: string
-  latest_version?: string
-  version?: string
+  protocol_version: 1
+  current_version: string
+  latest_version: string
+  target: 'windows-x86_64'
   strategy: 'full'
-  download_size?: number
-  full_size?: number
-  message?: string
-  artifact?: Record<string, unknown>
-  [key: string]: unknown
+  download_size: number
+  signed_payload: string
+  signature: string
+  artifact: {kind: 'portable'; size: number; sha256: string; signature: string; download_path: string}
 }
 
 export interface DesktopUpdateProgress {
@@ -82,6 +69,9 @@ export interface DesktopUpdateProgress {
   message?: string
   downloaded_bytes?: number
   total_bytes?: number
+  error_code?: DesktopUpdateErrorCode | string
+  request_id?: string
+  strategy?: 'full' | 'portable' | string
 }
 
 export interface DesktopUpdateApplyResult {
@@ -89,6 +79,9 @@ export interface DesktopUpdateApplyResult {
   state?: DesktopUpdateState
   message?: string
   restart_required?: boolean
+  error_code?: DesktopUpdateErrorCode | string
+  request_id?: string
+  rolled_back?: boolean
   [key: string]: unknown
 }
 

@@ -80,7 +80,6 @@
 .service-status span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .service-status.is-checking { background: var(--bb-info-bg); color: var(--bb-info); }
 .service-status.is-error { background: var(--bb-danger-bg); color: var(--bb-danger); }
-.client-update { display: flex; align-items: center; gap: var(--bb-space-2); border: 1px solid var(--bb-border-default); border-radius: var(--bb-radius-sm); background: var(--bb-bg-surface); padding: var(--bb-space-1) var(--bb-space-3); color: var(--bb-text-secondary); font-size: var(--bb-font-size-12); font-weight: var(--bb-font-weight-semibold); white-space: nowrap; }
 .workspace-detail-host { grid-column: 3; grid-row: 2; min-width: 0; min-height: 0; overflow: hidden; border-left: 1px solid transparent; background: var(--bb-bg-elevated); }
 .workspace.has-docked-detail .workspace-detail-host { border-left-color: var(--bb-border-default); }
 .mobile-nav-backdrop { display: none; }

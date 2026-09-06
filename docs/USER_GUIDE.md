@@ -348,21 +348,17 @@ completed          完成
 
 ### 更新能力
 
-Windows 客户端通过当前内网 ERP 服务检查并安装完整更新。更新资源不会由 WebView 直接访问外部地址；服务端代理资源，客户端再次校验签名、大小和 SHA-256。
+Windows Tauri 客户端通过当前已验证的内网 ERP 服务检查并安装完整单 EXE 更新；普通 Web 页面不显示安装功能。检查无需登录：登录页提供“检查更新”，登录后可在“设置 / 客户端更新”再次检查。客户端连接并验证服务器后会静默检查一次；发现新版才提示，可选择稍后处理。
 
 相关接口：
 
 - `GET /api/v1/version`
-- `GET /api/v1/updates/client/plan`
-- `GET /api/v1/updates/client/tauri/windows/x86_64/:current_version`
-- `GET /api/v1/updates/client/artifacts/:sha256`
-- `POST /api/v1/system/updates/check`
+- `GET /api/v1/client-updates/check?current_version=<当前版本>`
+- `GET /api/v1/client-updates/artifacts/:sha256`
 
-只支持当前 Windows full-only 契约，不提供差分包、旧 ZIP 或旧客户端回退。服务端更新检查默认关闭，可以配置 HTTP 清单，也可以将完整离线更新包解压到服务器 `updates/releases/incoming/v<版本>`，再从已安装的 `server` 目录运行 `激活离线更新.ps1 -IncomingDir updates/releases/incoming/v<版本>`，验证并原子切换到 `updates/releases/active`；禁止运行 incoming 内程序或直接覆盖 active。激活只信任安装目录中受保护的公钥与验证器，不支持离线包自行更换密钥。随后设置 `BB_ERP_UPDATE_SOURCE=directory`、`BB_ERP_UPDATE_RELEASE_DIR=updates/releases/active` 和可信更新公钥后启用。目录模式不会访问公网，且只接受带 `.release-ready` 激活标记并通过路径、签名、大小、SHA-256 和 ZIP 结构校验的完整发布。更新前系统会先检查未保存内容；便携版使用同目录暂存和启动确认，NSIS 版使用签名安装器，失败不会覆盖当前可运行客户端。
+只支持版本更高的 Windows x64 portable EXE；不提供差分包、安装版、降级、外部下载地址或旧更新接口。发现更新后，客户端会先检查未保存内容，下载到临时目录并再次校验签名、大小和 SHA-256；临时助手完成原子替换和重启。新版本未正常启动时，客户端会自动恢复旧 EXE 并给出结果提示。只读目录、`Program Files` 或网络共享目录不会尝试提权，应将客户端移至本机可写目录后重试。
 
-Windows 打包电脑在仓库根目录运行 `.\scripts\windows-package.ps1 -Version 0.0.13` 时只生成 all-in-one；追加 `-Target All` 时同时生成 `bb-erp-offline-update-v0.0.13.zip`。离线更新 ZIP 必须完整解压，不能只复制其中某个 EXE 或仍在复制时直接切换为 active。
-
-Web 更新中心只下载服务端升级包；Windows 客户端更新必须在 Tauri 客户端内完成，不提供无法校验和应用的“完整 ZIP 故障恢复”下载卡片。
+服务端程序不检查、不下载或自动替换。管理员必须停服、备份 `server` 目录中的程序、配置、数据、上传、日志后，人工替换服务端 Artifact 中的程序和 `web/dist`，保留业务数据目录；启动后检查 `/health`、`/ready`、登录和 `/api/v1/version`。详细的客户端投放与人工升级步骤见 [Windows 内网离线发布](GITEE_RELEASE.md)。
 
 ## 8. 权限说明
 

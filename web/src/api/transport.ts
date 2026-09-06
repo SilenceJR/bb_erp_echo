@@ -7,6 +7,14 @@ export interface DesktopFileUploadResult {
   body: string
 }
 
+/** The updater is deliberately a single portable Windows executable. */
+export interface DesktopUpdateCapabilities {
+  supported: boolean
+  target?: 'windows-x86_64' | string
+  strategy?: 'full' | 'portable' | string
+  reason?: string
+}
+
 // HttpTransport 隔离业务请求与运行平台的网络实现。
 // Web 使用浏览器同源 fetch；Tauri 在启动时注入 Rust HTTP 插件实现。
 export interface HttpTransport {
@@ -26,6 +34,8 @@ export interface DesktopHttpBridge extends HttpTransport {
   applyClientUpdate(plan: DesktopUpdatePlan): Promise<DesktopUpdateApplyResult>
   clientUpdateStatus(): Promise<DesktopUpdateProgress>
   onClientUpdateProgress(handler: (progress: DesktopUpdateProgress) => void): Promise<() => void>
+  /** Optional so older embedded bridges can still load the shared Web shell. */
+  clientUpdateCapabilities?: () => Promise<DesktopUpdateCapabilities>
 }
 
 declare global {

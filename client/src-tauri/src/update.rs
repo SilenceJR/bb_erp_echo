@@ -7,8 +7,6 @@ use crate::discovery::private_or_loopback_ipv4;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use minisign_verify::{PublicKey, Signature};
 use reqwest::{redirect::Policy, Client, Url};
-#[cfg(windows)]
-use reqwest_updater::redirect::Policy as UpdaterRedirectPolicy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,9 +20,8 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
-const PLAN_PATH: &str = "/api/v1/updates/client/plan";
+const PLAN_PATH: &str = "/api/v1/client-updates/check";
 const READY_TIMEOUT: Duration = Duration::from_secs(90);
-const PORTABLE_MARKER: &str = "bb-erp-portable.json";
 
 #[derive(Default)]
 pub struct UpdateEngine {
@@ -33,7 +30,7 @@ pub struct UpdateEngine {
     busy: Mutex<bool>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct UpdateSnapshot {
     pub state: String,
@@ -41,6 +38,8 @@ pub struct UpdateSnapshot {
     pub downloaded_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
     pub strategy: Option<String>,
+    pub error_code: Option<String>,
+    pub request_id: Option<String>,
 }
 
 impl Default for UpdateSnapshot {
@@ -51,6 +50,8 @@ impl Default for UpdateSnapshot {
             downloaded_bytes: None,
             total_bytes: None,
             strategy: None,
+            error_code: None,
+            request_id: None,
         }
     }
 }
@@ -72,40 +73,25 @@ pub struct ClientUpdatePlan {
     pub current_version: String,
     pub latest_version: String,
     pub target: String,
-    pub install_mode: String,
     pub strategy: String,
     pub download_size: u64,
-    pub full_size: u64,
     pub signed_payload: String,
     pub signature: String,
     pub artifact: UpdateArtifact,
-    #[serde(default)]
-    pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SignedPayload {
-    protocol_version: u32,
     version: String,
     target: String,
-    layout_version: u32,
-    full: SignedFull,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SignedFull {
-    nsis: SignedAsset,
-    portable: SignedAsset,
+    artifact: SignedAsset,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SignedAsset {
     kind: String,
-    #[serde(rename = "url")]
-    _url: String,
     size: u64,
     sha256: String,
     signature: String,
@@ -119,12 +105,68 @@ pub struct UpdateApplyResult {
     pub message: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct UpdateCapabilities {
+    pub supported: bool,
+    pub target: &'static str,
+    pub strategy: &'static str,
+    pub reason: Option<&'static str>,
+}
+
+#[tauri::command]
+pub fn client_update_capabilities() -> UpdateCapabilities {
+    UpdateCapabilities {
+        supported: cfg!(windows),
+        target: "windows-x86_64",
+        strategy: "full",
+        reason: if cfg!(windows) {
+            None
+        } else {
+            Some("仅 Windows 客户端支持单 EXE 更新")
+        },
+    }
+}
+
 pub fn update_public_key() -> Option<&'static str> {
     option_env!("BB_ERP_UPDATE_PUBLIC_KEY").filter(|key| !key.trim().is_empty())
 }
 
 fn error(message: impl Into<String>) -> String {
     message.into()
+}
+
+fn classify_update_error(message: &str) -> &'static str {
+    if message.contains("不可更新") || message.contains("不可写") {
+        "directory_not_writable"
+    } else if message.contains("未发布") || message.contains("暂无有效") {
+        "not_published"
+    } else if message.contains("计划已变化") || message.contains("更新已不可用") {
+        "plan_changed"
+    } else if message.contains("平台") || message.contains("仅支持单 EXE") {
+        "unsupported_platform"
+    } else if message.contains("签名")
+        || message.contains("哈希")
+        || message.contains("SHA-256")
+        || message.contains("公钥")
+        || message.contains("完整性")
+        || message.contains("载荷")
+        || message.contains("资源大小")
+        || message.contains("格式无效")
+    {
+        "integrity_failure"
+    } else if message.contains("验证服务器")
+        || message.contains("健康检查")
+        || message.contains("连接")
+        || message.contains("超时")
+        || message.contains("网络")
+        || message.contains("下载更新失败")
+    {
+        "server_unreachable"
+    } else if message.contains("HTTP 503") || message.contains("更新服务") {
+        "server_unavailable"
+    } else {
+        "unknown"
+    }
 }
 
 fn sha256_file(path: &Path) -> std::io::Result<String> {
@@ -233,40 +275,41 @@ fn current_version(app: &AppHandle) -> String {
 }
 
 async fn ensure_verified_server(origin: &Url) -> Result<(), String> {
-    let health = artifact_url(origin, "/health")?;
-    let response = http_client()?
-        .get(health)
-        .send()
+    crate::discovery::verify_internal_origin(origin.clone())
         .await
-        .map_err(|e| format!("无法验证服务器：{e}"))?;
-    if !response.status().is_success() {
-        return Err(error("服务器健康检查失败，拒绝下载更新"));
-    }
+        .map_err(|e| format!("无法验证博邦 ERP 服务器：{e}"))?;
     Ok(())
 }
 
 async fn fetch_plan(origin: &Url, app: &AppHandle) -> Result<Option<ClientUpdatePlan>, String> {
     let mut url = artifact_url(origin, PLAN_PATH)?;
     url.query_pairs_mut()
-        .append_pair("current_version", &current_version(app))
-        .append_pair("target", "windows-x86_64")
-        .append_pair(
-            "install_mode",
-            if is_portable()? { "portable" } else { "nsis" },
-        );
+        .append_pair("current_version", &current_version(app));
     let response = http_client()?
         .get(url)
         .send()
         .await
         .map_err(|e| format!("检查更新失败：{e}"))?;
     if response.status() == reqwest::StatusCode::NO_CONTENT {
+        if response
+            .headers()
+            .get("x-client-update-status")
+            .and_then(|value| value.to_str().ok())
+            == Some("not_published")
+        {
+            return Err(error("服务器尚未发布客户端更新"));
+        }
         return Ok(None);
+    }
+    if response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+        return Err(error(
+            "更新文件未通过完整性校验，请联系管理员核对服务器投放包",
+        ));
     }
     if !response.status().is_success() {
         return Err(format!("更新服务返回 HTTP {}", response.status()));
     }
-    response
-        .json::<ClientUpdatePlan>()
+    crate::discovery::json_limited::<ClientUpdatePlan>(response)
         .await
         .map(Some)
         .map_err(|e| format!("更新计划格式无效：{e}"))
@@ -309,7 +352,7 @@ pub fn parse_signature_envelope(value: &str) -> Result<Signature, String> {
 }
 
 fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result<(), String> {
-    if plan.protocol_version != 2 || plan.target != "windows-x86_64" {
+    if plan.protocol_version != 1 || plan.target != "windows-x86_64" {
         return Err(error("不支持的更新协议或平台"));
     }
     let current = current_version(app);
@@ -326,25 +369,16 @@ fn verify_plan(plan: &ClientUpdatePlan, origin: &Url, app: &AppHandle) -> Result
     verify_signature(&payload_bytes, &plan.signature)?;
     let payload: SignedPayload =
         serde_json::from_slice(&payload_bytes).map_err(|_| error("更新签名载荷格式无效"))?;
-    if payload.protocol_version != 2
-        || payload.layout_version != 1
-        || payload.version != plan.latest_version
-        || payload.target != plan.target
-    {
+    if payload.version != plan.latest_version || payload.target != plan.target {
         return Err(error("更新签名载荷与更新计划不一致"));
     }
-    let expected_full = match plan.install_mode.as_str() {
-        "portable" if plan.artifact.kind == "portable" => &payload.full.portable,
-        "nsis" if plan.artifact.kind == "nsis" => &payload.full.nsis,
-        _ => return Err(error("完整更新安装模式与资源类型不一致")),
-    };
-    if plan.strategy != "full"
-        || plan.download_size != plan.artifact.size
-        || plan.full_size != plan.artifact.size
-    {
+    if plan.artifact.kind != "portable" {
+        return Err(error("仅支持单 EXE 客户端更新"));
+    }
+    if plan.strategy != "full" || plan.download_size != plan.artifact.size {
         return Err(error("更新计划不是当前 full-only 契约"));
     }
-    verify_artifact_matches(&plan.artifact, expected_full, origin)?;
+    verify_artifact_matches(&plan.artifact, &payload.artifact, origin)?;
     Ok(())
 }
 
@@ -438,6 +472,7 @@ async fn download_verified(
                 downloaded_bytes: Some(downloaded),
                 total_bytes: Some(artifact.size),
                 strategy: Some("full".into()),
+                ..Default::default()
             },
         );
     }
@@ -465,16 +500,10 @@ async fn download_verified(
             downloaded_bytes: Some(downloaded),
             total_bytes: Some(artifact.size),
             strategy: Some("full".into()),
+            ..Default::default()
         },
     );
     Ok(target)
-}
-
-fn is_portable() -> Result<bool, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(exe
-        .parent()
-        .is_some_and(|directory| directory.join(PORTABLE_MARKER).is_file()))
 }
 
 #[tauri::command]
@@ -539,6 +568,7 @@ pub async fn client_update_check(
                 UpdateSnapshot {
                     state: "Failed".into(),
                     message: Some(message.clone()),
+                    error_code: Some(classify_update_error(message).into()),
                     ..Default::default()
                 },
             );
@@ -548,7 +578,15 @@ pub async fn client_update_check(
 }
 
 #[tauri::command]
-pub fn client_update_status(engine: State<'_, UpdateEngine>) -> UpdateSnapshot {
+pub fn client_update_status(app: AppHandle, engine: State<'_, UpdateEngine>) -> UpdateSnapshot {
+    if let Ok(path) = update_result_path(&app) {
+        if let Ok(bytes) = fs::read(&path) {
+            if let Ok(result) = serde_json::from_slice::<UpdateSnapshot>(&bytes) {
+                let _ = fs::remove_file(path);
+                return result;
+            }
+        }
+    }
     engine
         .snapshot
         .lock()
@@ -614,6 +652,7 @@ pub async fn client_update_apply(
                 UpdateSnapshot {
                     state: "Failed".into(),
                     message: Some(message.clone()),
+                    error_code: Some(classify_update_error(message).into()),
                     ..Default::default()
                 },
             );
@@ -630,138 +669,27 @@ async fn apply_full(
     plan: &ClientUpdatePlan,
 ) -> Result<String, String> {
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    if should_use_portable_full(
-        is_portable()?,
-        ensure_target_parent_writable(&current).is_ok(),
-    ) {
-        let replacement = download_verified(app, engine, origin, &plan.artifact).await?;
-        emit(
-            engine,
-            app,
-            UpdateSnapshot {
-                state: "Applying".into(),
-                message: Some("正在准备完整客户端替换".into()),
-                strategy: Some("full".into()),
-                ..Default::default()
-            },
-        );
-        return schedule_portable_replace(app, engine, &replacement);
-    }
-    apply_nsis_full(app, engine, origin, plan).await
-}
-
-fn should_use_portable_full(portable_marker: bool, target_writable: bool) -> bool {
-    portable_marker && target_writable
-}
-
-#[cfg(windows)]
-async fn apply_nsis_full(
-    app: &AppHandle,
-    engine: &UpdateEngine,
-    origin: &Url,
-    plan: &ClientUpdatePlan,
-) -> Result<String, String> {
-    use tauri_plugin_updater::UpdaterExt;
-    let endpoint = artifact_url(
-        origin,
-        &format!(
-            "/api/v1/updates/client/tauri/windows/x86_64/{}",
-            current_version(app)
-        ),
-    )?;
-    let updater = app
-        .updater_builder()
-        .no_proxy()
-        .configure_client(|builder| builder.redirect(UpdaterRedirectPolicy::none()))
-        .endpoints(vec![endpoint])
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())?;
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| format!("完整更新检查失败：{e}"))?
-        .ok_or_else(|| error("完整更新已不可用"))?;
-    validate_nsis_update_metadata(
+    ensure_target_parent_writable(&current)?;
+    let update_lock = acquire_update_file_lock(&current)?;
+    let replacement = download_verified(app, engine, origin, &plan.artifact).await?;
+    emit(
+        engine,
+        app,
+        UpdateSnapshot {
+            state: "Applying".into(),
+            message: Some("正在准备单 EXE 客户端替换".into()),
+            strategy: Some("full".into()),
+            ..Default::default()
+        },
+    );
+    schedule_portable_replace(
+        app,
+        engine,
+        &replacement,
+        &plan.current_version,
         &plan.latest_version,
-        &plan.artifact,
-        origin,
-        &update.version,
-        &update.download_url,
-        &update.signature,
-    )?;
-    let mut total_downloaded = 0_u64;
-    emit(
-        engine,
-        app,
-        UpdateSnapshot {
-            state: "Downloading".into(),
-            message: Some("正在下载完整更新".into()),
-            strategy: Some("full".into()),
-            ..Default::default()
-        },
-    );
-    update
-        .download_and_install(
-            |chunk_size, total| {
-                total_downloaded += chunk_size as u64;
-                emit(
-                    engine,
-                    app,
-                    UpdateSnapshot {
-                        state: "Downloading".into(),
-                        message: Some("正在下载完整更新".into()),
-                        downloaded_bytes: Some(total_downloaded),
-                        total_bytes: total,
-                        strategy: Some("full".into()),
-                    },
-                )
-            },
-            || {
-                emit(
-                    engine,
-                    app,
-                    UpdateSnapshot {
-                        state: "Applying".into(),
-                        message: Some("正在验证并安装完整更新".into()),
-                        strategy: Some("full".into()),
-                        ..Default::default()
-                    },
-                )
-            },
-        )
-        .await
-        .map_err(|e| format!("完整更新安装失败：{e}"))?;
-    emit(
-        engine,
-        app,
-        UpdateSnapshot {
-            state: "Restarting".into(),
-            message: Some("完整更新安装完成，正在重启客户端".into()),
-            strategy: Some("full".into()),
-            ..Default::default()
-        },
-    );
-    Ok("完整安装程序已启动，客户端将重启".into())
-}
-
-fn validate_nsis_update_metadata(
-    planned_version: &str,
-    artifact: &UpdateArtifact,
-    origin: &Url,
-    update_version: &str,
-    download_url: &Url,
-    signature: &str,
-) -> Result<(), String> {
-    let expected_url = artifact_url(origin, &artifact.download_path)?;
-    if artifact.kind != "nsis"
-        || update_version != planned_version
-        || download_url != &expected_url
-        || signature != artifact.signature
-    {
-        return Err(error("安装器更新信息与已验签计划不一致"));
-    }
-    Ok(())
+        update_lock,
+    )
 }
 
 #[cfg(windows)]
@@ -769,6 +697,9 @@ fn schedule_portable_replace(
     app: &AppHandle,
     engine: &UpdateEngine,
     replacement: &Path,
+    current_version: &str,
+    latest_version: &str,
+    mut update_lock: UpdateFileLock,
 ) -> Result<String, String> {
     use std::{
         process::Command,
@@ -788,6 +719,7 @@ fn schedule_portable_replace(
         .as_nanos();
     let helper = cache.join(format!("apply-{nonce}.exe"));
     let ready = cache.join(format!("ready-{nonce}.marker"));
+    let result_file = update_result_path(app)?;
     let staged_replacement = stage_replacement_for_target(replacement, &current)?;
     fs::copy(&current, &helper).map_err(|e| {
         let _ = fs::remove_file(&staged_replacement);
@@ -805,6 +737,16 @@ fn schedule_portable_replace(
             &pid.to_string(),
             "--ready-marker",
             &ready.to_string_lossy(),
+            "--result-file",
+            &result_file.to_string_lossy(),
+            "--old-version",
+            current_version,
+            "--new-version",
+            latest_version,
+            "--update-lock",
+            &update_lock.path.to_string_lossy(),
+            "--update-lock-token",
+            &update_lock.token,
         ])
         .spawn()
         .map_err(|e| {
@@ -812,6 +754,7 @@ fn schedule_portable_replace(
             let _ = fs::remove_file(&helper);
             format!("无法启动更新助手：{e}")
         })?;
+    update_lock.disarm();
     emit(
         engine,
         app,
@@ -862,6 +805,11 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     let target = helper_value(args, "--target")?;
     let replacement = helper_value(args, "--replacement")?;
     let ready = helper_value(args, "--ready-marker")?;
+    let result_file = helper_value(args, "--result-file")?;
+    let old_version = helper_string(args, "--old-version")?;
+    let new_version = helper_string(args, "--new-version")?;
+    let lock_path = helper_value(args, "--update-lock")?;
+    let lock_token = helper_string(args, "--update-lock-token")?;
     let parent_pid = args
         .iter()
         .position(|arg| arg == "--parent-pid")
@@ -872,13 +820,20 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     if !target.is_absolute()
         || !replacement.is_absolute()
         || !ready.is_absolute()
+        || !result_file.is_absolute()
+        || lock_path != target.with_extension("update.lock")
+        || lock_token.len() != 32
         || !replacement.is_file()
+        || result_file.parent() != ready.parent()
+        || Version::parse(old_version.trim_start_matches('v')).is_err()
+        || Version::parse(new_version.trim_start_matches('v')).is_err()
     {
         return Err(error("更新助手路径不合法"));
     }
     if replacement.parent() != target.parent() {
         return Err(error("更新暂存文件必须位于客户端安装目录"));
     }
+    let _update_lock = adopt_update_file_lock(&lock_path, parent_pid, &lock_token)?;
     let backup = target.with_extension("old");
     let old_exit_deadline = phase_deadline(Instant::now());
     while process_exists(parent_pid) && Instant::now() < old_exit_deadline {
@@ -886,6 +841,7 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     }
     if process_exists(parent_pid) {
         let _ = fs::remove_file(&replacement);
+        write_update_result(&result_file, "Failed", "等待旧客户端退出超时，更新未应用");
         return Err(error("等待旧客户端退出超时"));
     }
     let _ = fs::remove_file(&ready);
@@ -893,27 +849,38 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     if let Err(error) = fs::rename(&target, &backup) {
         let _ = fs::remove_file(&replacement);
         let _ = restart_original(&target);
+        write_update_result(
+            &result_file,
+            "Failed",
+            &format!("无法备份旧客户端，更新未应用：{error}"),
+        );
         return Err(format!("无法备份旧客户端：{error}"));
     }
     if let Err(e) = fs::rename(&replacement, &target) {
         let _ = fs::remove_file(&replacement);
-        let _ = fs::rename(&backup, &target);
-        let _ = restart_original(&target);
-        return Err(format!("无法替换客户端：{e}"));
+        let recovery = recover_original(&target, &backup, restart_original);
+        let message = combine_update_errors("无法替换客户端", e.to_string(), recovery);
+        write_update_result(&result_file, "RolledBack", &message);
+        return Err(message);
     }
     let mut child = match Command::new(&target)
         .arg("--update-ready-marker")
         .arg(&ready)
+        .arg("--update-result-file")
+        .arg(&result_file)
+        .arg("--updated-from")
+        .arg(&old_version)
+        .arg("--updated-to")
+        .arg(&new_version)
         .spawn()
     {
         Ok(child) => child,
         Err(spawn_error) => {
             let recovery = recover_original(&target, &backup, restart_original);
-            return Err(combine_update_errors(
-                "无法启动新客户端",
-                spawn_error.to_string(),
-                recovery,
-            ));
+            let message =
+                combine_update_errors("无法启动新客户端", spawn_error.to_string(), recovery);
+            write_update_result(&result_file, "RolledBack", &message);
+            return Err(message);
         }
     };
     let ready_deadline = phase_deadline(Instant::now());
@@ -930,6 +897,11 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
         thread::sleep(Duration::from_millis(250));
     }
     if ready.is_file() {
+        write_update_result(
+            &result_file,
+            "Updated",
+            &format!("客户端已更新至 {new_version}"),
+        );
         let _ = fs::remove_file(&backup);
         let _ = fs::remove_file(&ready);
         return Ok(());
@@ -945,8 +917,48 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
         "新客户端启动超时"
     };
     match recovery {
-        Ok(()) => Err(format!("{reason}，已恢复旧版本")),
-        Err(recovery_error) => Err(format!("{reason}，且恢复旧版本失败：{recovery_error}")),
+        Ok(()) => {
+            write_update_result(
+                &result_file,
+                "RolledBack",
+                &format!("{reason}，已恢复至 {old_version}"),
+            );
+            Err(format!("{reason}，已恢复旧版本"))
+        }
+        Err(recovery_error) => {
+            let message = format!("{reason}，且恢复旧版本失败：{recovery_error}");
+            write_update_result(&result_file, "Failed", &message);
+            Err(message)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn helper_string(args: &[String], name: &str) -> Result<String, String> {
+    helper_value(args, name).map(|value| value.to_string_lossy().into_owned())
+}
+
+fn update_result_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("updates");
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    Ok(directory.join("last-update-result.json"))
+}
+
+fn write_update_result(path: &Path, state: &str, message: &str) {
+    let snapshot = UpdateSnapshot {
+        state: state.into(),
+        message: Some(message.into()),
+        ..Default::default()
+    };
+    if let Ok(bytes) = serde_json::to_vec(&snapshot) {
+        let temporary = path.with_extension("tmp");
+        if fs::write(&temporary, bytes).is_ok() {
+            let _ = fs::rename(temporary, path);
+        }
     }
 }
 
@@ -1047,15 +1059,112 @@ fn hex_name(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+#[cfg(windows)]
+struct UpdateFileLock {
+    path: PathBuf,
+    token: String,
+    armed: bool,
+}
+
+#[cfg(windows)]
+impl UpdateFileLock {
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+#[cfg(windows)]
+impl Drop for UpdateFileLock {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn acquire_update_file_lock(target: &Path) -> Result<UpdateFileLock, String> {
+    use std::{fs::OpenOptions, io::Write};
+    let path = target.with_extension("update.lock");
+    for _ in 0..2 {
+        let mut random = [0_u8; 16];
+        getrandom::fill(&mut random).map_err(|_| error("无法生成更新锁"))?;
+        let token = hex_name(&random);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                file.write_all(format!("{}:{token}", std::process::id()).as_bytes())
+                    .and_then(|_| file.sync_all())
+                    .map_err(|e| format!("无法写入更新锁：{e}"))?;
+                return Ok(UpdateFileLock {
+                    path,
+                    token,
+                    armed: true,
+                });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let owner = fs::read_to_string(&path).unwrap_or_default();
+                let owner_pid = owner.split(':').next().and_then(|v| v.parse::<u32>().ok());
+                if owner_pid.is_some_and(process_exists) {
+                    return Err(error("另一个客户端进程正在更新，请等待完成"));
+                }
+                fs::remove_file(&path).map_err(|_| error("无法清理失效更新锁"))?;
+            }
+            Err(e) => return Err(format!("无法创建更新锁：{e}")),
+        }
+    }
+    Err(error("无法获取客户端更新锁"))
+}
+
+#[cfg(windows)]
+fn adopt_update_file_lock(
+    path: &Path,
+    parent_pid: u32,
+    token: &str,
+) -> Result<UpdateFileLock, String> {
+    use std::io::{Seek, SeekFrom, Write};
+    let expected = format!("{parent_pid}:{token}");
+    if fs::read_to_string(path).ok().as_deref() != Some(expected.as_str()) {
+        return Err(error("更新锁校验失败"));
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|e| format!("无法接管更新锁：{e}"))?;
+    let owner = format!("{}:{token}", std::process::id());
+    file.seek(SeekFrom::Start(0))
+        .and_then(|_| file.write_all(owner.as_bytes()))
+        .and_then(|_| file.set_len(owner.len() as u64))
+        .and_then(|_| file.sync_all())
+        .map_err(|e| format!("无法接管更新锁：{e}"))?;
+    Ok(UpdateFileLock {
+        path: path.to_path_buf(),
+        token: token.to_string(),
+        armed: true,
+    })
+}
+
 /// Probe the target directory before the old process exits. Windows directory
-/// ACLs are authoritative for rename/create operations; Program Files installs
-/// use the signed NSIS installer instead of direct executable replacement.
+/// ACLs are authoritative for rename/create operations. Read-only locations
+/// fail with an actionable move-to-a-writable-directory message; no UAC or
+/// installer fallback is attempted.
 fn ensure_target_parent_writable(target: &Path) -> Result<(), String> {
     use std::{
         fs::OpenOptions,
         io::Write,
         time::{SystemTime, UNIX_EPOCH},
     };
+    let path_text = target.to_string_lossy();
+    let lower_path = path_text.to_ascii_lowercase();
+    let network_share = if lower_path.starts_with(r"\\?\") {
+        lower_path.starts_with(r"\\?\unc\")
+    } else {
+        lower_path.starts_with(r"\\") || lower_path.starts_with("//")
+    } || is_remote_windows_drive(target);
+    if network_share {
+        return Err(error(
+            "网络共享目录不支持客户端更新，请将客户端复制到本机可写目录后重试",
+        ));
+    }
     let directory = target.parent().ok_or_else(|| error("客户端路径不合法"))?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1066,12 +1175,43 @@ fn ensure_target_parent_writable(target: &Path) -> Result<(), String> {
         .write(true)
         .create_new(true)
         .open(&probe)
-        .map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
+        .map_err(|_| error("客户端所在目录不可更新，请将客户端复制到本机可写目录后重试"))?;
     file.write_all(b"probe")
         .and_then(|_| file.sync_all())
-        .map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
-    fs::remove_file(&probe).map_err(|_| error("客户端安装目录不可写，将改用完整安装更新"))?;
+        .map_err(|_| error("客户端所在目录不可更新，请将客户端复制到本机可写目录后重试"))?;
+    fs::remove_file(&probe)
+        .map_err(|_| error("客户端所在目录不可更新，请将客户端复制到本机可写目录后重试"))?;
     Ok(())
+}
+
+#[cfg(windows)]
+fn is_remote_windows_drive(path: &Path) -> bool {
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt};
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetDriveTypeW(root_path_name: *const u16) -> u32;
+    }
+    const DRIVE_REMOTE: u32 = 4;
+    let text = path.to_string_lossy();
+    let bytes = text.as_bytes();
+    let drive = if bytes.len() >= 2 && bytes[1] == b':' {
+        Some(&text[..2])
+    } else if bytes.len() >= 6 && text.starts_with(r"\\?\") && bytes[5] == b':' {
+        Some(&text[4..6])
+    } else {
+        None
+    };
+    let Some(drive) = drive else { return false };
+    let root = format!(r"{drive}\");
+    let mut wide: Vec<u16> = OsStr::new(&root).encode_wide().collect();
+    wide.push(0);
+    // SAFETY: `wide` is a live, NUL-terminated UTF-16 root path.
+    unsafe { GetDriveTypeW(wide.as_ptr()) == DRIVE_REMOTE }
+}
+
+#[cfg(not(windows))]
+fn is_remote_windows_drive(_path: &Path) -> bool {
+    false
 }
 
 #[cfg(windows)]
@@ -1084,13 +1224,36 @@ fn process_exists(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-pub fn mark_ready_from_args() {
+pub fn mark_ready_from_args(app: &AppHandle) {
     let args: Vec<String> = std::env::args().collect();
     if let Some(index) = args.iter().position(|arg| arg == "--update-ready-marker") {
         if let Some(marker) = args.get(index + 1) {
+            let result_file = argument_after(&args, "--update-result-file");
+            let new_version = argument_after(&args, "--updated-to");
+            if let (Some(result_file), Some(new_version), Ok(expected_result)) =
+                (result_file, new_version, update_result_path(app))
+            {
+                if Path::new(result_file) == expected_result
+                    && Path::new(marker).parent() == expected_result.parent()
+                    && Version::parse(new_version.trim_start_matches('v')).is_ok()
+                {
+                    write_update_result(
+                        Path::new(result_file),
+                        "Updated",
+                        &format!("客户端已更新至 {new_version}"),
+                    );
+                }
+            }
             let _ = fs::write(marker, b"ready");
         }
     }
+}
+
+fn argument_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|arg| arg == name)
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
 }
 
 #[cfg(test)]
@@ -1112,103 +1275,10 @@ mod tests {
     #[test]
     fn artifact_paths_cannot_escape_the_verified_origin() {
         let origin = clean_origin("http://192.168.1.2:8080").unwrap();
-        assert!(artifact_url(&origin, "/api/v1/updates/client/artifacts/abc").is_ok());
+        assert!(artifact_url(&origin, "/api/v1/client-updates/artifacts/abc").is_ok());
         assert!(artifact_url(&origin, "https://attacker.test/a").is_err());
         assert!(artifact_url(&origin, "//attacker.test/a").is_err());
         assert!(artifact_url(&origin, "/\\attacker.test/a").is_err());
-    }
-
-    #[test]
-    fn nsis_download_must_match_the_verified_plan() {
-        let origin = clean_origin("http://192.168.1.2:8080").unwrap();
-        let artifact = UpdateArtifact {
-            kind: "nsis".into(),
-            sha256: "a".repeat(64),
-            size: 1,
-            signature: "signed-installer".into(),
-            download_path: "/api/v1/updates/client/artifacts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-        };
-        let expected_url = artifact_url(&origin, &artifact.download_path).unwrap();
-        assert!(validate_nsis_update_metadata(
-            "1.0.1",
-            &artifact,
-            &origin,
-            "1.0.1",
-            &expected_url,
-            "signed-installer",
-        )
-        .is_ok());
-        assert!(validate_nsis_update_metadata(
-            "1.0.1",
-            &artifact,
-            &origin,
-            "1.0.0",
-            &expected_url,
-            "signed-installer",
-        )
-        .is_err());
-        assert!(validate_nsis_update_metadata(
-            "1.0.1",
-            &artifact,
-            &origin,
-            "1.0.1",
-            &Url::parse("http://192.168.1.3:8080/installer.exe").unwrap(),
-            "signed-installer",
-        )
-        .is_err());
-        assert!(validate_nsis_update_metadata(
-            "1.0.1",
-            &artifact,
-            &origin,
-            "1.0.1",
-            &expected_url,
-            "different-signature",
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn full_only_contract_rejects_delta_and_legacy_plan_fields() {
-        let current = br#"{
-          "protocol_version":2,
-          "version":"1.0.1",
-          "target":"windows-x86_64",
-          "layout_version":1,
-          "full":{
-            "nsis":{"kind":"nsis","url":"http://192.168.1.2/nsis.exe","size":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","signature":"sig"},
-            "portable":{"kind":"portable","url":"http://192.168.1.2/client.exe","size":1,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","signature":"sig"}
-          }
-        }"#;
-        assert!(serde_json::from_slice::<SignedPayload>(current).is_ok());
-
-        let with_delta = br#"{
-          "protocol_version":2,
-          "version":"1.0.1",
-          "target":"windows-x86_64",
-          "layout_version":1,
-          "full":{
-            "nsis":{"kind":"nsis","url":"http://192.168.1.2/nsis.exe","size":1,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","signature":"sig"},
-            "portable":{"kind":"portable","url":"http://192.168.1.2/client.exe","size":1,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","signature":"sig"}
-          },
-          "deltas":[]
-        }"#;
-        assert!(serde_json::from_slice::<SignedPayload>(with_delta).is_err());
-
-        let plan = br#"{
-          "protocol_version":2,
-          "current_version":"1.0.0",
-          "latest_version":"1.0.1",
-          "target":"windows-x86_64",
-          "install_mode":"portable",
-          "strategy":"full",
-          "download_size":1,
-          "full_size":1,
-          "saved_bytes":0,
-          "signed_payload":"payload",
-          "signature":"signature",
-          "artifact":{"kind":"portable","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":1,"signature":"sig","download_path":"/api/v1/updates/client/artifacts/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
-        }"#;
-        assert!(serde_json::from_slice::<ClientUpdatePlan>(plan).is_err());
     }
 
     #[test]
@@ -1247,19 +1317,24 @@ mod tests {
     }
 
     #[test]
+    fn update_plan_rejects_unsigned_display_fields() {
+        let raw = r#"{
+          "protocol_version":1,"current_version":"1.0.0","latest_version":"2.0.0",
+          "target":"windows-x86_64","strategy":"full","download_size":1,
+          "signed_payload":"payload","signature":"signature",
+          "artifact":{"kind":"portable","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1,"signature":"signature","download_path":"/api/v1/client-updates/artifacts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          "message":"请运行未知程序"
+        }"#;
+        assert!(serde_json::from_str::<ClientUpdatePlan>(raw).is_err());
+    }
+
+    #[test]
     fn busy_guard_rejects_a_second_update_task() {
         let engine = UpdateEngine::default();
         begin_task(&engine).unwrap();
         assert!(begin_task(&engine).is_err());
         finish_task(&engine);
         assert!(begin_task(&engine).is_ok());
-    }
-
-    #[test]
-    fn portable_full_requires_a_writable_target() {
-        assert!(should_use_portable_full(true, true));
-        assert!(!should_use_portable_full(true, false));
-        assert!(!should_use_portable_full(false, true));
     }
 
     #[test]
@@ -1270,6 +1345,20 @@ mod tests {
         let target = directory.join("client.exe");
         ensure_target_parent_writable(&target).unwrap();
         let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn writable_probe_rejects_network_share_paths() {
+        assert!(
+            ensure_target_parent_writable(Path::new(r"\\server\share\bb_erp_client.exe"))
+                .unwrap_err()
+                .contains("网络共享")
+        );
+        assert!(ensure_target_parent_writable(Path::new(
+            r"\\?\UNC\server\share\bb_erp_client.exe"
+        ))
+        .unwrap_err()
+        .contains("网络共享"));
     }
 
     #[test]

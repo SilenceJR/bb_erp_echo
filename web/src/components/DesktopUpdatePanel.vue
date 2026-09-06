@@ -1,16 +1,17 @@
 <template>
   <section
-    v-if="!compact || compactVisible"
+    v-if="desktopAvailable && (!compact || compactVisible)"
     class="desktop-update-panel"
     :class="{'is-compact': compact}"
-    :aria-label="compact ? '桌面客户端更新' : undefined"
+    :aria-label="compact ? '桌面客户端更新提示' : '客户端更新'"
   >
     <template v-if="compact">
       <div class="desktop-update-compact__copy" role="status" aria-live="polite">
         <strong>{{ compactTitle }}</strong>
         <span>{{ compactDescription }}</span>
       </div>
-      <el-tag v-if="plan" type="info" effect="light" round>完整更新</el-tag>
+      <el-tag v-if="state === 'Ready'" type="warning" effect="plain" round>可更新</el-tag>
+      <el-tag v-else-if="state === 'RolledBack'" type="danger" effect="plain" round>已回滚</el-tag>
       <el-progress
         v-if="downloadPercent !== null"
         class="desktop-update-compact__progress"
@@ -34,19 +35,28 @@
       <div class="desktop-update-heading">
         <div>
           <span class="update-kicker">桌面客户端</span>
-          <h2>客户端自动更新</h2>
-          <p>由桌面端完成下载、签名校验、安装与重启，更新失败时会保留当前版本。</p>
+          <h2>客户端更新</h2>
+          <p>从已验证的内网服务器下载单 EXE 完整更新，校验通过后自动重启。</p>
         </div>
         <el-tag :type="statusTone" effect="light">{{ statusLabel }}</el-tag>
       </div>
 
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <el-alert
+        v-if="error"
+        :title="errorTitle"
+        :description="errorDescription"
+        :type="errorTone"
+        :closable="false"
+        show-icon
+      />
 
       <dl class="desktop-update-facts">
         <div><dt>当前版本</dt><dd>{{ currentVersion || '—' }}</dd></div>
         <div><dt>目标版本</dt><dd>{{ targetVersion }}</dd></div>
-        <div><dt>更新方式</dt><dd>完整更新</dd></div>
+        <div><dt>更新方式</dt><dd>Windows x64 · 单 EXE</dd></div>
         <div><dt>下载大小</dt><dd>{{ formatBytes(downloadSize) }}</dd></div>
+        <div><dt>来源服务器</dt><dd>{{ serverOrigin || '已验证服务器' }}</dd></div>
+        <div><dt>最近检查</dt><dd>{{ lastCheckedText }}</dd></div>
       </dl>
 
       <div class="desktop-update-status" role="status" aria-live="polite" aria-atomic="true">
@@ -63,10 +73,11 @@
       />
 
       <div class="update-actions desktop-update-actions">
+        <el-button v-if="state === 'Ready' && plan" @click="check">重新检查</el-button>
         <el-button v-if="state === 'Ready' && plan" type="primary" @click="openConfirmation">立即更新</el-button>
-        <el-button v-else-if="state === 'Failed'" type="primary" @click="retryUpdate">重试</el-button>
+        <el-button v-else-if="state === 'Failed' || state === 'RolledBack'" type="primary" @click="retryUpdate">重新检查</el-button>
         <el-button v-else-if="taskInProgress" type="primary" plain @click="progressDialogVisible = true">查看进度</el-button>
-        <el-button v-else :loading="state === 'Checking'" :disabled="taskInProgress" @click="check">检查客户端更新</el-button>
+        <el-button v-else :loading="state === 'Checking'" :disabled="taskInProgress" @click="check">检查更新</el-button>
       </div>
     </template>
 
@@ -86,11 +97,11 @@
         <div class="desktop-update-confirmation">
           <p>将客户端从 <strong>{{ currentVersion || '当前版本' }}</strong> 更新到 <strong>{{ targetVersion }}</strong>。</p>
           <dl>
-            <div><dt>更新方式</dt><dd>完整更新</dd></div>
+            <div><dt>更新方式</dt><dd>Windows x64 单 EXE</dd></div>
             <div><dt>下载大小</dt><dd>{{ formatBytes(downloadSize) }}</dd></div>
           </dl>
           <el-alert
-            title="更新过程中应用会关闭，并在安装完成后自动重新启动。请先保存正在编辑的内容。"
+            title="更新过程中应用会关闭，并在校验完成后自动重新启动。请先保存正在编辑的内容。"
             type="warning"
             :closable="false"
             show-icon
@@ -98,12 +109,12 @@
         </div>
       </template>
       <template v-else>
-        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+        <el-alert v-if="error" :title="errorTitle" :description="errorDescription" :type="errorTone" :closable="false" show-icon />
         <el-steps class="desktop-update-steps" :active="activeStep" finish-status="success" align-center>
           <el-step title="检查" />
           <el-step title="下载" />
           <el-step title="校验" />
-          <el-step title="安装" />
+          <el-step title="替换" />
           <el-step title="重启" />
         </el-steps>
         <div class="desktop-update-dialog__status" role="status" aria-live="polite" aria-atomic="true">
@@ -131,7 +142,7 @@
           </template>
           <template v-else>
             <el-button v-if="!closeLocked" @click="progressDialogVisible = false">关闭</el-button>
-            <el-button v-if="state === 'Failed'" type="primary" @click="retryUpdate">重试</el-button>
+            <el-button v-if="state === 'Failed' || state === 'RolledBack'" type="primary" @click="retryUpdate">重新检查</el-button>
             <small v-if="closeLocked">正在替换并重启客户端，请勿关闭此窗口</small>
           </template>
         </div>
@@ -144,69 +155,89 @@
 import {computed, nextTick, onMounted, ref, watch} from 'vue'
 import {useDesktopUpdate} from '../composables/useDesktopUpdate'
 
-const props = withDefaults(defineProps<{
-  compact?: boolean
-}>(), {
-  compact: false,
-})
-
+const props = withDefaults(defineProps<{compact?: boolean}>(), {compact: false})
 const updater = useDesktopUpdate()
 const {
-  state, plan, currentVersion, message, error, downloadedBytes, totalBytes,
-  taskInProgress,
+  desktopAvailable, state, plan, currentVersion, message, error, errorCode, requestId,
+  downloadedBytes, totalBytes, lastCheckedAt, serverOrigin, taskInProgress,
   closeLocked, downloadPercent, initialize, check, apply, retry,
 } = updater
+
 const progressDialogVisible = ref(false)
 const updateStarted = ref(false)
 const laterButton = ref<{ $el: HTMLButtonElement } | null>(null)
 
-const targetVersion = computed(() => String(plan.value?.latest_version || plan.value?.version || '—'))
-const downloadSize = computed(() => Number(plan.value?.download_size || plan.value?.full_size || 0))
-const compactVisible = computed(() => Boolean(plan.value || taskInProgress.value || state.value === 'Failed'))
+const targetVersion = computed(() => String(plan.value?.latest_version || '—'))
+const downloadSize = computed(() => Number(plan.value?.download_size || 0))
+const compactVisible = computed(() => Boolean((state.value === 'Ready' && plan.value) || taskInProgress.value || state.value === 'RolledBack'))
 const confirmationVisible = computed(() => state.value === 'Ready' && Boolean(plan.value) && !updateStarted.value)
-const idleMessage = computed(() => '当前客户端已是最新版本')
+const idleMessage = computed(() => updater.hasChecked.value ? '当前客户端已是最新版本' : '尚未检查客户端更新')
 const statusLabel = computed(() => {
   if (state.value === 'Ready') return '发现新版本'
-  if (state.value === 'Failed') return '更新失败'
+  if (state.value === 'Updated') return '更新完成'
+  if (state.value === 'RolledBack') return '已回滚'
+  if (state.value === 'Failed') return '检查失败'
   if (taskInProgress.value) return '更新进行中'
-  return '已是最新'
+  return updater.hasChecked.value ? '已是最新' : '未检查'
 })
 const statusTone = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
-  if (state.value === 'Failed') return 'danger'
+  if (state.value === 'Failed' || state.value === 'RolledBack') return 'danger'
+  if (state.value === 'Updated') return 'success'
   if (state.value === 'Ready') return 'warning'
   if (taskInProgress.value) return 'info'
-  return 'success'
+  return updater.hasChecked.value ? 'success' : 'info'
+})
+const errorTone = computed<'error' | 'warning'>(() => errorCode.value === 'rolled_back' ? 'warning' : 'error')
+const errorTitle = computed(() => ({
+  server_unreachable: '服务器不可达',
+  server_unavailable: '更新服务暂不可用',
+  not_published: '服务器尚未发布客户端更新',
+  integrity_failure: '更新完整性校验失败',
+  directory_not_writable: '客户端目录不可写',
+  unsupported_platform: '当前环境不支持单 EXE 更新',
+  plan_changed: '更新计划已变化',
+  rolled_back: '新版启动失败，已恢复旧版本',
+} as Record<string, string>)[errorCode.value || ''] || '客户端更新失败')
+const errorDescription = computed(() => {
+  const suffix = requestId.value ? ` 请求 ID：${requestId.value}` : ''
+  if (errorCode.value === 'directory_not_writable') return `${error.value || '请将客户端复制到本机可写目录后重试。'}${suffix}`
+  if (errorCode.value === 'not_published') return `${error.value || '请联系管理员把新版 EXE 和清单放入服务器 client 目录。'}${suffix}`
+  return `${error.value || '请稍后重试。'}${suffix}`
 })
 const compactTitle = computed(() => {
-  if (state.value === 'Failed') return '客户端更新未完成'
+  if (state.value === 'RolledBack') return '客户端更新已回滚'
   if (taskInProgress.value) return stageLabel.value
   return `客户端 ${targetVersion.value} 可更新`
 })
 const compactDescription = computed(() => {
   if (state.value === 'Downloading') return '正在下载安装包'
-  if (state.value === 'Failed') return error.value
-  return `完整更新 · ${formatBytes(downloadSize.value)}`
+  if (state.value === 'RolledBack') return '已恢复旧版本，请重新检查'
+  return `单 EXE 完整更新 · ${formatBytes(downloadSize.value)}`
 })
 const compactAction = computed(() => {
   if (state.value === 'Ready' && plan.value) return '立即更新'
-  if (state.value === 'Failed') return '重试'
+  if (state.value === 'RolledBack') return '重新检查'
   if (taskInProgress.value) return '查看进度'
   return ''
 })
 const activeStep = computed(() => ({
-  Idle: 0, Checking: 0, Ready: 0, Downloading: 1, Verifying: 2, Applying: 3, Restarting: 4, Failed: 0,
+  Idle: 0, Checking: 0, Ready: 0, Downloading: 1, Verifying: 2, Applying: 3, Restarting: 4, Updated: 4, RolledBack: 0, Failed: 0,
 })[state.value])
 const stageLabel = computed(() => ({
   Idle: '等待更新', Checking: '正在检查更新', Ready: '更新已准备就绪', Downloading: '正在下载更新',
-  Verifying: '正在校验更新', Applying: '正在安装更新', Restarting: '正在重启客户端', Failed: '更新失败',
+  Verifying: '正在校验更新', Applying: '正在替换客户端', Restarting: '正在重启客户端', Updated: '客户端已更新',
+  RolledBack: '已回滚旧版本', Failed: '更新失败',
 })[state.value])
 const stageNote = computed(() => ({
   Idle: '尚未开始更新。', Checking: '正在获取并验证服务器提供的更新计划。', Ready: '确认后将开始下载。',
   Verifying: '正在校验签名和文件完整性，此阶段不显示虚拟百分比。',
   Applying: '正在安全替换客户端文件，此阶段不可关闭窗口。',
   Restarting: '新版本正在启动；若启动失败，客户端会自动恢复旧版本。',
-  Failed: '请查看错误信息并重试。', Downloading: '',
+  Updated: '客户端已成功更新，当前正在使用新版。',
+  RolledBack: '旧版本已恢复，可以重新检查服务器上的客户端更新。',
+  Failed: '请查看错误信息并重新检查。', Downloading: '',
 })[state.value])
+const lastCheckedText = computed(() => lastCheckedAt.value ? formatDate(lastCheckedAt.value) : '尚未检查')
 
 function formatBytes(value?: number): string {
   const amount = Number(value || 0)
@@ -216,6 +247,11 @@ function formatBytes(value?: number): string {
   let unit = 0
   while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1 }
   return `${size.toFixed(unit ? 1 : 0)} ${units[unit]}`
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', {hour12: false})
 }
 
 function openConfirmation() {
@@ -229,14 +265,14 @@ async function startUpdate() {
 }
 
 async function retryUpdate() {
-  updateStarted.value = Boolean(plan.value)
+  updateStarted.value = Boolean(plan.value && state.value === 'Ready')
   progressDialogVisible.value = true
   await retry()
 }
 
 function handleCompactAction() {
   if (state.value === 'Ready' && plan.value) openConfirmation()
-  else if (state.value === 'Failed') void retryUpdate()
+  else if (state.value === 'RolledBack') void retryUpdate()
   else if (taskInProgress.value) progressDialogVisible.value = true
 }
 
@@ -254,8 +290,7 @@ watch(taskInProgress, (running) => {
   if (running && updateStarted.value) progressDialogVisible.value = true
 })
 
-onMounted(async () => {
-  await initialize()
-  if ((state.value === 'Idle' && !message.value) || (state.value === 'Ready' && !plan.value)) await check()
+onMounted(() => {
+  void initialize()
 })
 </script>

@@ -387,35 +387,36 @@ func TestResetUserPasswordInvalidatesTargetSessions(t *testing.T) {
 	}
 }
 
-func TestCurrentUpdateRoutesAndRemovedClientStatus(t *testing.T) {
+func TestCurrentUpdateRoutesAndRemovedLegacyUpdateRoutes(t *testing.T) {
 	erp := newTestApp(t)
-	token := erp.login(t, "admin", "admin123456")
 
-	rec := erp.request(http.MethodGet, "/api/v1/system/updates/status", token, nil)
+	rec := erp.request(http.MethodGet, "/api/v1/version", "", nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET update status = %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("GET version = %d body=%s", rec.Code, rec.Body.String())
 	}
-	rec = erp.request(http.MethodPost, "/api/v1/system/updates/check", token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("POST update check = %d body=%s", rec.Code, rec.Body.String())
-	}
-	var checkStatus map[string]any
-	decodeJSON(t, rec, &checkStatus)
-	if checkStatus["last_error"] == "" {
-		t.Fatal("disabled update check should return its state and error detail")
+	var version map[string]any
+	decodeJSON(t, rec, &version)
+	if _, ok := version["client_version"]; ok {
+		t.Fatalf("version endpoint must not expose client_version: %v", version)
 	}
 
-	for _, removedPath := range []string{"/api/v1/updates/client/status", "/api/v1/updates/client/download"} {
+	rec = erp.request(http.MethodGet, "/api/v1/client-updates/check?current_version=0.0.1", "", nil)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("X-Client-Update-Status") != "not_published" {
+		t.Fatalf("unpublished client update status = %d header=%q body=%s", rec.Code, rec.Header().Get("X-Client-Update-Status"), rec.Body.String())
+	}
+
+	for _, removedPath := range []string{
+		"/api/v1/system/updates/status",
+		"/api/v1/system/updates/check",
+		"/api/v1/system/updates/server/download",
+		"/api/v1/updates/client/plan",
+		"/api/v1/updates/client/tauri/windows/x86_64/0.0.1",
+		"/api/v1/updates/client/artifacts/" + strings.Repeat("0", 64),
+	} {
 		rec = erp.request(http.MethodGet, removedPath, "", nil)
 		if rec.Code >= http.StatusOK && rec.Code < http.StatusMultipleChoices {
 			t.Fatalf("removed client update path %s remains public with status %d", removedPath, rec.Code)
 		}
-	}
-
-	limitedToken := erp.createLimitedUserAndLogin(t)
-	rec = erp.request(http.MethodGet, "/api/v1/system/updates/status", limitedToken, nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("limited update status access = %d", rec.Code)
 	}
 }
 

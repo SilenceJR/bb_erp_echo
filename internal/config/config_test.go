@@ -1,8 +1,6 @@
 package config
 
 import (
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -41,11 +39,8 @@ func TestLoadDefaultLogConfig(t *testing.T) {
 	if cfg.JWT.ExpiresIn != 2*time.Hour || cfg.JWT.RefreshExpiresIn != 30*24*time.Hour {
 		t.Fatalf("unexpected jwt durations: expires=%s refresh=%s", cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
 	}
-	if cfg.Update.CheckInterval != 6*time.Hour || cfg.Update.ManifestTimeout != 20*time.Second || cfg.Update.DownloadTimeout != 10*time.Minute {
+	if cfg.Update.CacheDir != "updates/client-cache" {
 		t.Fatalf("unexpected update durations: %+v", cfg.Update)
-	}
-	if cfg.Update.Source != "http" || cfg.Update.ReleaseDir != "" {
-		t.Fatalf("unexpected update source defaults: %+v", cfg.Update)
 	}
 	if !cfg.Discovery.Enabled || cfg.Discovery.ServerName == "" || cfg.Discovery.BindHost != "0.0.0.0" || cfg.Discovery.Port != 39080 {
 		t.Fatalf("unexpected discovery defaults: %+v", cfg.Discovery)
@@ -65,9 +60,7 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	t.Setenv("BB_ERP_JWT_REFRESH_EXPIRES_IN", "168h")
 	t.Setenv("BB_ERP_WEB_ENABLED", "false")
 	t.Setenv("BB_ERP_WEB_DIST_DIR", "tmp-web-dist")
-	t.Setenv("BB_ERP_UPDATE_CHECK_INTERVAL", "30m")
-	t.Setenv("BB_ERP_UPDATE_MANIFEST_TIMEOUT", "9s")
-	t.Setenv("BB_ERP_UPDATE_DOWNLOAD_TIMEOUT", "2m")
+	t.Setenv("BB_ERP_UPDATE_CLIENT_DIR", "client")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "direct-test-key")
 	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE", "test-update-public.key")
 	t.Setenv("BB_ERP_DISCOVERY_ENABLED", "false")
@@ -105,7 +98,7 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	if cfg.JWT.ExpiresIn != 90*time.Minute || cfg.JWT.RefreshExpiresIn != 168*time.Hour {
 		t.Fatalf("jwt env durations: expires=%s refresh=%s", cfg.JWT.ExpiresIn, cfg.JWT.RefreshExpiresIn)
 	}
-	if cfg.Update.CheckInterval != 30*time.Minute || cfg.Update.ManifestTimeout != 9*time.Second || cfg.Update.DownloadTimeout != 2*time.Minute {
+	if cfg.Update.ClientDir != "client" {
 		t.Fatalf("update env durations: %+v", cfg.Update)
 	}
 	if cfg.Update.SigningPublicKey != "direct-test-key" || cfg.Update.SigningPublicKeyFile != "test-update-public.key" {
@@ -122,33 +115,10 @@ func TestLoadLogConfigFromEnv(t *testing.T) {
 	}
 }
 
-func TestLoadDirectoryUpdateConfigFromEnv(t *testing.T) {
-	releaseDir := t.TempDir()
-	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
-	t.Setenv("BB_ERP_UPDATE_RELEASE_DIR", releaseDir)
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
-	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "configured-test-key")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("load directory update config: %v", err)
-	}
-	if cfg.Update.Source != "directory" || cfg.Update.ReleaseDir != releaseDir {
-		t.Fatalf("directory update config: %+v", cfg.Update)
-	}
-}
-
-func TestLoadRejectsUnknownUpdateSource(t *testing.T) {
-	t.Setenv("BB_ERP_UPDATE_SOURCE", "ftp")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "update source must be http or directory") {
-		t.Fatalf("unknown update source error = %v", err)
-	}
-}
-
 // TestLoadProductionConfigAllowsDefaultCredentials 验证生产环境允许首次使用默认管理员登录再在系统内修改密码。
 func TestLoadProductionConfigAllowsDefaultCredentials(t *testing.T) {
 	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "false")
+	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "")
 
 	if _, err := Load(); err != nil {
 		t.Fatalf("default production credentials should be allowed for first login: %v", err)
@@ -158,48 +128,22 @@ func TestLoadProductionConfigAllowsDefaultCredentials(t *testing.T) {
 // TestLoadProductionConfigUsesInternalCredentials 验证关闭更新时的最小生产配置可以加载。
 func TestLoadProductionConfigUsesInternalCredentials(t *testing.T) {
 	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "false")
+	t.Setenv("BB_ERP_UPDATE_SIGNING_PUBLIC_KEY", "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("load production config: %v", err)
 	}
-	if cfg.App.Environment != "production" || cfg.Update.Enabled {
+	if cfg.App.Environment != "production" {
 		t.Fatalf("unexpected production config: %+v", cfg)
 	}
 }
 
-// TestLoadProductionConfigRequiresUpdateVerifier 验证启用更新时必须配置清单和验签公钥。
-func TestLoadProductionConfigRequiresUpdateVerifier(t *testing.T) {
+// TestLoadProductionConfigAllowsUnpublishedClientUpdate 验证未投放客户端时服务仍可启动。
+func TestLoadProductionConfigAllowsUnpublishedClientUpdate(t *testing.T) {
 	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
-	t.Setenv("BB_ERP_UPDATE_MANIFEST_URL", "https://example.com/update-manifest.json")
 
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "signing public key") {
-		t.Fatalf("expected update signing key validation error, got %v", err)
-	}
-}
-
-func TestLoadProductionDirectoryConfigRequiresReleaseDirectory(t *testing.T) {
-	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
-	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
-
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "release directory") {
-		t.Fatalf("expected release directory validation error, got %v", err)
-	}
-}
-
-func TestLoadProductionDirectoryConfigRequiresExistingDirectory(t *testing.T) {
-	t.Setenv("BB_ERP_APP_ENVIRONMENT", "production")
-	t.Setenv("BB_ERP_UPDATE_ENABLED", "true")
-	t.Setenv("BB_ERP_UPDATE_SOURCE", "directory")
-	t.Setenv("BB_ERP_UPDATE_RELEASE_DIR", filepath.Join(t.TempDir(), "missing"))
-
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "release directory") {
-		t.Fatalf("expected existing release directory validation error, got %v", err)
+	if _, err := Load(); err != nil {
+		t.Fatalf("unpublished client update should not block startup: %v", err)
 	}
 }

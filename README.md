@@ -88,12 +88,10 @@ npm install
 npm run desktop:dev
 ```
 
-Windows 本机可使用统一脚本生成全新安装包；默认只生成 all-in-one，显式传入
-`-Target All` 时同时生成可放入服务器本地更新目录的签名离线更新整包：
+Windows 本机可使用统一脚本同时生成服务端完整包、客户端更新包和 all-in-one 包：
 
 ```powershell
 .\scripts\windows-package.ps1 -Version 0.0.13
-.\scripts\windows-package.ps1 -Version 0.0.13 -Target All
 ```
 
 脚本读取 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 和
@@ -121,17 +119,13 @@ BB_ERP_DISCOVERY_PORT=39080
 
 连接范围仅允许 loopback 与 RFC1918 IPv4 的 HTTP 地址。
 
-服务器使用人工投放的本地更新目录时配置：
+服务器仅需配置客户端更新验签公钥：
 
 ```bash
-BB_ERP_UPDATE_ENABLED=true
-BB_ERP_UPDATE_SOURCE=directory
-BB_ERP_UPDATE_RELEASE_DIR=updates/releases/active
-BB_ERP_UPDATE_CACHE_DIR=updates/cache
 BB_ERP_UPDATE_SIGNING_PUBLIC_KEY_FILE=update-public.key
 ```
 
-目录模式只读取发布目录内的相对资源，不发起更新相关的公网请求。
+管理员将 `bb_erp_client.exe` 和最后投放的 `client-update.json` 覆盖到 all-in-one 根目录下与 `server` 同级的 `client` 目录。服务器只从该固定目录验签并缓存，不访问公网。
 
 ## 验证
 

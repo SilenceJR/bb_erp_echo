@@ -30,8 +30,8 @@ flowchart TB
     subgraph storage["系统保存的数据"]
         db["SQLite 数据库<br/>账号、权限、资料、库存、任务、模具、审计"]:::done
         files["图片文件目录<br/>按业务对象受保护保存"]:::done
-        cache["正式版客户端更新包缓存<br/>完整包和可选增量包"]:::done
-        remote["正式版远程更新清单和发布资源<br/>用于版本检查和客户端下载"]:::pending
+        drop["固定客户端投放目录<br/>client/bb_erp_client.exe<br/>client/client-update.json"]:::done
+        cache["已验签内容寻址缓存<br/>仅 Windows x64 完整单 EXE"]:::done
     end
 
     users --> clients
@@ -40,8 +40,9 @@ flowchart TB
     validation --> domains
     domains --> db
     domains --> files
-    domains --> cache
-    cache --> remote
+    domains --> drop
+    drop --> cache
+    cache --> clients
 
     acceptance["待真实环境验收<br/>生产配置、备份恢复、更新发布、Windows 10/11 运行"]:::pending
     planned["规划功能<br/>统计导出、任务提醒、自动备份<br/>多组织、多仓库和更细权限"]:::planned
@@ -271,35 +272,35 @@ sequenceDiagram
     end
 ~~~
 
-### 4.6 服务端检查并缓存 Windows 完整更新
+### 4.6 固定目录发布 Windows 单 EXE 客户端更新
 
-服务端不会盲目分发更新包。只有版本、大小、哈希、签名和 full-only payload 全部通过，NSIS 与 portable 两个完整资源才会同时进入当前状态。客户端只从已验证的内网 ERP origin 下载。
+服务端不会检查、下载或替换自身程序。管理员把受控 CI 产物投放到服务端可执行文件同级的 `../client`：先放置 `bb_erp_client.exe`，最后放置签名 `client-update.json`。服务端只在版本、大小、SHA-256、EXE 签名和清单 payload 签名全部通过后，将该 EXE 写入内容寻址缓存并原子提交新快照；复制中的半成品不会下发，刷新失败继续保留上一份有效快照。客户端只从当前已验证的内网 ERP origin 下载。
 
 ~~~mermaid
 sequenceDiagram
-    participant scheduler as 服务端定时检查
+    participant admin as 管理员
     participant api as Go 更新服务
-    participant remote as 远程更新清单
+    participant source as 固定 ../client 目录
     participant verify as 文件与签名检查
     participant cache as 本地更新缓存
     participant client as 桌面客户端
 
-    scheduler->>api: 到达检查时间
-    api->>remote: 读取更新清单
-    remote-->>api: 返回服务端和客户端版本信息
+    admin->>source: 先覆盖 EXE，最后覆盖签名清单
+    client->>api: GET /client-updates/check?current_version
+    api->>source: 合并本次目录刷新
     api->>verify: 检查版本、文件大小、SHA-256 和签名
 
-    alt 两个完整资源均检查通过
-        verify->>cache: 按 SHA-256 保存 NSIS 与 portable
-        cache-->>api: 更新缓存状态
+    alt 单 EXE 与清单均通过
+        verify->>cache: 按 SHA-256 复制 EXE 后原子切换快照
+        cache-->>api: 返回 protocol v1 portable 计划
     else 检查失败
-        verify-->>api: 返回失败原因
-        api->>cache: 保留上一份可用缓存和状态
+        verify-->>api: 204 或 503
+        api->>cache: 保留上一份可用快照
     end
 
-    client->>api: 查询是否有可用更新
-    api-->>client: 返回与安装模式对应的完整包计划
-    Note over api,client: 私钥只在发布端签名；服务端和客户端使用公钥验证。
+    client->>api: GET /client-updates/artifacts/{sha256}
+    api-->>client: 同源内容寻址 EXE，支持 Range
+    Note over api,client: 私钥只在 CI；服务端和客户端使用公钥验证。客户端临时助手原子替换，启动失败自动回滚。
 ~~~
 
 ## 5. 当前后端边界
@@ -308,7 +309,7 @@ sequenceDiagram
 
 - JWT 使用系统内部密钥；access token 默认 2 小时，refresh token 按活跃会话滚动 30 天；管理员首次登录后在系统内修改默认密码。
 - 真实账号下的权限和组织/部门数据范围。
-- Windows 10/11 安装、升级、断网和回滚。
+- Windows 10/11 单 EXE 更新、断网、目录不可写和回滚。
 - SQLite、图片目录和更新缓存的备份恢复。
 - 长时间运行、并发访问和异常网络环境。
 
@@ -323,7 +324,7 @@ sequenceDiagram
 
 - [Go 后端状态、进度与维护台账](BACKEND_STATUS.md)
 - [API 文档](API.md)
-- [Gitee 主仓库与发布闭环](GITEE_RELEASE.md)
+- [Windows 内网离线发布](GITEE_RELEASE.md)
 - [Web、Client 前端产品架构与时序图](WEB_CLIENT_ARCHITECTURE.md)
 
 ## 7. 维护规则

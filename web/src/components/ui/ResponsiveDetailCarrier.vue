@@ -82,7 +82,9 @@ const editableSelector = 'input:not([disabled]):not([type="hidden"]), textarea:n
 function resolveReturnFocus() {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
   if (!active) return null
-  if (active.closest('.sidebar')) return document.querySelector<HTMLElement>('.sidebar-mode-toggle') || active
+  // Keep the exact keyboard trigger. The sidebar mode toggle is only a
+  // fallback if responsive layout removes that trigger while the panel is open.
+  if (active.closest('.sidebar')) return active
   if (active.closest('.el-popper, .el-overlay')) {
     return document.querySelector<HTMLElement>('[aria-haspopup][aria-expanded="true"], .topbar .user-avatar') || active
   }
@@ -195,6 +197,8 @@ function handleDockedAfterLeave() {
   dockedClosePending.value = false
   const target = returnFocus.value
   returnFocus.value = null
+  const fallback = document.querySelector<HTMLElement>('.sidebar-mode-toggle')
+  if (!target?.isConnected) fallback?.focus({preventScroll: true})
   if (target?.isConnected) target.focus({preventScroll: true})
   emit('closed')
 }

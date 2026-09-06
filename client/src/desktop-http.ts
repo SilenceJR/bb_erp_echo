@@ -3,7 +3,7 @@ import {getVersion} from '@tauri-apps/api/app'
 import {invoke} from '@tauri-apps/api/core'
 import {listen} from '@tauri-apps/api/event'
 import {getCurrentWindow} from '@tauri-apps/api/window'
-import type {DesktopFileUploadResult, DesktopHttpBridge} from '../../web/src/api/transport'
+import type {DesktopFileUploadResult, DesktopHttpBridge, DesktopUpdateCapabilities} from '../../web/src/api/transport'
 import type {DesktopUpdateApplyResult, DesktopUpdatePlan, DesktopUpdateProgress} from '../../web/src/types'
 import type {FileSaveResult, ServerIdentity} from '../../web/src/platform/types'
 
@@ -12,8 +12,6 @@ const defaultServerUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:
 const defaultRequestTimeoutMs = 8000
 // 高清图转换可能需要较长时间；与原生拖放上传保持一致，避免服务端已入库而桌面端在 60 秒先报失败。
 const fileRequestTimeoutMs = 2 * 60 * 60 * 1000
-// 比服务端默认 10 分钟下载超时多留 2 分钟，确保桌面端能收到服务端的具体校验错误。
-const serverUpdateDownloadTimeoutMs = 12 * 60 * 1000
 
 function isPrivateIPv4(hostname: string): boolean {
   const octets = hostname.split('.').map(Number)
@@ -86,11 +84,7 @@ function isFileTransferPath(path: string): boolean {
 
 async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl): Promise<Response> {
   const controller = new AbortController()
-  const requestTimeoutMs = path.startsWith('/api/v1/system/updates/server/download')
-      ? serverUpdateDownloadTimeoutMs
-      : isFileTransferPath(path)
-        ? fileRequestTimeoutMs
-        : defaultRequestTimeoutMs
+  const requestTimeoutMs = isFileTransferPath(path) ? fileRequestTimeoutMs : defaultRequestTimeoutMs
   // 合并调用方取消信号与桌面端请求超时，避免上传下载请求过早中断。
   const abortFromCaller = () => controller.abort()
   if (init.signal) {
@@ -162,6 +156,9 @@ const desktopHttpBridge: DesktopHttpBridge = {
   },
   clientUpdateStatus() {
     return invoke<DesktopUpdateProgress>('client_update_status')
+  },
+  clientUpdateCapabilities() {
+    return invoke<DesktopUpdateCapabilities>('client_update_capabilities')
   },
   async onClientUpdateProgress(handler) {
     return await listen<DesktopUpdateProgress>('client-update-progress', (event) => handler(event.payload))

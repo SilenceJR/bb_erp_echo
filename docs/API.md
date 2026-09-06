@@ -22,7 +22,7 @@ GET /swagger/doc.json
 
 ## 认证
 
-除 `/health`、`/ready`、`/api/v1/discovery/identity`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/swagger/*` 外，业务接口默认需要：
+除 `/health`、`/ready`、`/api/v1/discovery/identity`、`/api/v1/version`、`/api/v1/client-updates/*`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/swagger/*` 外，业务接口默认需要：
 
 ```http
 Authorization: Bearer <token>
@@ -34,6 +34,9 @@ Authorization: Bearer <token>
 GET  /health
 GET  /ready
 GET  /api/v1/discovery/identity
+GET  /api/v1/version
+GET  /api/v1/client-updates/check?current_version=<SemVer>
+GET  /api/v1/client-updates/artifacts/<sha256>
 GET  /swagger/index.html
 GET  /swagger/doc.json
 ```
@@ -242,9 +245,6 @@ POST /api/v1/system/roles
 POST /api/v1/system/roles/:id/permissions
 GET  /api/v1/system/permissions
 GET  /api/v1/system/audits
-GET  /api/v1/system/updates/status
-POST /api/v1/system/updates/check
-GET  /api/v1/system/updates/server/download
 GET  /api/v1/operator-employees
 ```
 
@@ -264,66 +264,44 @@ GET  /api/v1/operator-employees
 
 客户资料删除需要同时确认库存单据和任务单历史引用。任一引用表尚未初始化时返回 `503 module_not_initialized`，不会把缺表误判成“没有引用”后删除客户资料。
 
-## 版本与更新
+## 版本与内网客户端更新
 
-更新源是当前配置的 JSON 清单。服务启动后异步检查，之后按配置周期检查；失败不会阻止业务服务，并保留上一次成功状态和已校验缓存。Windows 客户端只连接已验证的 loopback/RFC1918 HTTP 服务，所有更新资源均由该内网服务同源代理。
+`GET /api/v1/version` 是匿名服务端身份接口，只返回 `app_name` 与
+`server_version`；服务端不检查、下载或替换自身程序。
+
+Windows Tauri 客户端在已验证当前内网服务后，或由登录页和“设置 / 客户端更新”手动触发以下匿名接口。Web 备用入口不显示安装操作。
 
 ```text
-GET  /api/v1/version
-GET  /api/v1/updates/client/plan?current_version=1.2.2&target=windows-x86_64&install_mode=portable
-GET  /api/v1/updates/client/tauri/windows/x86_64/1.2.2
-GET  /api/v1/updates/client/artifacts/<sha256>
-GET  /api/v1/system/updates/status
-POST /api/v1/system/updates/check
-GET  /api/v1/system/updates/server/download
+GET /api/v1/client-updates/check?current_version=1.2.2
+GET /api/v1/client-updates/artifacts/<sha256>
 ```
 
-- Tauri 必须用 `current_version` 传真实安装版本；Web 不传桌面版本。客户端直接要求 `/plan` 当前契约，不执行协议降级，也不请求已删除的 `/updates/client/status` 或 `/updates/client/download`。
-- 客户端资源接口只分发已通过大小、SHA-256、签名和安装布局校验的本地缓存包。
-- `/plan` 仅支持 `windows-x86_64` 与 `nsis|portable`，无更新返回 `204`；`strategy` 固定为 `full`，资源与安装模式一一对应，不接受差分字段。
-- `/tauri/{target}/{arch}/{current_version}` 返回 Tauri updater 的 `version/url/signature`，无更新返回 `204`。
-- `/artifacts/{sha256}` 不接受文件路径，只分发当前已验签 manifest 声明并缓存的 NSIS/portable 完整资源，支持 `ETag`、`Content-Length` 与 HTTP Range。
-- `client_update_v2.payload` 是原始 JSON 的 Base64，`signature` 是 Tauri `.sig` 文件内容的 Base64；payload 只允许 `protocol_version/version/target/layout_version/full`，其中 `full` 必须同时包含 NSIS 与 portable。服务端必须配置对应 Minisign 公钥，未知字段（包括 `deltas`）会被拒绝。
-- 外层更新清单同样拒绝重复 JSON key、未知字段和尾随 JSON 内容；清单解析失败不会替换上一次成功状态或缓存。
-- `GET /api/v1/system/updates/status` 需要 `system:updates:read`。
-- `POST /api/v1/system/updates/check` 需要 `system:updates:write`，立即执行完整检查并返回与 GET 相同的结构。检查失败也返回状态结构，错误在 `last_error` 中，便于管理页同时保留历史成功状态。
-- `GET /api/v1/system/updates/server/download` 需要 `system:updates:read`。服务端按最近一次成功清单下载或复用缓存；当 `BB_ERP_UPDATE_SOURCE=directory` 时，只从带匹配版本 `.release-ready` 激活标记的 `BB_ERP_UPDATE_RELEASE_DIR` 读取 `update-manifest.json` 及其相对资源，拒绝绝对路径、父目录、符号链接和目录逃逸且不发起网络请求。目录检查在提交新状态前即缓存并验证服务端 ZIP 与两个客户端完整包；任一资源不完整时继续保留上一份成功状态。返回附件前使用当前部署的可信公钥流式验证 Minisign 签名，同时校验文件大小（1 字节至 512 MiB）、SHA-256、ZIP 安全边界和必需文件；并发请求合并为一次读取。读取、下载或校验失败返回 `502` 及具体错误，不会把损坏包写入正式缓存。
-- 更新状态中的服务端 `download_url`/`download_path` 指向上述同源受保护接口，不再把外部下载地址直接交给 Tauri WebView；下载只提供升级包，不会自动替换当前进程。
+- `current_version` 必须是客户端真实 SemVer。无有效投放或已经是最新版本返回 `204`，并分别以 `X-Client-Update-Status: not_published` 或 `up_to_date` 区分；无效版本返回 `400`；发现不完整或不可信投放返回 `503`，不泄露服务器路径。
+- 更新只支持 `windows-x86_64` 的完整 portable 单 EXE，拒绝降级、差分包、NSIS/MSI、外部 URL 和旧 `/updates/client/*` 协议。
+- `200` 计划的精确字段为 `protocol_version`（固定 `1`）、`current_version`、`latest_version`、`target`、`strategy`（固定 `full`）、`download_size`、`signed_payload`、`signature` 与 `artifact`。其中 `artifact` 仅有 `kind`（`portable`）、`size`、`sha256`、`signature`、`download_path`；下载路径由服务端从已验证摘要生成。
+- 服务器固定从可执行文件上一级的 `client/bb_erp_client.exe` 和 `client/client-update.json` 读取。后者是严格 JSON 签名信封 `{ "payload", "signature" }`；解码后的已签名 payload 只允许 `version`、`target` 与 `artifact`，artifact 只允许 `kind`、`size`、`sha256`、`signature`。未知/重复字段、尾随内容、无效签名、大小或哈希均被拒绝。
+- 每次检查合并并发刷新；验证通过后先复制到服务端 `updates/client-cache/<sha256>`，再原子切换有效快照。投放复制中或刷新失败不会下发半成品，已有有效快照继续可用。
+- 资源接口只分发当前快照允许的内容寻址 EXE，支持 `ETag`、`Content-Length` 和 HTTP Range。客户端在下载后再次验证清单签名、EXE 签名、大小和 SHA-256，再由临时助手原子替换；新版未成功启动时恢复旧 EXE。
 
-更新状态示例：
+计划示例：
 
 ```json
 {
-  "enabled": true,
-  "manifest_url": "http://192.168.1.10/releases/update-manifest.json",
-  "reachable": true,
-  "checking": false,
-  "check_interval": "6h0m0s",
-  "interval_seconds": 21600,
-  "last_attempt_at": "2026-08-26T02:00:00+08:00",
-  "last_success_at": "2026-08-26T02:00:02+08:00",
-  "next_check_at": "2026-08-26T08:00:02+08:00",
-  "server": {
-    "current_version": "1.2.2",
-    "latest_version": "1.2.3",
-    "available": true,
-    "file_name": "bb-erp-server-windows.zip",
-    "download_path": "/api/v1/system/updates/server/download",
-    "download_url": "/api/v1/system/updates/server/download",
-    "size": 12345678,
-    "sha256": "..."
-  },
-  "client": {
-    "current_version": "1.2.2",
-    "latest_version": "1.2.3",
-    "available": true,
-    "cached": true,
+  "protocol_version": 1,
+  "current_version": "1.2.2",
+  "latest_version": "1.2.3",
+  "target": "windows-x86_64",
+  "strategy": "full",
+  "download_size": 18600000,
+  "signed_payload": "eyJ2ZXJzaW9uIjoiMS4yLjMiLC4uLn0=",
+  "signature": "VU5UUlVTVEVEX1NJR05BVFVSRS4uLg==",
+  "artifact": {
+    "kind": "portable",
     "size": 18600000,
-    "sha256": "..."
-  },
-  "client_protocol_version": 2,
-  "client_full_cached": true,
-  "client_cache_bytes": 24000000
+    "sha256": "<64 位小写十六进制摘要>",
+    "signature": "VU5UUlVTVEVEX1NJR05BVFVSRS4uLg==",
+    "download_path": "/api/v1/client-updates/artifacts/<sha256>"
+  }
 }
 ```
 

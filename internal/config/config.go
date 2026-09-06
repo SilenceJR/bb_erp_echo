@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -142,35 +141,18 @@ type SilenceConfig struct {
 	Password string `koanf:"password"`
 }
 
-const (
-	// UpdateSourceHTTP selects a manifest and resources fetched over HTTP(S).
-	UpdateSourceHTTP = "http"
-	// UpdateSourceDirectory selects a manifest and resources in ReleaseDir.
-	UpdateSourceDirectory = "directory"
-)
-
-// UpdateConfig 描述 GitHub、Gitee 或内网更新源配置。
+// UpdateConfig 描述内网单文件客户端更新配置。
+//
+// 服务端只从可执行文件目录的 ../client 读取清单和 EXE；不再支持公网
+// manifest、可配置 HTTP 源、增量包或服务端自升级。ClientDir 仅用于特殊
+// 部署和测试，留空时使用固定的 ../client 目录。
 type UpdateConfig struct {
-	// Source 是更新清单和资源的来源，可选 http 或 directory。
-	// 空值按 http 处理，以兼容未设置该选项的既有部署。
-	Source string `koanf:"source"`
-	// Enabled 表示是否允许服务端主动检查远端更新清单。
-	Enabled bool `koanf:"enabled"`
-	// ManifestURL 是 update-manifest.json 的地址，可来自 GitHub、Gitee 或内网静态服务。
-	ManifestURL string `koanf:"manifest_url"`
-	// ReleaseDir 是 directory 来源的完整发布目录，只允许读取其内部的清单和资源。
-	ReleaseDir string `koanf:"release_dir"`
-	// CacheDir 是服务端缓存客户端升级包的目录。
+	// ClientDir 是服务器投放客户端清单和 EXE 的目录。相对路径相对于
+	// 服务端可执行文件所在目录；为空时固定使用其 ../client。
+	ClientDir string `koanf:"client_dir"`
+	// CacheDir 是服务端内容寻址缓存目录。相对路径相对于服务端可执行文件目录。
 	CacheDir string `koanf:"cache_dir"`
-	// ClientVersion 是当前随服务端发布的客户端版本，用于判断是否需要缓存新客户端包。
-	ClientVersion string `koanf:"client_version"`
-	// CheckInterval 是自动检查更新的周期。
-	CheckInterval time.Duration `koanf:"check_interval"`
-	// ManifestTimeout 是读取远端清单的超时时间。
-	ManifestTimeout time.Duration `koanf:"manifest_timeout"`
-	// DownloadTimeout 是下载客户端升级包的超时时间。
-	DownloadTimeout time.Duration `koanf:"download_timeout"`
-	// SigningPublicKey 是 Minisign 公钥内容。非空时用于验证 v2 客户端更新签名。
+	// SigningPublicKey 是 Minisign 公钥内容，用于验证客户端更新签名。
 	SigningPublicKey string `koanf:"signing_public_key"`
 	// SigningPublicKeyFile 是 Minisign 公钥文件路径；SigningPublicKey 非空时优先使用直接值。
 	SigningPublicKeyFile string `koanf:"signing_public_key_file"`
@@ -209,15 +191,8 @@ func Load() (*Config, error) {
 		"admin.password":                 "admin123456",
 		"admin.name":                     "系统管理员",
 		"silence.password":               "",
-		"update.enabled":                 false,
-		"update.source":                  UpdateSourceHTTP,
-		"update.manifest_url":            "",
-		"update.release_dir":             "",
-		"update.cache_dir":               "updates",
-		"update.client_version":          buildinfo.Version,
-		"update.check_interval":          "6h",
-		"update.manifest_timeout":        "20s",
-		"update.download_timeout":        "10m",
+		"update.client_dir":              "",
+		"update.cache_dir":               "updates/client-cache",
 		"update.signing_public_key":      "",
 		"update.signing_public_key_file": "",
 		"files.root_dir":                 "static/uploads",
@@ -283,56 +258,14 @@ func Load() (*Config, error) {
 	if cfg.Web.DistDir == "" {
 		cfg.Web.DistDir = "web/dist"
 	}
-	cfg.Update.Enabled = k.Bool("update.enabled")
-	if source := k.String("update.source"); source != "" {
-		cfg.Update.Source = strings.ToLower(strings.TrimSpace(source))
-	}
-	// 连续语义词的环境变量直接读取，避免 koanf 将 RELEASE_DIR 拆成
-	// release.dir 后无法映射到 release_dir 字段。
-	if source, ok := os.LookupEnv("BB_ERP_UPDATE_SOURCE"); ok {
-		cfg.Update.Source = strings.ToLower(strings.TrimSpace(source))
-	}
-	if releaseDir, ok := os.LookupEnv("BB_ERP_UPDATE_RELEASE_DIR"); ok {
-		cfg.Update.ReleaseDir = strings.TrimSpace(releaseDir)
-	}
-	if cfg.Update.Source == "" {
-		cfg.Update.Source = UpdateSourceHTTP
-	}
-	if cfg.Update.Source != UpdateSourceHTTP && cfg.Update.Source != UpdateSourceDirectory {
-		return nil, fmt.Errorf("update source must be %s or %s", UpdateSourceHTTP, UpdateSourceDirectory)
-	}
-	if manifestURL := k.String("update.manifest.url"); manifestURL != "" {
-		cfg.Update.ManifestURL = manifestURL
+	if clientDir, ok := os.LookupEnv("BB_ERP_UPDATE_CLIENT_DIR"); ok {
+		cfg.Update.ClientDir = strings.TrimSpace(clientDir)
 	}
 	if cacheDir := k.String("update.cache.dir"); cacheDir != "" {
 		cfg.Update.CacheDir = cacheDir
 	}
 	if cfg.Update.CacheDir == "" {
-		cfg.Update.CacheDir = "updates"
-	}
-	if clientVersion := k.String("update.client.version"); clientVersion != "" {
-		cfg.Update.ClientVersion = clientVersion
-	}
-	if cfg.Update.ClientVersion == "" {
-		cfg.Update.ClientVersion = buildinfo.Version
-	}
-	if checkInterval := k.Duration("update.check.interval"); checkInterval > 0 {
-		cfg.Update.CheckInterval = checkInterval
-	}
-	if cfg.Update.CheckInterval <= 0 {
-		cfg.Update.CheckInterval = 6 * time.Hour
-	}
-	if manifestTimeout := k.Duration("update.manifest.timeout"); manifestTimeout > 0 {
-		cfg.Update.ManifestTimeout = manifestTimeout
-	}
-	if cfg.Update.ManifestTimeout <= 0 {
-		cfg.Update.ManifestTimeout = 20 * time.Second
-	}
-	if downloadTimeout := k.Duration("update.download.timeout"); downloadTimeout > 0 {
-		cfg.Update.DownloadTimeout = downloadTimeout
-	}
-	if cfg.Update.DownloadTimeout <= 0 {
-		cfg.Update.DownloadTimeout = 10 * time.Minute
+		cfg.Update.CacheDir = "updates/client-cache"
 	}
 	if signingPublicKey := k.String("update.signing.public.key"); signingPublicKey != "" {
 		cfg.Update.SigningPublicKey = signingPublicKey
@@ -421,43 +354,6 @@ func validateProductionConfig(cfg Config) error {
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("production %s must be configured", name)
-		}
-	}
-
-	if !cfg.Update.Enabled {
-		return nil
-	}
-
-	if strings.EqualFold(strings.TrimSpace(cfg.Update.Source), UpdateSourceDirectory) {
-		releaseDir := strings.TrimSpace(cfg.Update.ReleaseDir)
-		if releaseDir == "" {
-			return fmt.Errorf("production directory update source must configure release directory")
-		}
-		info, err := os.Lstat(releaseDir)
-		if err != nil {
-			return fmt.Errorf("production update release directory %q is not readable: %w", releaseDir, err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("production update release directory %q must not be a symlink", releaseDir)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("production update release directory %q is not a directory", releaseDir)
-		}
-	} else {
-		manifestURL := strings.TrimSpace(cfg.Update.ManifestURL)
-		parsedURL, err := url.Parse(manifestURL)
-		if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") {
-			return fmt.Errorf("production update manifest URL must be an HTTP(S) URL")
-		}
-	}
-
-	if strings.TrimSpace(cfg.Update.SigningPublicKey) == "" {
-		keyFile := strings.TrimSpace(cfg.Update.SigningPublicKeyFile)
-		if keyFile == "" {
-			return fmt.Errorf("production update signing public key or key file must be configured")
-		}
-		if _, err := os.Stat(keyFile); err != nil {
-			return fmt.Errorf("production update signing public key file %q is not readable: %w", keyFile, err)
 		}
 	}
 

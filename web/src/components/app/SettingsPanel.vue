@@ -70,6 +70,8 @@
           <el-button v-if="canChangeServer" type="primary" plain @click="requestServerChange">切换服务器</el-button>
         </div>
       </FormSection>
+
+      <DesktopUpdatePanel v-if="desktopClient" />
     </FormPanelContent>
   </ResponsiveDetailCarrier>
 </template>
@@ -91,13 +93,14 @@ import ResponsiveDetailCarrier from '../ui/ResponsiveDetailCarrier.vue'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import FormPanelContent from '../ui/FormPanelContent.vue'
 import FormSection from '../ui/FormSection.vue'
+import DesktopUpdatePanel from '../DesktopUpdatePanel.vue'
 
 const props = defineProps<{modelValue: boolean}>()
 const emit = defineEmits<{(event: 'update:modelValue', value: boolean): void}>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
 const settingsPanel = useResponsiveDetailPanel(visible, {complexity: 'standard-form'})
 
-const {healthStatus, healthStatusLabel, lastHealthCheckAt, loadHealth, formatDate} = useWorkspaceContext()
+const {desktopClient, healthStatus, healthStatusLabel, lastHealthCheckAt, loadHealth, formatDate} = useWorkspaceContext()
 const {canChangeServer, changeServer, currentServer} = useStartupConnectionContext()
 const theme = ref<ThemeMode>(normalizeThemeMode(localStorage.getItem(themeStorageKey)))
 const accent = ref<AccentTheme>(normalizeAccentTheme(localStorage.getItem(accentStorageKey)))

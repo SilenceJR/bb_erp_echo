@@ -22,7 +22,7 @@
     <ModuleAssignmentDialogs />
 
     <FilterBar
-      v-if="activeKey !== 'updates' && activeKey !== 'molds' && activeKey !== 'statistics' && !moduleUnavailable"
+      v-if="activeKey !== 'molds' && activeKey !== 'statistics' && !moduleUnavailable"
       :message="panelMessage"
       :loading="loading"
       :resettable="hasActiveFilters"
@@ -58,9 +58,8 @@
       @action="loadActiveModule"
     />
     <PageState v-else-if="skeletonResult" kind="readonly" :title="skeletonResult.name" :description="skeletonResult.message" />
-    <UpdateCenter v-else-if="activeKey === 'updates'" :token="token" :can-check="hasPermission('system:updates:write')" />
     <PageState v-else-if="listError && !hasRenderableData" kind="error" title="数据加载失败" :description="listError" action-label="重新加载" @action="loadActiveModule" />
-    <div v-show="!moduleUnavailable && !skeletonResult && activeKey !== 'updates' && !(listError && !hasRenderableData)" class="module-page-content">
+    <div v-show="!moduleUnavailable && !skeletonResult && !(listError && !hasRenderableData)" class="module-page-content">
         <component :is="content" />
     </div>
   </div>
@@ -68,7 +67,6 @@
 
 <script setup lang="ts">
 import type {Component} from 'vue'
-import UpdateCenter from '../../UpdateCenter.vue'
 import FilterBar from '../../ui/FilterBar.vue'
 import MetricCard from '../../ui/MetricCard.vue'
 import PageHeader from '../../ui/PageHeader.vue'
@@ -86,7 +84,7 @@ const {
   warehouseTabOptions, switchWarehouseTab, panelMessage, loading,
   hasActiveFilters, applySearch, resetFilters, loadActiveModule, searchKeyword,
   listSearchPlaceholder, operationalSummaryCards, rows, skeletonResult,
-  token, hasPermission, listError, hasRenderableData, switchModule, moduleUnavailable,
+  listError, hasRenderableData, switchModule, moduleUnavailable,
 } = useWorkspaceContext()
 const {
   workorderStatusFilter, workorderTypeFilter, workorderPriorityFilter,

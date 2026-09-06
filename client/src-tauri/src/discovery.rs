@@ -124,7 +124,7 @@ fn http_client() -> Result<Client, String> {
         .map_err(|e| format!("无法初始化本地网络验证：{e}"))
 }
 
-async fn json_limited<T: serde::de::DeserializeOwned>(
+pub(crate) async fn json_limited<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
 ) -> Result<T, String> {
     if response.status() != StatusCode::OK {

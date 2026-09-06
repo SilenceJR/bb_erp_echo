@@ -1,8 +1,8 @@
 # Go 后端状态
 
-## 本轮 UI 整改联验（2026-09-05）
+## 内网单 EXE 更新重构（2026-09-07）
 
-本轮共享前端整改没有改变业务 API、权限码、初始化账户或迁移契约；另新增更新源部署配置与 Windows 本机离线打包能力，现有更新 API 路径和响应字段保持不变，因此无需重新生成未变化的 OpenAPI。`go test ./...` 已通过。浏览器隔离合成样本已检查新库暂缓模块不可用展示与统计降级；Windows 本机脚本、目录激活、真实样本权限矩阵、已有业务表完整业务操作及客户端联验仍待完成。不能把单元测试当作生产验收。最新问题、修复和证据见 [Astra 验收记录](ASTRA_ACCEPTANCE.md)。
+本轮替换旧更新契约：服务端不再调度外部清单、下载自身升级包或提供系统更新权限；客户端只通过匿名 protocol v1 单 EXE 接口检查和下载。后端测试已覆盖固定 `../client` 投放目录、严格签名信封、哈希/大小、原子缓存快照、并发刷新、204/503 及 Range/ETag；Swagger 三份产物已重新生成。本机静态/单元测试不能替代 Windows 内网下载、替换、启动确认和回滚验收。
 
 > 基准日期：2026-09-05
 
@@ -27,7 +27,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；模板下载为可直接回导的 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 和标准空目录；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 降级兼容已完成 | 缺少供应商、库存或任务数据源时仍返回 200，并用 `data_status`、`unavailable_sources`、`message` 明确标识；审计查询不受影响 |
 | 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
-| 客户端更新 | 已完成，待 Windows 离线包真机验收 | Windows full-only 更新、HTTP/本地目录更新源、内网同源代理、签名、哈希、临时文件与失败恢复 |
+| 客户端更新 | 已完成，待 Windows 单 EXE 真机验收 | 固定 `../client` 投放、匿名 protocol v1、内网同源内容寻址、签名、哈希、原子缓存、临时替换与失败回滚；无 HTTP/目录双源、服务端自升级或安装器 |
 | 局域网发现 | 已完成 | SQLite 稳定身份、匿名身份接口、UDP 39080、启动预检和 responder 生命周期 |
 
 ## 2. 局域网发现
@@ -97,7 +97,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
-- 权限编码绑定采用 fail-closed：任何缺失或拼写错误都会失败，不会把空查询结果解释为全量授权；新建部门终端账号不再自动绑定角色，显式角色修改提交后同步刷新 Casbin 策略，失败不得虚报可用；外层 update manifest 拒绝重复 JSON key、未知字段和尾随 JSON。
+- 权限编码绑定采用 fail-closed：任何缺失或拼写错误都会失败，不会把空查询结果解释为全量授权；新建部门终端账号不再自动绑定角色，显式角色修改提交后同步刷新 Casbin 策略，失败不得虚报可用；客户端更新签名信封拒绝重复 JSON key、未知字段和尾随 JSON。
 - 权限刷新先在临时 Casbin 引擎中构建数据库完整快照，全部成功后原子切换；HTTP 权限中间件、文件权限和角色服务禁止直接读写当前引擎。并发 `Enforce` 期间不会读到清空或半成品策略，构建失败保留上一份可用快照。
 
 ## 4. 本轮验证
@@ -124,14 +124,14 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 本轮导入导出专项：统一下载响应头由 `internal/spreadsheet` 提供，客户 XLSX 模板/导出契约保持不变；模具模板改为 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 与标准空目录，模板和正式导出均通过现有 `readPackage` 回读测试；`go test ./internal/spreadsheet ./internal/customer ./internal/mold` 通过。
 - 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
-- `v0.0.10` 至 `v0.0.12` 按维护者要求设为 GitHub Actions 仅构建版本：完整 Windows 打包、签名和 Artifact 保存照常执行，`publish-gitee` 明确跳过，不向 Gitee 上传成品且不更新稳定 manifest。
-- 新增 Windows 本机 `scripts/windows-package.ps1`：默认只生成版本化 all-in-one，`-Target All` 同时生成带相对资源 manifest、Minisign 和 SHA-256 的离线更新整包；现有 CI/CD 未改动。本地目录更新源拒绝绝对路径、父目录、符号链接和目录逃逸，不执行更新相关公网请求。Go 单元测试与静态检查通过后仍需在已配置工具链的 Windows x64 电脑执行脚本、NSIS/portable、服务器目录激活及回滚验收。
-- `v0.0.11` 标签对应 GitHub Actions `#91`（run `33458004272`）已成功：Go、Web、Tauri 前端、通用/Windows Rust 和完整 Windows 发布包作业全部通过，五组 GitHub Artifact 已生成；Gitee 发布作业为 `skipped`，`bb_erp_releases` 无 `v0.0.11` Release，稳定 manifest 保持 `0.0.9`。
-- `v0.0.13` 待标签推送后由 GitHub Actions 执行完整打包；在获得实际作业结果前，不将 Artifact、Gitee Release 或 Windows 真机验收记为已完成。
+- CI 只构建、签名并保存 Windows Artifact，不向 Gitee、GitHub Release 或公网稳定清单发布。正式交付包含 all-in-one、客户端更新包和服务端人工替换包。
+- 正式签名 job 绑定 `release-signing` Environment；发布前必须在 GitHub 实际配置 required reviewers、受保护 refs 和 Environment secrets。CI 会校验 Swagger 生成一致性，并解压三个 ZIP 检查单 EXE 结构、大小、SHA-256 和双重签名。
+- 管理员先覆盖服务器同级 `client/bb_erp_client.exe`、最后覆盖 `client-update.json`；服务端验证后缓存为 `updates/client-cache/<sha256>`。服务端更新由管理员停服、备份、人工替换和健康检查完成。
+- 本轮尚未获得新的 Windows CI Artifact 或真机结果；不得把文档、Go 单测或非 Windows 构建写成 Windows 发布验收。
 - Windows 客户端启动优先验证上次保存的内网服务器；仅在保存服务器不可用、未就绪或身份不匹配时才执行 UDP 发现。构建与自动化测试不替代真实 Windows/局域网验收。
 - 本轮前端弹层显示整改不改变 API、权限或数据契约；客户导入/导出、客户资料和任务操作弹层已移除 Teleport 内不可靠的 Motion 正文包装，待 Web/Tauri 与 Windows 真机完成首帧可见性复验。
 - 启动重复排查确认属于开发 Vite 依赖发现重载现象，不涉及 Go 服务或认证续期；Tauri `--bundles app` 生产 `.app` 构建成功，完整 DMG 仅受当前 macOS 挂载脚本环境限制。
-- 本轮扩展图片静态预览：`go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/file ./internal/mold`、`go test -tags nodynamic -count=1 ./internal/file ./internal/mold ./internal/app`、Web 测试、Web/Client 生产构建、Windows amd64 `CGO_ENABLED=0` + `nodynamic` 服务端跨编译、`git diff --check` 和 Swagger 三份产物同步均通过；HEIC、AVIF 真实编解码器样本已在当前 macOS 环境生成 JPEG 预览。本轮最终复核时 Rust 工具链可用，`cargo fmt --check`、`cargo check --locked` 和 26 项 `cargo test --locked` 已通过；Windows NSIS 仍只能由 `windows-latest` 作业组装，Windows 真机上传/解码、极端高清图、磁盘不足和真实业务权限仍在目标环境验收。
+- 本轮扩展图片静态预览：`go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./internal/file ./internal/mold`、`go test -tags nodynamic -count=1 ./internal/file ./internal/mold ./internal/app`、Web 测试、Web/Client 生产构建、Windows amd64 `CGO_ENABLED=0` + `nodynamic` 服务端跨编译、`git diff --check` 和 Swagger 三份产物同步均通过；HEIC、AVIF 真实编解码器样本已在当前 macOS 环境生成 JPEG 预览。本轮最终复核时 Rust 工具链可用，`cargo fmt --check`、`cargo check --locked` 和 26 项 `cargo test --locked` 已通过；Windows 真机上传/解码、极端高清图、磁盘不足、单 EXE 更新与真实业务权限仍在目标环境验收。
 
 ## 5. 待完成
 

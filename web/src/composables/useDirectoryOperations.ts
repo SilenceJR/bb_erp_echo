@@ -82,7 +82,7 @@ export function useDirectoryOperations(d: Dependencies) {
     d.moduleUnavailable.value = null
     d.skeletonResult.value = null
     try {
-      if (['customers', 'updates'].includes(item.key)) {
+      if (item.key === 'customers') {
         d.rows.value = []; d.columns.value = []; d.pageTotal.value = 0
       } else if (item.key === 'statistics') await d.loadStatistics()
       else await loadList(item.key, true)

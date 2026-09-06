@@ -11,7 +11,7 @@ mod http_scope;
 // 参数说明：无。
 // 返回说明：Tauri 运行失败时会 panic，并输出错误原因。
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -24,20 +24,13 @@ pub fn run() {
             update::client_update_check,
             update::client_update_apply,
             update::client_update_status,
-        ]);
-    if let Some(public_key) = update::update_public_key() {
-        builder = builder.plugin(
-            tauri_plugin_updater::Builder::new()
-                .pubkey(public_key)
-                .build(),
-        );
-    }
-    builder
+            update::client_update_capabilities,
+        ])
         .build(tauri::generate_context!())
         .expect("初始化博邦 ERP 桌面端失败")
         .run(|_handle, event| {
             if matches!(event, tauri::RunEvent::Ready) {
-                update::mark_ready_from_args();
+                update::mark_ready_from_args(_handle);
             }
         });
 }

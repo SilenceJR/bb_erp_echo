@@ -121,11 +121,11 @@ Booting
 
 ### 4.2 FileSave
 
-- 客户模板、客户导出、服务端升级包及未来受保护下载统一调用 `FileSave`。
+- 客户模板、客户导出及其他业务附件下载统一调用 `FileSave`。服务端升级包下载已删除，服务端只能由管理员停服、备份并人工替换。
 - Tauri 由 Rust 打开保存位置、处理取消与覆盖、携带当前认证读取同源受保护资源、流式写入临时文件并原子完成。
 - 成功返回最终路径；取消、无权限、磁盘不足、网络失败和服务端错误必须分别反馈，写入完成前不得提示成功。
 - Web 适配器保留 Blob 下载，但业务页面不得直接创建隐藏下载链接或判断运行平台。
-- 更新中心 Web 入口只保留服务端升级包的真实受保护下载；桌面客户端更新只由 Tauri 原生面板执行，不展示没有有效路径的“完整 ZIP 故障恢复”动作。
+- Web 不提供更新中心或安装动作；桌面客户端更新只由 Tauri 原生能力执行，登录页和“设置 / 客户端更新”使用同一状态。
 
 ### 4.3 WindowLeave
 
@@ -139,10 +139,10 @@ Booting
 - 只保留本轮定义的当前内网 Windows 更新链路；删除旧服务器 404 回退、旧 ZIP、RC、差分兼容和公网运行时分支。
 - 保留签名、哈希、来源限制、临时文件、失败不覆盖当前可运行客户端和重启失败恢复等安全结果。
 - 更新安装前必须通过统一离开守卫。
-- 当前 API 只保留 `/updates/client/plan`、`/updates/client/tauri/...` 与 `/updates/client/artifacts/:sha256`；`/plan` 只接收真实版本、`windows-x86_64` 和 `nsis|portable`，`strategy` 固定为 `full`。
-- 签名 payload 只允许 NSIS 与 portable 两个完整资源，未知字段及 `deltas` 一律拒绝；Windows 客户端只从已验证 ERP origin 下载，不读取上游发布地址。
-- 正式发布必须用嵌入客户端的公钥实际验证服务端包、NSIS、portable 和 payload 的签名；私钥/公钥不匹配时禁止生成或发布稳定清单。
-- portable 使用同目录暂存、旧 EXE 备份与新进程启动确认；不可写安装目录使用签名 NSIS。任一下载、签名、哈希、替换或重启失败都不得破坏当前可运行客户端。
+- 当前 API 只保留 `GET /client-updates/check?current_version=<SemVer>` 和 `GET /client-updates/artifacts/:sha256`。计划固定 protocol v1、`windows-x86_64`、`full` 和 portable 单 EXE；`204` 表示无更新或未投放，`400` 表示版本无效，`503` 表示投放校验失败。
+- 签名 payload 只允许 `version`、`target` 和单个 portable artifact；未知字段、差分、NSIS/MSI、外部 URL 和旧协议一律拒绝。Windows 客户端只从已验证 ERP origin 下载，不读取上游发布地址。
+- 正式发布必须用嵌入客户端的公钥实际验证 EXE、payload 和签名；私钥/公钥不匹配时禁止生成 Artifact 或投放。
+- portable 使用临时目录、旧 EXE 备份与新进程启动确认；不可写目录只提示迁移，不提权或回退到安装器。任一下载、签名、哈希、替换或重启失败都不得破坏当前可运行客户端。
 
 ## 5. 共享业务与代码拆分
 

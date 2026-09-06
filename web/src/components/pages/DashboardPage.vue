@@ -2,6 +2,7 @@
   <div class="dashboard">
     <div class="welcome-block">
       <div><h1>{{ greeting }}，{{ currentUser?.name || currentUser?.username }}</h1></div>
+      <!-- Only the low-noise available/in-progress/rollback notice is shown on the dashboard. -->
       <DesktopUpdatePanel v-if="desktopClient" compact />
     </div>
     <section v-if="quickActions.length" class="home-section" aria-labelledby="home-actions-title">

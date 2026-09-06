@@ -270,6 +270,93 @@
                 }
             }
         },
+        "/api/v1/client-updates/artifacts/{sha256}": {
+            "get": {
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "updates"
+                ],
+                "summary": "下载已验签客户端更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "已验签客户端 SHA-256",
+                        "name": "sha256",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "206": {
+                        "description": "Partial Content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/client-updates/check": {
+            "get": {
+                "description": "从服务端 ../client 目录读取并验证单文件 portable 客户端。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "updates"
+                ],
+                "summary": "检查内网客户端更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "当前客户端 SemVer",
+                        "name": "current_version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/update.ClientUpdatePlan"
+                        }
+                    },
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/customer-codes": {
             "get": {
                 "security": [
@@ -3503,134 +3590,6 @@
                 }
             }
         },
-        "/api/v1/system/updates/check": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "system-updates"
-                ],
-                "summary": "立即执行完整更新检查",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/update.SystemUpdateStatus"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/system/updates/server/download": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "system-updates"
-                ],
-                "summary": "下载并校验服务端升级包",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "502": {
-                        "description": "Bad Gateway",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/system/updates/status": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "system-updates"
-                ],
-                "summary": "查询版本与更新状态",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/update.SystemUpdateStatus"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/system/users/{id}/affiliation": {
             "patch": {
                 "security": [
@@ -3701,151 +3660,6 @@
                 }
             }
         },
-        "/api/v1/updates/client/artifacts/{sha256}": {
-            "get": {
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "下载已验签客户端更新资源",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "当前 manifest 资源 SHA-256",
-                        "name": "sha256",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "206": {
-                        "description": "Partial Content",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/updates/client/plan": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "查询 Windows 客户端完整更新",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "当前客户端 SemVer",
-                        "name": "current_version",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "目标平台，固定 windows-x86_64",
-                        "name": "target",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "安装模式：nsis 或 portable",
-                        "name": "install_mode",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/update.ClientUpdatePlan"
-                        }
-                    },
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/updates/client/tauri/{target}/{arch}/{current_version}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "updates"
-                ],
-                "summary": "查询 Tauri 完整客户端更新",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Tauri target，固定 windows",
-                        "name": "target",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "CPU 架构，固定 x86_64",
-                        "name": "arch",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "当前客户端 SemVer",
-                        "name": "current_version",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/update.TauriUpdateResponse"
-                        }
-                    },
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/version": {
             "get": {
                 "produces": [
@@ -3854,7 +3668,7 @@
                 "tags": [
                     "updates"
                 ],
-                "summary": "查询服务端与客户端版本",
+                "summary": "查询服务端版本",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -7610,41 +7424,6 @@
                 }
             }
         },
-        "update.ClientComponentStatus": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "boolean"
-                },
-                "cached": {
-                    "type": "boolean"
-                },
-                "current_version": {
-                    "type": "string"
-                },
-                "download_path": {
-                    "type": "string"
-                },
-                "download_url": {
-                    "type": "string"
-                },
-                "file_name": {
-                    "type": "string"
-                },
-                "latest_version": {
-                    "type": "string"
-                },
-                "manifest": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "sha256": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
         "update.ClientUpdatePlan": {
             "type": "object",
             "properties": {
@@ -7657,16 +7436,7 @@
                 "download_size": {
                     "type": "integer"
                 },
-                "full_size": {
-                    "type": "integer"
-                },
-                "install_mode": {
-                    "type": "string"
-                },
                 "latest_version": {
-                    "type": "string"
-                },
-                "message": {
                     "type": "string"
                 },
                 "protocol_version": {
@@ -7706,179 +7476,14 @@
                 }
             }
         },
-        "update.ComponentStatus": {
-            "type": "object",
-            "properties": {
-                "available": {
-                    "type": "boolean"
-                },
-                "current_version": {
-                    "type": "string"
-                },
-                "download_path": {
-                    "type": "string"
-                },
-                "download_url": {
-                    "type": "string"
-                },
-                "file_name": {
-                    "type": "string"
-                },
-                "latest_version": {
-                    "type": "string"
-                },
-                "manifest": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "sha256": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "update.Manifest": {
-            "type": "object",
-            "properties": {
-                "all_in_one": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "client_update_v2": {
-                    "$ref": "#/definitions/update.SignedClientUpdateManifest"
-                },
-                "notes": {
-                    "type": "string"
-                },
-                "published_at": {
-                    "type": "string"
-                },
-                "server": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "updater": {
-                    "$ref": "#/definitions/update.PackageManifest"
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
-        "update.PackageManifest": {
-            "type": "object",
-            "properties": {
-                "sha256": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                },
-                "url": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
-        "update.SignedClientUpdateManifest": {
-            "type": "object",
-            "properties": {
-                "payload": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                }
-            }
-        },
-        "update.SystemUpdateStatus": {
-            "type": "object",
-            "properties": {
-                "check_interval": {
-                    "type": "string"
-                },
-                "checking": {
-                    "type": "boolean"
-                },
-                "client": {
-                    "$ref": "#/definitions/update.ClientComponentStatus"
-                },
-                "client_cache_bytes": {
-                    "type": "integer"
-                },
-                "client_full_cached": {
-                    "type": "boolean"
-                },
-                "client_protocol_version": {
-                    "type": "integer"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "interval_seconds": {
-                    "type": "integer"
-                },
-                "last_attempt_at": {
-                    "type": "string"
-                },
-                "last_error": {
-                    "type": "string"
-                },
-                "last_success_at": {
-                    "type": "string"
-                },
-                "manifest": {
-                    "$ref": "#/definitions/update.Manifest"
-                },
-                "manifest_url": {
-                    "type": "string"
-                },
-                "next_check_at": {
-                    "type": "string"
-                },
-                "reachable": {
-                    "type": "boolean"
-                },
-                "server": {
-                    "$ref": "#/definitions/update.ComponentStatus"
-                }
-            }
-        },
-        "update.TauriUpdateResponse": {
-            "type": "object",
-            "properties": {
-                "pub_date": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
         "update.VersionResponse": {
             "type": "object",
             "properties": {
                 "app_name": {
                     "type": "string"
                 },
-                "client_version": {
-                    "type": "string"
-                },
                 "server_version": {
                     "type": "string"
-                },
-                "update_enabled": {
-                    "type": "boolean"
                 }
             }
         },

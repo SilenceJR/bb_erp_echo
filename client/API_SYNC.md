@@ -44,17 +44,17 @@
 - 产品选择和任务详情的库存采用“选择即查/打开即查 + 手动刷新”，不轮询；Web 与 Tauri 共用取消请求和请求序号保护，快速切换时旧响应不得覆盖当前产品。
 - 操作日志、任务流转和库存历史以“员工｜动作”为主要信息，同时保留登录账号与终端责任信息；所选员工是登录账号对现场责任人的申报，不等同于员工本人完成二次认证。旧记录没有员工快照时显示“历史记录未记录员工”。
 - 桌面端不维护另一套业务 API；Rust 仅实现平台能力。
-- 客户模板、客户导出和服务端升级包统一调用 `FileSave`。Tauri 使用系统保存对话框、同源受保护下载、无代理/无重定向、同目录临时文件和原子替换；取消不会提示成功。Web 备用入口保留浏览器 Blob 下载。
+- 客户模板、客户导出和其他受保护下载统一调用 `FileSave`。Tauri 使用系统保存对话框、同源受保护下载、无代理/无重定向、同目录临时文件和原子替换；取消不会提示成功。Web 备用入口保留浏览器 Blob 下载。服务端升级不属于客户端功能，由管理员停服、备份和人工替换。
 - 其他业务模块选择客户时调用 `GET /api/v1/customers/options`，选项 ID 是具体客户资料 ID，标签由客户编码与简称/名称组成，默认资料优先显示但不限制选择其他资料。
 - 桌面壳通过 `@tauri-apps/api/app` 的 `getVersion()` 读取真实安装版本。Vue 只触发检查/安装并展示状态，不接触本机路径、任意下载 URL 或签名决策；Web 端不显示桌面自动安装按钮。
 
 ## 更新请求
 
-- Rust 调用 `/api/v1/updates/client/plan`，只传真实安装版本、`windows-x86_64` 和 `nsis|portable` 安装模式。当前契约固定返回完整更新，不保留差分计划、旧 ZIP、协议降级或外部下载分支。
-- 更新资源必须通过来源限制、签名、哈希和大小验证；写入临时文件并原子替换，启动失败时恢复原客户端。
-- 安装前先调用统一离开守卫，存在未保存业务内容时默认取消安装。
-- 管理页读取 `/api/v1/system/updates/status`；拥有 `system:updates:write` 时可调用 `POST /api/v1/system/updates/check`。更新源支持既有 HTTP 模式与 `directory` 本地发布目录模式；目录模式只接受发布根目录内无符号链接的相对资源，不发起更新相关公网请求。服务端升级包通过同源受保护接口 `/api/v1/system/updates/server/download` 下载，由 Go 服务端使用已部署可信公钥流式验证 Minisign 签名、1 字节至 512 MiB 大小、SHA-256 和 ZIP 结构后分发，Tauri 不直接打开外部更新地址；桌面传输对此大文件接口使用 12 分钟超时，比服务端默认下载时限多保留 2 分钟，以便接收并反馈服务端具体错误。
-- Web 更新中心不展示没有有效下载路径的客户端 ZIP 卡片；真实客户端更新能力只通过 Tauri 原生更新面板提供。
+- Rust 在连接身份已验证后调用匿名 `GET /api/v1/client-updates/check?current_version=<真实 SemVer>`；启动期自动检查一次，登录页和“设置 / 客户端更新”可手动检查。Web 不显示更新安装入口。
+- `204` 表示已是最新或服务器未投放有效包；`400` 表示版本无效；`503` 表示投放内容不完整或不可信。`200` 只接受 protocol v1 的完整 portable 计划：`protocol_version/current_version/latest_version/target/strategy/download_size/signed_payload/signature/artifact`；artifact 只接受 `kind/size/sha256/signature/download_path`。
+- Rust 只访问当前已验证的内网同源 `GET /api/v1/client-updates/artifacts/:sha256`，并重新验证签名、版本、来源、哈希和大小。旧 `/api/v1/updates/client/*`、Tauri updater、NSIS/MSI、差分、外部 URL 与协议降级均不存在。
+- 安装前先调用统一离开守卫，存在未保存业务内容时默认取消安装。完整 EXE 写入临时目录后由临时助手原子替换；新版未写入启动就绪标记时恢复旧 EXE 并重启。只读目录、`Program Files` 与网络共享只提示迁移，不尝试提权。
+- 服务端固定验证其可执行文件上一级 `client` 目录的 `bb_erp_client.exe` 和后置 `client-update.json`，缓存到 `updates/client-cache/<sha256>` 后再对外发布。管理员先覆盖 EXE、最后覆盖清单；私钥只用于受控 CI，绝不部署在服务器。
 
 ## 调试说明
 

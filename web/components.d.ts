@@ -91,7 +91,6 @@ declare module 'vue' {
     StatusTag: typeof import('./src/components/ui/StatusTag.vue')['default']
     SummaryStrip: typeof import('./src/components/ui/SummaryStrip.vue')['default']
     SupplierModuleContent: typeof import('./src/components/pages/module/SupplierModuleContent.vue')['default']
-    UpdateCenter: typeof import('./src/components/UpdateCenter.vue')['default']
     WarehouseDrawer: typeof import('./src/components/pages/WarehouseDrawer.vue')['default']
     WarehouseModuleContent: typeof import('./src/components/pages/module/WarehouseModuleContent.vue')['default']
     WorkorderActionDialog: typeof import('./src/components/pages/WorkorderActionDialog.vue')['default']

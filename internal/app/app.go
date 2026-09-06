@@ -287,7 +287,6 @@ func (a *App) registerRoutes() error {
 	user.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	role.NewHandler(a.DB, a.RoleService).RegisterRoutes(system, require)
 	audit.NewHandler(a.DB).RegisterRoutes(system, require)
-	updateHandler.RegisterSystemRoutes(system, require)
 
 	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	supplier.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
@@ -380,12 +379,6 @@ func (l *readyListener) Accept() (net.Conn, error) {
 // 参数说明：无。
 // 返回说明：服务启动失败或优雅关闭失败时返回错误。
 func (a *App) Run() error {
-	updateContext, cancelUpdates := context.WithCancel(context.Background())
-	defer cancelUpdates()
-	if a.UpdateService != nil {
-		a.UpdateService.Start(updateContext)
-	}
-
 	runContext, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	discoveryEnabled := a.DiscoveryService != nil && a.DiscoveryService.Enabled()
@@ -413,6 +406,12 @@ func (a *App) Run() error {
 	case err := <-errCh:
 		_ = listener.Close()
 		return a.shutdownAfterRunError(err)
+	}
+	if a.UpdateService != nil {
+		if _, _, refreshErr := a.UpdateService.CheckClientUpdate(runContext, "0.0.0"); refreshErr != nil &&
+			!errors.Is(refreshErr, update.ErrClientUpdateNotPublished) && a.Logger != nil {
+			a.Logger.Warn("client update package was not activated at startup", "error", refreshErr)
+		}
 	}
 	if discoveryEnabled {
 		if err := a.DiscoveryService.Start(runContext); err != nil {

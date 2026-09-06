@@ -17,12 +17,14 @@
 </template>
 
 <script setup lang="ts">
-import {defineAsyncComponent, provide} from 'vue'
+import {defineAsyncComponent, onMounted, provide} from 'vue'
 import AppWorkspace from './AppWorkspace.vue'
 import LoginScreen from './LoginScreen.vue'
 import {useWorkspaceController} from '../../composables/useWorkspaceController'
 import {workspaceContextKey} from '../../composables/workspaceContext'
 import {workorderContextKey} from '../../composables/workorderContext'
+import {desktopBridge} from '../../api/transport'
+import {useDesktopUpdate} from '../../composables/useDesktopUpdate'
 
 const DashboardPage = defineAsyncComponent(() => import('../pages/DashboardPage.vue'))
 const DepartmentPage = defineAsyncComponent(() => import('../pages/DepartmentPage.vue'))
@@ -35,6 +37,13 @@ const workspace = useWorkspaceController()
 const {activeKey, token} = workspace
 provide(workspaceContextKey, workspace)
 provide(workorderContextKey, workspace.workorderContext)
+
+const {checkOnConnection} = useDesktopUpdate()
+onMounted(() => {
+  // WorkspaceSession is mounted for both restored and freshly authenticated
+  // sessions, so returning users also receive the once-per-server check.
+  if (desktopBridge()) void checkOnConnection()
+})
 </script>
 
 <style scoped>
