@@ -1,5 +1,9 @@
 # Go 后端状态
 
+## Windows 0.2.4 CI/CD 打包修复（2026-09-07）
+
+修复客户端更新包摘要生成：MSYS2/GNU `sha256sum` 不再接收 Windows 路径作为文件名，而是从 EXE 内容读取摘要，避免路径反斜杠转义污染 `client-update.json` 的 `artifact.sha256`。静态打包契约检查已通过；`v0.2.4` Windows 构建、签名和 Artifact 验证需由 GitHub Actions 完成。
+
 ## 客户端独立版本 0.1.1 更新测试（2026-09-07）
 
 Windows 发布标签继续决定服务端版本和 Artifact 名称，客户端 EXE 与签名更新清单的版本改为取自 Tauri 源码配置。客户端 `package.json`/lock、Cargo manifest/lock 和 Tauri 配置统一更新为 `0.1.1`，用于 `v0.2.3` 发布标签的内网客户端更新验证。

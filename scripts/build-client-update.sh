@@ -35,7 +35,9 @@ sign_file() {
 target_exe="$output_dir/bb_erp_client.exe"
 cp "$source_exe" "$target_exe"
 size="$(wc -c <"$target_exe" | tr -d '[:space:]')"
-sha256="$(sha256sum "$target_exe" | awk '{print $1}')"
+# Hash stdin so MSYS2/GNU sha256sum cannot escape the Windows path into the
+# manifest value (for example, by prefixing the digest with a backslash).
+sha256="$(sha256sum --binary <"$target_exe" | awk '{print $1}')"
 file_signature="$(sign_file "$target_exe")"
 
 payload="$work_dir/client-update-payload.json"
