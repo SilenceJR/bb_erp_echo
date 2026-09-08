@@ -88,8 +88,8 @@
           </section>
           <div v-if="detailID" class="mold-detail-assets">
             <div class="mold-gallery-grid">
-              <ImageGallery variant="mold-detail" owner-type="mold" :owner-id="detailID" :token="token" :can-write="canWrite" category="product_material" title="产品材料图片" @busy-change="productGalleryBusy = $event" />
-              <ImageGallery variant="mold-detail" owner-type="mold" :owner-id="detailID" :token="token" :can-write="canWrite" category="supplement" title="补充图片" @busy-change="supplementGalleryBusy = $event" />
+              <ImageGallery variant="mold-detail" owner-type="mold" :owner-id="detailID" :token="token" :can-write="canWrite" category="product_material" title="产品图" @busy-change="productGalleryBusy = $event" />
+              <ImageGallery variant="mold-detail" owner-type="mold" :owner-id="detailID" :token="token" :can-write="canWrite" category="supplement" title="模具图" @busy-change="supplementGalleryBusy = $event" />
             </div>
             <section class="drawing-panel" data-file-drop-target :class="{'is-dragging': drawingDragging}" :aria-busy="drawingSaving" aria-label="DWG 图纸" @dragenter.prevent="handleDrawingDragEnter" @dragover.prevent="handleDrawingDragOver" @dragleave.prevent="handleDrawingDragLeave" @drop.prevent="handleDrawingDrop" @bb-native-file-drag="handleNativeDrawingDrag">
               <div class="section-heading"><div><h2>DWG 图纸</h2><small>支持单个 .dwg、.fdwg 文件；可拖放到此区域。</small></div><el-button v-if="canWrite" :loading="drawingSaving" :disabled="drawingSaving" @click="drawingInput?.click()">上传图纸</el-button></div>
@@ -127,7 +127,27 @@
       <template #footer><div class="form-actions"><el-button :disabled="locationSaving" @click="requestLocationClose">关闭</el-button><el-button type="primary" native-type="submit" form="mold-location-bulk-editor" :loading="locationSaving" :disabled="!bulkLocation.zone.trim() || !bulkLocationPreviewCount">扩展货架</el-button><el-button plain type="primary" native-type="submit" form="mold-location-editor" :loading="locationSaving" :disabled="!newLocation.trim()">新增单个</el-button></div></template>
     </ResponsiveDetailCarrier>
 
-    <el-dialog v-model="importDialog" class="mold-import-dialog" title="导入模具资料包" width="min(620px, calc(100vw - 32px))" :close-on-click-modal="!importing && !importPreviewing && !templateLoading" :close-on-press-escape="!importing && !importPreviewing && !templateLoading" :before-close="beforeImportClose" destroy-on-close @opened="focusImportDialogEntry" @closed="restoreImportTriggerFocus"><p>导入会替换模具、模具图片、DWG 和位置字典，不影响其他业务模块。</p><section v-if="canImport" class="import-template-guide"><div><h3>{{ templateDefinition.label }}</h3><p>模板包含 molds.xlsx、位置字典和标准目录。填写后按目录补充图片、图纸，再压缩为 ZIP 资料包。</p></div><el-button :loading="templateLoading" :disabled="templateLoading || exporting || importing || importPreviewing" @click="downloadTemplate">{{ templateDefinition.label }}</el-button></section><input v-if="canImport && importDialog" ref="importInput" class="sr-only" type="file" :accept="importDefinition.accept" tabindex="-1" aria-hidden="true" @change="previewImport" /><div v-if="!importFile" class="import-dropzone" data-file-drop-target :class="{'is-dragging': importDragging}" role="button" tabindex="0" @click="chooseImportFile" @keydown.enter.prevent="chooseImportFile" @keydown.space.prevent="chooseImportFile" @dragenter.prevent="handleImportDragEnter" @dragover.prevent="handleImportDragOver" @dragleave.prevent="handleImportDragLeave" @drop.prevent="handleImportDrop" @bb-native-file-drag="handleNativeImportDrag"><strong>{{ importDragging ? '松开以导入 ZIP' : '将 ZIP 资料包拖到此处' }}</strong><span>或点击选择文件</span></div><div v-if="importFile" class="import-file"><strong>{{ importFile.name }}</strong><span>{{ importResult ? '资料包预览完成' : '正在检查资料包…' }}</span></div><el-alert v-if="importError" :title="importError" type="error" :closable="false" show-icon /><el-alert v-if="importResult" :title="`模具 ${importResult.summary.molds} 条，图片 ${importResult.summary.images} 张，图纸 ${importResult.summary.drawings} 个`" type="info" :closable="false" /><div v-if="importResult?.errors?.length" class="import-errors"><p v-for="item in importResult.errors" :key="`${item.row}-${item.column}-${item.value}`">{{ item.value || item.column }}：{{ item.reason }}</p></div><div v-if="importResult?.unresolved?.length" class="import-corrections"><p>以下图片无法从文件名识别模具，请人工指定：</p><div v-for="item in importResult.unresolved" :key="item.path"><span>{{ item.name }}</span><el-select v-model="corrections[item.path].category" :aria-label="`${item.name}图片分组`"><el-option label="产品材料" value="product_material" /><el-option label="补充图" value="supplement" /></el-select><el-input v-model="corrections[item.path].codes" :aria-label="`${item.name}对应模具编号`" placeholder="模具编号，多个用 + 或逗号分隔" /></div></div><template #footer><el-button :disabled="importing || importPreviewing || templateLoading" @click="requestImportClose">取消</el-button><el-button v-if="importFile && !importResult" :disabled="importing || importPreviewing || templateLoading" @click="chooseImportFile">重新选择</el-button><el-button type="primary" :loading="importing" :disabled="!canCommitImport || importPreviewing || templateLoading" @click="commitImport">确认替换导入</el-button></template></el-dialog>
+    <el-dialog v-model="importDialog" class="mold-import-dialog" title="导入模具资料包" width="min(720px, calc(100vw - 32px))" :close-on-click-modal="!importing && !importPreviewing && !templateLoading" :close-on-press-escape="!importing && !importPreviewing && !templateLoading" :before-close="beforeImportClose" destroy-on-close @opened="focusImportDialogEntry" @closed="restoreImportTriggerFocus">
+      <p>导入会全量更新模具档案和位置字典；资料目录存在的模具会覆盖其产品图、模具图和 DWG，无资料目录的模具保留现有资料，Excel 中删除的模具及资料会一并删除。</p>
+      <section v-if="canImport" class="import-template-guide"><div><h3>{{ templateDefinition.label }}</h3><p>ZIP 根目录放置 molds.xlsx、locations.json 和扁平模具目录；允许额外套一层统一包装目录。单模目录使用完整模具编号，共模目录使用同组全部编号以 + 连接。图片与 DWG/FDWG 直接放在对应模具目录中，不要建立 images、drawings 或图片分类子目录。文件名含“产品刷墨图”或以 -正整数结尾的图片归产品图，其他图片归模具图，DWG/FDWG 归图纸。</p></div><el-button :loading="templateLoading" :disabled="templateLoading || exporting || importing || importPreviewing" @click="downloadTemplate">{{ templateDefinition.label }}</el-button></section>
+      <input v-if="canImport && importDialog" ref="importInput" class="sr-only" type="file" :accept="importDefinition.accept" tabindex="-1" aria-hidden="true" @change="previewImport" />
+      <div v-if="!importFile" class="import-dropzone" data-file-drop-target :class="{'is-dragging': importDragging}" role="button" tabindex="0" @click="chooseImportFile" @keydown.enter.prevent="chooseImportFile" @keydown.space.prevent="chooseImportFile" @dragenter.prevent="handleImportDragEnter" @dragover.prevent="handleImportDragOver" @dragleave.prevent="handleImportDragLeave" @drop.prevent="handleImportDrop" @bb-native-file-drag="handleNativeImportDrag"><strong>{{ importDragging ? '松开以导入 ZIP' : '将 ZIP 资料包拖到此处' }}</strong><span>或点击选择文件</span></div>
+      <div v-if="importFile" class="import-file"><strong>{{ importFile.name }}</strong><span>{{ importResult ? '资料包预览完成' : '正在检查资料包…' }}</span></div>
+      <el-alert v-if="importError" :title="importError" type="error" :closable="false" show-icon />
+      <el-alert v-if="importResult" :title="`模具 ${importResult.summary.molds} 条，图片 ${importResult.summary.images} 张，图纸 ${importResult.summary.drawings} 个`" type="info" :closable="false" />
+      <div v-if="importResult?.errors?.length" class="import-errors"><p v-for="item in importResult.errors" :key="`${item.row}-${item.column}-${item.value}`">{{ item.value || item.column }}：{{ item.reason }}</p></div>
+      <div v-if="importResult?.unresolved?.length" class="import-corrections">
+        <p>以下资料无法从文件名确定归属，请人工选择完整模具编号；图片还需选择类型：</p>
+        <div class="import-correction-header" aria-hidden="true"><span>文件</span><span>类型</span><span>归属模具</span></div>
+        <div v-for="item in importResult.unresolved" :key="item.path">
+          <span>{{ item.name }}</span>
+          <el-select v-if="item.kind !== 'drawing'" v-model="corrections[item.path].category" :aria-label="`${item.name}图片类型`" placeholder="选择图片类型"><el-option label="产品图" value="product_material" /><el-option label="模具图" value="supplement" /></el-select>
+          <span v-else class="import-correction-kind">图纸</span>
+          <el-select v-model="corrections[item.path].codes" multiple collapse-tags :aria-label="`${item.name}对应模具编号`" placeholder="选择模具编号"><el-option v-for="code in item.allowed_codes" :key="code" :label="code" :value="code" /></el-select>
+        </div>
+      </div>
+      <template #footer><el-button :disabled="importing || importPreviewing || templateLoading" @click="requestImportClose">取消</el-button><el-button v-if="importFile && !importResult" :disabled="importing || importPreviewing || templateLoading" @click="chooseImportFile">重新选择</el-button><el-button type="primary" :loading="importing" :disabled="!canCommitImport || importPreviewing || templateLoading" @click="commitImport">确认导入并更新资料</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
@@ -156,7 +176,7 @@ import {missingShelfCodes, type MoldLocationOption} from './moldLocation'
 type Location = MoldLocationOption & {status: 'active' | 'disabled'}
 type Mold = {id: number; mold_number: string; model: string; mold_type: 'single' | 'common'; location_id?: number; location?: Location; common_group_no?: string; remark?: string; image_count?: number}
 type Drawing = {id: number; original_name: string; size: number}
-type Preview = {token?: string; summary: {molds: number; images: number; drawings: number; unresolved: number}; errors: Array<{row: number; column: string; value?: string; reason: string}>; unresolved: Array<{path: string; name: string}>}
+type Preview = {token?: string; summary: {molds: number; images: number; drawings: number; unresolved: number}; errors: Array<{row: number; column: string; value?: string; reason: string}>; unresolved: Array<{path: string; name: string; kind?: 'image' | 'drawing'; allowed_codes: string[]}>}
 const {token, hasPermission, setPageDetailPanelVisible} = useWorkspaceContext()
 const importDefinition = getTransferImportDefinition('molds')
 const templateDefinition = getTransferDefinition('molds', 'template')
@@ -180,11 +200,11 @@ let importDragDepth = 0
 const bulkDialog = ref(false), bulkLocationID = ref<number>(), bulkSaving = ref(false), locationDialog = ref(false), newLocation = ref(''), locationSaving = ref(false)
 const bulkLocation = reactive({zone: 'A', rows: 7, columns: 4})
 const locationInitial = ref('')
-const importDialog = ref(false), importFile = ref<File | null>(null), importPath = ref<string | null>(null), importResult = ref<Preview | null>(null), importError = ref(''), importing = ref(false), importPreviewing = ref(false), corrections = reactive<Record<string, {category: string; codes: string}>>({})
+const importDialog = ref(false), importFile = ref<File | null>(null), importPath = ref<string | null>(null), importResult = ref<Preview | null>(null), importError = ref(''), importing = ref(false), importPreviewing = ref(false), corrections = reactive<Record<string, {category: string; codes: string[]}>>({})
 const exporting = computed(() => isTransferLoading('molds', 'export'))
 const templateLoading = computed(() => isTransferLoading('molds', 'template'))
 const assignableLocations = computed(() => locations.value.filter((item) => item.status === 'active' || item.id === draft.location_id))
-const canCommitImport = computed(() => Boolean(importFile.value && importResult.value?.token && !importing.value && !(importResult.value?.unresolved || []).some((item) => !corrections[item.path]?.category || !corrections[item.path]?.codes.trim())))
+const canCommitImport = computed(() => Boolean(importFile.value && importResult.value?.token && !importing.value && !(importResult.value?.unresolved || []).some((item) => (item.kind !== 'drawing' && !corrections[item.path]?.category) || !corrections[item.path]?.codes.length)))
 const savedDraft = ref('')
 const draftDirty = computed(() => detailVisible.value && editing.value && savedDraft.value !== JSON.stringify(draft))
 const locationDirty = computed(() => locationDialog.value && locationInitial.value !== JSON.stringify({newLocation: newLocation.value, ...bulkLocation}))
@@ -299,7 +319,7 @@ async function requestImportClose() { await beforeImportClose(() => { importDial
 async function deleteMold() {
   if (!detailID.value || detailDeleteBusy.value) return
   try {
-    const confirmation = appMessageBox.confirm(`确认删除模具“${draft.mold_number}”吗？\n\n产品图片、补充图片和 DWG 图纸都会一并删除，且永久删除后无法恢复。`, '删除模具', {
+    const confirmation = appMessageBox.confirm(`确认删除模具“${draft.mold_number}”吗？\n\n产品图、模具图和 DWG 图纸都会一并删除，且永久删除后无法恢复。`, '删除模具', {
       type: 'warning',
       confirmButtonText: '确认永久删除',
       cancelButtonText: '取消',
@@ -389,10 +409,10 @@ function handleNativeImportDrag(event: Event) { const detail = (event as CustomE
 function previewImport(event: Event) { const input = event.target as HTMLInputElement; const file = input.files?.[0]; input.value = ''; if (file) void previewImportFile(file) }
 const importExtensions = importDefinition.accept.split(',').map((value) => value.trim().toLowerCase()).filter((value) => value.startsWith('.'))
 function acceptsImportFileName(name: string) { const normalizedName = name.trim().toLowerCase(); return importExtensions.some((extension) => normalizedName.endsWith(extension)) }
-async function applyImportPreview(result: Preview) { importResult.value = result; Object.keys(corrections).forEach((key) => delete corrections[key]); for (const item of result.unresolved || []) corrections[item.path] = {category: 'product_material', codes: ''} }
-async function previewImportFile(file: File) { importPath.value = null; if (!acceptsImportFileName(file.name)) { importError.value = '仅支持 ZIP 资料包'; ElMessage.warning(importError.value); return }; importFile.value = file; importResult.value = null; importError.value = ''; const body = new FormData(); body.append('file', file); importPreviewing.value = true; try { await applyImportPreview(await request<Preview>(importDefinition.previewPath, {method: 'POST', body}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null; ElMessage.error(importError.value) } finally { importPreviewing.value = false } }
-async function previewImportPath(path: string) { if (!acceptsImportFileName(path)) { importError.value = '仅支持 ZIP 资料包'; ElMessage.warning(importError.value); return }; importPath.value = path; importFile.value = new File([], path.split(/[\\/]/).pop() || '拖入资料包'); importResult.value = null; importError.value = ''; importPreviewing.value = true; try { await applyImportPreview(await uploadNativeFiles<Preview>(importDefinition.previewPath, [path], {}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null; importPath.value = null; ElMessage.error(importError.value) } finally { importPreviewing.value = false } }
-async function commitImport() { if (!canCommitImport.value || !importFile.value || !importResult.value?.token) return; importing.value = true; try { const normalized = Object.fromEntries(Object.entries(corrections).map(([path, item]) => [path, {category: item.category, codes: item.codes.split(/[+,，、\s]+/).map((code) => code.trim()).filter(Boolean)}])); if (importPath.value) await uploadNativeFiles(importDefinition.commitPath, [importPath.value], {token: importResult.value.token, corrections: JSON.stringify(normalized)}, token.value); else { const body = new FormData(); body.append('file', importFile.value); body.append('token', importResult.value.token); body.append('corrections', JSON.stringify(normalized)); await request(importDefinition.commitPath, {method: 'POST', body}, token.value) } importDialog.value = false; await Promise.all([load(), loadLocations()]); ElMessage.success('模具资料包已导入') } catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : '资料包导入失败') } finally { importing.value = false } }
+async function applyImportPreview(result: Preview) { importResult.value = result; Object.keys(corrections).forEach((key) => delete corrections[key]); for (const item of result.unresolved || []) corrections[item.path] = {category: '', codes: []} }
+async function previewImportFile(file: File) { importPath.value = null; if (!acceptsImportFileName(file.name)) { importError.value = '仅支持 ZIP 资料包'; return }; importFile.value = file; importResult.value = null; importError.value = ''; const body = new FormData(); body.append('file', file); importPreviewing.value = true; try { await applyImportPreview(await request<Preview>(importDefinition.previewPath, {method: 'POST', body}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null } finally { importPreviewing.value = false } }
+async function previewImportPath(path: string) { if (!acceptsImportFileName(path)) { importError.value = '仅支持 ZIP 资料包'; return }; importPath.value = path; importFile.value = new File([], path.split(/[\\/]/).pop() || '拖入资料包'); importResult.value = null; importError.value = ''; importPreviewing.value = true; try { await applyImportPreview(await uploadNativeFiles<Preview>(importDefinition.previewPath, [path], {}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null; importPath.value = null } finally { importPreviewing.value = false } }
+async function commitImport() { if (!canCommitImport.value || !importFile.value || !importResult.value?.token) return; importing.value = true; importError.value = ''; try { const normalized = Object.fromEntries(Object.entries(corrections).map(([path, item]) => [path, {category: item.category, codes: item.codes}])); if (importPath.value) await uploadNativeFiles(importDefinition.commitPath, [importPath.value], {token: importResult.value.token, corrections: JSON.stringify(normalized)}, token.value); else { const body = new FormData(); body.append('file', importFile.value); body.append('token', importResult.value.token); body.append('corrections', JSON.stringify(normalized)); await request(importDefinition.commitPath, {method: 'POST', body}, token.value) } importDialog.value = false; await Promise.all([load(), loadLocations()]); ElMessage.success('模具资料包已导入') } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包导入失败' } finally { importing.value = false } }
 async function downloadTemplate() { importError.value = ''; try { await downloadTransfer('molds', 'template') } catch { /* 下载反馈由共享传输 composable 统一负责 */ } }
 async function exportPackage() { try { await downloadTransfer('molds', 'export') } catch { /* composable already reports the failure */ } }
 async function focusImportDialogEntry() {
@@ -483,6 +503,8 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleDetailEsca
 .import-errors p { margin: 4px 0; }
 .import-corrections { display: grid; gap: 8px; margin-top: 12px; }
 .import-corrections > div { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1.2fr); gap: 8px; align-items: center; }
+.import-corrections > .import-correction-header { color: var(--bb-text-secondary); font-size: var(--bb-font-size-12); font-weight: 600; }
+.import-correction-kind { color: var(--bb-text-secondary); font-size: var(--bb-font-size-13); }
 .location-management-section { display: grid; gap: var(--bb-space-3); margin-bottom: var(--bb-space-5); }
 .location-bulk-form { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(90px, 120px)); gap: var(--bb-space-2); }
 .location-bulk-form .el-form-item { margin-bottom: 0; }
@@ -512,6 +534,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', handleDetailEsca
   .selection-bar { align-items: flex-start; flex-direction: column; }
   .import-template-guide { align-items: flex-start; flex-direction: column; }
   .import-corrections > div { grid-template-columns: 1fr; }
+  .import-corrections > .import-correction-header { display: none; }
   .import-file { align-items: flex-start; flex-direction: column; }
   .mold-gallery-grid { grid-template-columns: minmax(0, 1fr); }
   .mold-editor .form-grid { grid-template-columns: minmax(0, 1fr); }

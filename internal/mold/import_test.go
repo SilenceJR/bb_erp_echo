@@ -19,6 +19,7 @@ import (
 	"bb_erp_echo/internal/spreadsheet"
 
 	"github.com/labstack/echo/v5"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"gorm.io/gorm"
 )
 
@@ -28,11 +29,20 @@ func TestNaturalAssetSortAndCategoryInference(t *testing.T) {
 	if got := names[0] + "," + names[1] + "," + names[2]; got != "CYF-1.jpg,CYF-2.jpg,CYF-10.jpg" {
 		t.Fatalf("unexpected natural order: %s", got)
 	}
-	if got := inferCategory("CYF-1-未知.jpg"); got != "" {
-		t.Fatalf("unknown image category should require preview correction, got %q", got)
+	if got := inferCategory("CYF-1-未知.jpg"); got != "supplement" {
+		t.Fatalf("non-numbered image should be mold image, got %q", got)
 	}
 	if got := inferCategory("CYF-1-前模局部.jpg"); got != "supplement" {
 		t.Fatalf("unexpected supplement category: %q", got)
+	}
+	if got := inferCategory("CYF-1-关系图.jpg"); got != "supplement" {
+		t.Fatalf("other images should be mold images, got %q", got)
+	}
+	if got := inferCategory("CYF-1.jpg"); got != "product_material" {
+		t.Fatalf("numbered image should be product image, got %q", got)
+	}
+	if got := inferCategory("CYF产品刷墨图.jpg"); got != "product_material" {
+		t.Fatalf("inked product image should be product image, got %q", got)
 	}
 }
 
@@ -41,6 +51,204 @@ func TestMoldImportAcceptsGalleryImageExtensions(t *testing.T) {
 		if !filemodule.AllowedImageExtension(ext) {
 			t.Fatalf("expected mold import to accept %s", ext)
 		}
+	}
+}
+
+func TestLegacySingleMoldFlatImageUsesDirectoryOwnership(t *testing.T) {
+	entry := &zip.File{Name: "关系图.png", UncompressedSize64: 1}
+	asset, ok := parseImageAsset(entry, []string{"images", "A", "关系图.png"}, map[string]bool{"A": true})
+	if !ok || strings.Join(asset.Codes, ",") != "A" || strings.Join(asset.AllowedCodes, ",") != "A" || asset.Category != "supplement" {
+		t.Fatalf("legacy single-mold image ownership failed: ok=%v asset=%+v", ok, asset)
+	}
+}
+
+func TestNormalizeMoldZipEntryNameAcceptsLegacyGBK(t *testing.T) {
+	encoded, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("001/BB3611/BB3611产品刷墨图.jpg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := &zip.File{FileHeader: zip.FileHeader{Name: string(encoded), NonUTF8: true}}
+	if err := normalizeMoldZipEntryName(entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry.Name != "001/BB3611/BB3611产品刷墨图.jpg" || entry.NonUTF8 {
+		t.Fatalf("legacy name was not decoded: name=%q non_utf8=%v", entry.Name, entry.NonUTF8)
+	}
+}
+
+func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
+	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
+		SheetName: "模具", Columns: moldColumns,
+		Rows: [][]string{
+			{"", "SINGLE", "单模产品", "单模", "A1-1", "", "0", ""},
+			{"", "C1", "共模产品1", "共模", "A1-1", "GROUP-1", "0", ""},
+			{"", "C2", "共模产品2", "共模", "A1-1", "GROUP-1", "0", ""},
+		}, TotalRows: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	entries := map[string][]byte{
+		"001/molds.xlsx":             xlsx,
+		"001/SINGLE/SINGLE-1.png":    tinyPNG,
+		"001/SINGLE/SINGLE-2.png":    tinyPNG,
+		"001/SINGLE/SINGLE产品刷墨图.png": tinyPNG,
+		"001/SINGLE/关系图.png":         tinyPNG,
+		"001/C1+C2/C1-1.png":         tinyPNG,
+		"001/C1+C2/C2前模局部图.png":      tinyPNG,
+		"001/C1+C2/C1+C2后模图.png":     tinyPNG,
+		"001/C1+C2/无法识别成员.png":       tinyPNG,
+		"001/C1+C2/C1+C2-结构.dwg":     []byte("dwg"),
+		"001/C1+C2/别名共模结构图.dwg":      []byte("shared dwg"),
+		"001/SINGLE/忽略.txt":          []byte("unknown"),
+		"001/C1+C2/desktop.ini":      []byte("system metadata"),
+		"001/__MACOSX/._molds.xlsx":  []byte("system metadata"),
+		"001/.DS_Store":              []byte("system metadata"),
+		"001/locations.json":         []byte(`[{"code":"A1-1","status":"active"}]`),
+	}
+	for name, content := range entries {
+		w, createErr := zw.Create(name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := w.Write(content); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "flat.zip")
+	if err := os.WriteFile(path, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := readTestPackage(t, path, int64(archive.Len()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Errors) != 1 || !strings.Contains(data.Errors[0].Value, "忽略.txt") {
+		t.Fatalf("unexpected flat archive errors: %+v", data.Errors)
+	}
+	if len(data.Rows) != 3 || len(data.Images) != 7 || len(data.Drawings) != 1 || len(data.Unresolved) != 2 {
+		t.Fatalf("flat archive parse rows=%d images=%d drawings=%d unresolved=%d errors=%v", len(data.Rows), len(data.Images), len(data.Drawings), len(data.Unresolved), data.Errors)
+	}
+	if len(data.AssetMolds) != 3 || !data.AssetMolds["SINGLE"] || !data.AssetMolds["C1"] || !data.AssetMolds["C2"] {
+		t.Fatalf("flat archive scopes=%v", data.AssetMolds)
+	}
+	for _, image := range data.Images {
+		switch image.Name {
+		case "SINGLE-1.png", "SINGLE-2.png", "SINGLE产品刷墨图.png":
+			if image.Category != "product_material" || len(image.Codes) != 1 || image.Codes[0] != "SINGLE" {
+				t.Fatalf("unexpected product image: %+v", image)
+			}
+		case "关系图.png":
+			if image.Category != "supplement" || len(image.Codes) != 1 || image.Codes[0] != "SINGLE" {
+				t.Fatalf("unexpected mold image: %+v", image)
+			}
+		}
+	}
+	corrections := map[string]ImportCorrection{
+		"C1+C2/无法识别成员.png":  {Codes: []string{"C1", "C2"}, Category: "模具图"},
+		"C1+C2/别名共模结构图.dwg": {Codes: []string{"C1", "C2"}},
+	}
+	corrected, err := readTestPackage(t, path, int64(archive.Len()), corrections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corrected.Errors) != 1 || len(corrected.Unresolved) != 0 || len(corrected.Images) != 8 || len(corrected.Drawings) != 2 {
+		t.Fatalf("corrected flat archive images=%d drawings=%d unresolved=%d errors=%v", len(corrected.Images), len(corrected.Drawings), len(corrected.Unresolved), corrected.Errors)
+	}
+}
+
+func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *testing.T) {
+	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
+		SheetName: "模具", Columns: moldColumns,
+		Rows: [][]string{
+			{"", "A+B", "历史单模", "单模", "A1-1", "", "0", ""},
+			{"", "A", "共模 A", "共模", "A1-1", "GROUP", "0", ""},
+			{"", "B", "共模 B", "共模", "A1-1", "GROUP", "0", ""},
+		}, TotalRows: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	for name, content := range map[string][]byte{
+		"molds.xlsx":        xlsx,
+		"A+B/ambiguous.png": tinyPNG,
+		"A+B/ambiguous.dwg": []byte("dwg"),
+	} {
+		w, createErr := zw.Create(name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := w.Write(content); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "ambiguous.zip")
+	if err := os.WriteFile(path, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := readTestPackage(t, path, int64(archive.Len()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Errors) != 0 || len(data.Unresolved) != 2 {
+		t.Fatalf("ambiguous folder must require correction: errors=%+v unresolved=%+v", data.Errors, data.Unresolved)
+	}
+	corrected, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
+		"A+B/ambiguous.png": {Codes: []string{"A", "B"}, Category: "模具图"},
+		"A+B/ambiguous.dwg": {Codes: []string{"A", "B"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corrected.Errors) != 0 || len(corrected.Unresolved) != 0 || len(corrected.Images) != 1 || len(corrected.Drawings) != 1 {
+		t.Fatalf("ambiguous correction failed: errors=%+v unresolved=%+v images=%+v drawings=%+v", corrected.Errors, corrected.Unresolved, corrected.Images, corrected.Drawings)
+	}
+	if corrected.AssetMolds["A+B"] || !corrected.AssetMolds["A"] || !corrected.AssetMolds["B"] {
+		t.Fatalf("group interpretation must replace only group members: %v", corrected.AssetMolds)
+	}
+	single, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
+		"A+B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
+		"A+B/ambiguous.dwg": {Codes: []string{"A+B"}},
+	})
+	if err != nil || len(single.Errors) != 0 || !single.AssetMolds["A+B"] || single.AssetMolds["A"] || single.AssetMolds["B"] {
+		t.Fatalf("single interpretation scope failed: data=%+v err=%v", single, err)
+	}
+	mixed, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
+		"A+B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
+		"A+B/ambiguous.dwg": {Codes: []string{"A", "B"}},
+	})
+	if err != nil || len(mixed.Errors) == 0 || !strings.Contains(mixed.Errors[0].Reason, "不能混合") {
+		t.Fatalf("mixed interpretation must be rejected: data=%+v err=%v", mixed, err)
+	}
+	withinAssetMixed, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
+		"A+B/ambiguous.png": {Codes: []string{"A+B", "A"}, Category: "模具图"},
+		"A+B/ambiguous.dwg": {Codes: []string{"A+B"}},
+	})
+	if err != nil || len(withinAssetMixed.Errors) == 0 || !strings.Contains(withinAssetMixed.Errors[0].Reason, "人工修正无效") {
+		t.Fatalf("one asset cannot mix single and group choices: data=%+v err=%v", withinAssetMixed, err)
+	}
+}
+
+func TestAmbiguousEmptyDirectoryCannotSilentlyPreserveAssets(t *testing.T) {
+	data := packageData{AssetMolds: map[string]bool{}}
+	inputs := map[string]Input{
+		"A+B": {MoldNumber: "A+B", MoldType: model.MoldTypeSingle},
+		"A":   {MoldNumber: "A", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"B":   {MoldNumber: "B", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	resolveAmbiguousAssetScopes(&data, inputs, map[string]*zip.File{"A+B/": {}})
+	if len(data.Errors) != 1 || !strings.Contains(data.Errors[0].Reason, "空资料目录") || len(data.AssetMolds) != 0 {
+		t.Fatalf("ambiguous empty directory must be rejected: errors=%+v scopes=%v", data.Errors, data.AssetMolds)
 	}
 }
 
@@ -103,26 +311,10 @@ func TestMoldImportTemplateIsZipAndCanBeReadBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"molds.xlsx":                        true,
-		"locations.json":                    true,
-		"images/":                           true,
-		"images/MOLD-001/":                  true,
-		"images/MOLD-001/product_material/": true,
-		"images/MOLD-001/supplement/":       true,
-		"images/MOLD-002+MOLD-003/共用/":      true,
-		"images/MOLD-002+MOLD-003/共用/product_material/":       true,
-		"images/MOLD-002+MOLD-003/共用/supplement/":             true,
-		"images/MOLD-002+MOLD-003/MOLD-002/":                  true,
-		"images/MOLD-002+MOLD-003/MOLD-002/product_material/": true,
-		"images/MOLD-002+MOLD-003/MOLD-002/supplement/":       true,
-		"images/MOLD-002+MOLD-003/MOLD-003/":                  true,
-		"images/MOLD-002+MOLD-003/MOLD-003/product_material/": true,
-		"images/MOLD-002+MOLD-003/MOLD-003/supplement/":       true,
-		"drawings/":                            true,
-		"drawings/MOLD-001/":                   true,
-		"drawings/MOLD-002+MOLD-003/共用/":       true,
-		"drawings/MOLD-002+MOLD-003/MOLD-002/": true,
-		"drawings/MOLD-002+MOLD-003/MOLD-003/": true,
+		"molds.xlsx":         true,
+		"locations.json":     true,
+		"MOLD-001/":          true,
+		"MOLD-002+MOLD-003/": true,
 	}
 	seen := make(map[string]bool, len(reader.File))
 	for _, item := range reader.File {
@@ -220,7 +412,7 @@ func TestMoldExportCanBeReadBackAsImportPackage(t *testing.T) {
 	for _, item := range archiveReader.File {
 		archiveEntries[item.Name] = true
 	}
-	for _, name := range []string{"images/", "images/MOLD-010/", "images/MOLD-010/product_material/", "images/MOLD-010/supplement/", "drawings/", "drawings/MOLD-010/"} {
+	for _, name := range []string{"MOLD-010/"} {
 		if !archiveEntries[name] {
 			t.Fatalf("formal export missing directory entry %q", name)
 		}
@@ -327,11 +519,8 @@ func TestMoldExportAndImportSharedCommonAssets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// A historical number can equal the shared outer directory; its presence
-	// must not steal the group's drawings during exported-package readback.
-	if err := db.Create(&model.Mold{MoldNumber: "BB56442+BB56443", Model: "历史编号", MoldType: model.MoldTypeSingle, LocationID: location.ID}).Error; err != nil {
-		t.Fatal(err)
-	}
+	// Flat group exports use the exact group path.  A historical single mold
+	// with the same plus-joined number is covered by the ambiguity test below.
 
 	e := echo.New()
 	record := httptest.NewRecorder()
@@ -347,7 +536,7 @@ func TestMoldExportAndImportSharedCommonAssets(t *testing.T) {
 	for _, item := range archiveReader.File {
 		entries[item.Name] = true
 	}
-	if !entries["images/BB56442+BB56443/共用/product_material/shared.png"] || !entries["images/BB56442+BB56443/BB56443/supplement/only.png"] || !entries["drawings/BB56442+BB56443/共用/shared.dwg"] {
+	if !entries["BB56442+BB56443/BB56442+BB56443-1.png"] || !entries["BB56442+BB56443/BB56443-only.png"] || !entries["BB56442+BB56443/BB56442+BB56443-shared.dwg"] {
 		t.Fatalf("shared archive entries missing: %v", entries)
 	}
 	archivePath := filepath.Join(t.TempDir(), "shared.zip")
@@ -378,14 +567,67 @@ func TestMoldExportAndImportSharedCommonAssets(t *testing.T) {
 
 	var sharedImage, specificImage packageAsset
 	for _, image := range data.Images {
-		if image.Name == "shared.png" {
+		if len(image.Codes) == 2 {
 			sharedImage = image
-		} else if image.Name == "only.png" {
+		} else if len(image.Codes) == 1 {
 			specificImage = image
 		}
 	}
 	if len(sharedImage.Codes) != 2 || len(specificImage.Codes) != 1 || specificImage.Codes[0] != "BB56443" || len(data.Drawings[0].Codes) != 2 {
 		t.Fatalf("shared assets were assigned incorrectly: images=%+v drawings=%+v", data.Images, data.Drawings)
+	}
+}
+
+func TestReplaceMoldDataPreservesAssetsOnlyWhenDirectoryIsAbsent(t *testing.T) {
+	db := openMoldTestDB(t)
+	if err := SeedLocations(db); err != nil {
+		t.Fatal(err)
+	}
+	var location model.MoldLocation
+	if err := db.Where("code = ?", "A1-1").First(&location).Error; err != nil {
+		t.Fatal(err)
+	}
+	keep := model.Mold{MoldNumber: "KEEP", Model: "old", MoldType: model.MoldTypeSingle, LocationID: location.ID}
+	clear := model.Mold{MoldNumber: "CLEAR", Model: "old", MoldType: model.MoldTypeSingle, LocationID: location.ID}
+	removed := model.Mold{MoldNumber: "REMOVED", Model: "old", MoldType: model.MoldTypeSingle, LocationID: location.ID}
+	for _, item := range []*model.Mold{&keep, &clear, &removed} {
+		if err := db.Create(item).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, item := range []model.ImageFile{
+		{OwnerType: "mold", OwnerID: keep.ID, Category: "supplement", OriginalName: "keep.png", StoragePath: "keep.png"},
+		{OwnerType: "mold", OwnerID: clear.ID, Category: "supplement", OriginalName: "clear.png", StoragePath: "clear.png"},
+		{OwnerType: "mold", OwnerID: removed.ID, Category: "supplement", OriginalName: "removed.png", StoragePath: "removed.png"},
+	} {
+		if err := db.Create(&item).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	data := packageData{
+		Rows: []Input{
+			{MoldNumber: "KEEP", Model: "new", MoldType: model.MoldTypeSingle, LocationCode: "A1-1"},
+			{MoldNumber: "CLEAR", Model: "new", MoldType: model.MoldTypeSingle, LocationCode: "A1-1"},
+		},
+		Locations:  defaultMoldLocations(),
+		AssetMolds: map[string]bool{"CLEAR": true},
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error { return replaceMoldData(tx, data, nil, 1) }); err != nil {
+		t.Fatal(err)
+	}
+	var images []model.ImageFile
+	if err := db.Where("owner_type = ?", "mold").Find(&images).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != 1 || images[0].OriginalName != "keep.png" {
+		t.Fatalf("preserved images=%+v", images)
+	}
+	var kept model.Mold
+	if err := db.Where("mold_number = ?", "KEEP").First(&kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	if images[0].OwnerID != kept.ID || kept.Model != "new" {
+		t.Fatalf("asset was not migrated to replacement mold: image=%+v mold=%+v", images[0], kept)
 	}
 }
 
@@ -498,6 +740,67 @@ func TestMoldArchiveGroupsAvoidAmbiguousPlusMember(t *testing.T) {
 	}
 	if len(groups) != 0 || len(grouped) != 0 {
 		t.Fatalf("ambiguous plus member unexpectedly grouped: groups=%+v grouped=%v", groups, grouped)
+	}
+}
+
+func TestMoldArchiveGroupsDoNotDropMembersWhenOuterCollidesWithSingleMold(t *testing.T) {
+	molds := []model.Mold{
+		{ID: 1, MoldNumber: "A", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		{ID: 2, MoldNumber: "B", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		{ID: 3, MoldNumber: "A+B", MoldType: model.MoldTypeSingle},
+	}
+	groups, grouped, err := moldArchiveGroups(molds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 0 || len(grouped) != 0 {
+		t.Fatalf("colliding group must fall back to per-mold folders: groups=%+v grouped=%v", groups, grouped)
+	}
+}
+
+func TestProductInkImageDoesNotConsumeNumberedExportSequence(t *testing.T) {
+	images := []model.ImageFile{
+		{Category: "product_material", OriginalName: "M产品刷墨图.jpg"},
+		{Category: "product_material", OriginalName: "first.jpg"},
+	}
+	sequence := 1
+	names := make([]string, 0, len(images))
+	for _, image := range images {
+		names = append(names, archiveImageOutputName(image, "M", sequence, false))
+		if image.Category == "product_material" && !isProductInkImage(image.OriginalName) {
+			sequence++
+		}
+	}
+	if got := strings.Join(names, ","); got != "M产品刷墨图.jpg,M-1.jpg" {
+		t.Fatalf("unexpected export names: %s", got)
+	}
+}
+
+func TestMoldImageExportNameCannotBecomeProductImage(t *testing.T) {
+	for _, original := range []string{"尺寸-1.jpg", "尺寸.jpg", "误名产品刷墨图.jpg"} {
+		name := archiveImageOutputName(model.ImageFile{Category: "supplement", OriginalName: original}, "M", 1, false)
+		name = uniqueArchiveFileName(name, 12, "M", map[string]struct{}{filepath.ToSlash(filepath.Join("M", name)): {}})
+		if got := inferCategory(name); got != "supplement" {
+			t.Fatalf("mold image %q exported as %q and became %s", original, name, got)
+		}
+	}
+}
+
+func TestMemberSpecificArchiveNameDoesNotExpandRelationship(t *testing.T) {
+	group := []model.Mold{{MoldNumber: "A"}, {MoldNumber: "B"}}
+	for _, test := range []struct{ name, label string }{{"A+B前模图.jpg", "模具图"}, {"A+B结构.dwg", "图纸"}} {
+		name := memberSpecificArchiveName("A", test.name, group, test.label)
+		if got := strings.Join(moldNumbersInName(name, []string{"A", "B"}), ","); got != "A" {
+			t.Fatalf("specific asset %q exported as %q with owners %s", test.name, name, got)
+		}
+	}
+}
+
+func TestMemberSpecificProductInkFallbackKeepsProductCategory(t *testing.T) {
+	group := []model.Mold{{MoldNumber: "A"}, {MoldNumber: "B"}}
+	name := memberSpecificArchiveName("A", "A+B产品刷墨图.jpg", group, "产品刷墨图")
+	if got := strings.Join(moldNumbersInName(name, []string{"A", "B"}), ","); got != "A" || inferCategory(name) != "product_material" {
+		t.Fatalf("product ink fallback lost owner or category: name=%q owners=%q category=%q", name, got, inferCategory(name))
 	}
 }
 

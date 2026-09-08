@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"bb_erp_echo/internal/auth"
 	filemodule "bb_erp_echo/internal/file"
@@ -25,6 +26,7 @@ import (
 	"bb_erp_echo/internal/spreadsheet"
 
 	"github.com/labstack/echo/v5"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"gorm.io/gorm"
 )
 
@@ -64,8 +66,10 @@ type MoldImportSummary struct {
 	Replaced   bool `json:"replaced"`
 }
 type MoldImportFile struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	Path         string   `json:"path"`
+	Name         string   `json:"name"`
+	Kind         string   `json:"kind"`
+	AllowedCodes []string `json:"allowed_codes"`
 }
 type ImportCorrection struct {
 	Codes    []string `json:"codes"`
@@ -84,18 +88,25 @@ type packageData struct {
 	Drawings   []packageAsset
 	Unresolved []packageAsset
 	Errors     []spreadsheet.CellError
+	// AssetMolds records the mold numbers whose archive directory was present
+	// in the package.  It is intentionally independent from Images/Drawings:
+	// an empty directory is still an explicit replacement request, while a
+	// mold without a directory keeps its existing assets during a full import.
+	AssetMolds map[string]bool
 }
 type packageAsset struct {
-	Entry    *zip.File
-	Path     string
-	Codes    []string
-	Category string
-	Name     string
+	Entry        *zip.File
+	Path         string
+	Codes        []string
+	AllowedCodes []string
+	Category     string
+	Name         string
+	Kind         string
 }
 
 // ImportTemplate 下载可直接回导的模具 ZIP 模板。
 // @Summary 下载模具导入模板
-// @Description 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。
+// @Description 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和扁平模具资料目录。
 // @Tags mold
 // @Security BearerAuth
 // @Produce application/zip
@@ -198,7 +209,7 @@ func (h *Handler) ImportPreview(c *echo.Context) error {
 // @Produce json
 // @Param file formData file true "ZIP 资料包"
 // @Param token formData string true "预览令牌"
-// @Param corrections formData string false "JSON 格式的图片人工修正"
+// @Param corrections formData string false "JSON 格式的图片或图纸人工修正"
 // @Success 201 {object} MoldImportResult
 // @Router /api/v1/molds/import/commit [post]
 func (h *Handler) ImportCommit(c *echo.Context) error {
@@ -231,7 +242,7 @@ func (h *Handler) ImportCommit(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "文件校验失败，请重新预览")
 	}
 	if len(data.Unresolved) > 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "仍有未修正的图片")
+		return echo.NewHTTPError(http.StatusBadRequest, "仍有未修正的图片或图纸")
 	}
 	var session model.ImportSession
 	if err := h.DB.Where("token_hash = ? AND user_id = ? AND module = ?", hashToken(token), current.ID, moldImportModule).First(&session).Error; err != nil {
@@ -255,6 +266,15 @@ func (h *Handler) ImportCommit(c *echo.Context) error {
 		cleanupStaged(h.StorageRoot, paths)
 		return err
 	}
+	// A full workbook replacement does not imply that every asset is being
+	// replaced.  A mold row without an archive directory keeps its existing
+	// image/DWG rows; exclude those paths from the post-commit cleanup queue.
+	preservedPaths, err := h.moldPreservedPaths(data)
+	if err != nil {
+		cleanupStaged(h.StorageRoot, paths)
+		return err
+	}
+	oldPaths = subtractStoredPaths(oldPaths, preservedPaths)
 	result := MoldImportResult{Molds: len(data.Rows), Images: len(data.Images), Drawings: len(data.Drawings), CompletedAt: time.Now()}
 	err = h.DB.Transaction(func(tx *gorm.DB) error {
 		consume := tx.Model(&model.ImportSession{}).Where("id = ? AND consumed_at IS NULL AND expires_at > ?", session.ID, result.CompletedAt).Update("consumed_at", result.CompletedAt)
@@ -399,34 +419,36 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 	if err != nil {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "ZIP 资料包无效")
 	}
-	files := map[string]*zip.File{}
 	if len(zr.File) > maxMoldArchiveEntries {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("资料包文件数量超过 %d 个，请拆分后导入", maxMoldArchiveEntries))
 	}
 	var declaredExpandedBytes uint64
 	for _, item := range zr.File {
+		if err := normalizeMoldZipEntryName(item); err != nil {
+			return packageData{}, err
+		}
 		if item.UncompressedSize64 > maxMoldExpandedBytes-declaredExpandedBytes {
 			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包解压后的文件总量超过 4 GiB，请拆分后导入")
 		}
 		declaredExpandedBytes += item.UncompressedSize64
 		rawName := filepath.ToSlash(item.Name)
+		if strings.Contains(rawName, "\\") {
+			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包包含非法路径")
+		}
 		isDirectory := strings.HasSuffix(rawName, "/")
 		clean := filepath.ToSlash(filepath.Clean(strings.TrimSuffix(rawName, "/")))
 		if isDirectory {
 			clean += "/"
 		}
-		if rawName != clean || clean == "./" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		if rawName != clean || clean == "./" || clean == "" || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
 			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包包含非法路径")
 		}
-		if _, ok := files[clean]; ok {
-			return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "资料包包含重复文件")
-		}
-		files[clean] = item
+	}
+	files, err := normalizeMoldPackageFiles(zr)
+	if err != nil {
+		return packageData{}, err
 	}
 	main := files["molds.xlsx"]
-	if main == nil {
-		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "缺少 molds.xlsx")
-	}
 	if main.UncompressedSize64 > maxMoldWorkbookBytes {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "molds.xlsx 超过 64 MiB，请减少数据后重试")
 	}
@@ -439,7 +461,7 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 	if err != nil {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "读取 molds.xlsx 失败")
 	}
-	data := packageData{}
+	data := packageData{AssetMolds: map[string]bool{}}
 	data.Rows, data.Errors = parseMoldRows(raw)
 	data.Locations, err = parseLocations(files["locations.json"])
 	if err != nil {
@@ -460,11 +482,21 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 		known[row.MoldNumber] = true
 		moldInputs[row.MoldNumber] = row
 	}
-	for path, item := range files {
-		if item.FileInfo().IsDir() || path == "molds.xlsx" || path == "locations.json" {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.SliceStable(paths, func(i, j int) bool { return naturalAssetLess(paths[i], paths[j]) })
+	for _, path := range paths {
+		item := files[path]
+		if path == "molds.xlsx" || path == "locations.json" {
 			continue
 		}
-		parts := strings.Split(path, "/")
+		parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
+		markMoldAssetScope(path, item.FileInfo().IsDir(), known, moldInputs, data.AssetMolds)
+		if item.FileInfo().IsDir() {
+			continue
+		}
 		if len(parts) < 2 {
 			data.Errors = append(data.Errors, importError(path, "资料包文件路径不符合模板"))
 			continue
@@ -510,13 +542,322 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 				data.Drawings = append(data.Drawings, asset)
 			}
 		default:
+			// The current export format places every asset directly below its
+			// mold/group folder.  Legacy images/ and drawings/ trees are handled
+			// above and remain accepted for existing archives.
+			if len(parts) != 2 {
+				data.Errors = append(data.Errors, importError(path, "资料包文件路径不符合扁平模具目录"))
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(parts[1]))
+			if filemodule.AllowedImageExtension(ext) {
+				asset, ok, ambiguous := parseFlatImageAsset(item, parts, moldInputs)
+				if ambiguous {
+					data.Errors = append(data.Errors, importError(path, "资料包目录同时匹配单模编号和共模组，存在歧义"))
+					continue
+				}
+				if !ok {
+					data.Errors = append(data.Errors, importError(path, "图片无法匹配模具编号或共模目录"))
+					continue
+				}
+				if validationErr := validateImageEntry(item); validationErr != nil {
+					data.Errors = append(data.Errors, importError(path, validationErr.Error()))
+					continue
+				}
+				if correction, exists := corrections[path]; exists {
+					asset, ok = applyImageCorrection(asset, correction, known)
+					if !ok {
+						data.Errors = append(data.Errors, importError(path, "图片人工修正无效"))
+					} else {
+						data.Images = append(data.Images, asset)
+					}
+				} else if asset.Category == "" || len(asset.Codes) == 0 {
+					data.Unresolved = append(data.Unresolved, asset)
+				} else {
+					data.Images = append(data.Images, asset)
+				}
+				continue
+			}
+			if allowedDrawingExt(ext) {
+				asset, ok, ambiguous := parseFlatDrawingAsset(item, parts, moldInputs)
+				if ambiguous || !ok {
+					data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具编号或共模目录"))
+				} else if correction, exists := corrections[path]; exists {
+					asset, ok = applyDrawingCorrection(asset, correction, known)
+					if !ok {
+						data.Errors = append(data.Errors, importError(path, "图纸人工修正无效"))
+					} else {
+						data.Drawings = append(data.Drawings, asset)
+					}
+				} else if len(asset.Codes) == 0 {
+					data.Unresolved = append(data.Unresolved, asset)
+				} else {
+					data.Drawings = append(data.Drawings, asset)
+				}
+				continue
+			}
 			data.Errors = append(data.Errors, importError(path, "资料包包含未识别文件"))
 		}
 	}
+	resolveAmbiguousAssetScopes(&data, moldInputs, files)
 	sort.SliceStable(data.Images, func(i, j int) bool {
 		return naturalAssetLess(data.Images[i].Name, data.Images[j].Name)
 	})
 	return data, nil
+}
+
+func resolveAmbiguousAssetScopes(data *packageData, inputs map[string]Input, files map[string]*zip.File) {
+	if data == nil {
+		return
+	}
+	type choice struct {
+		mode    string
+		members []string
+	}
+	choices := map[string]choice{}
+	pending := map[string]bool{}
+	for _, asset := range data.Unresolved {
+		pending[strings.SplitN(asset.Path, "/", 2)[0]] = true
+	}
+	assets := append(append([]packageAsset(nil), data.Images...), data.Drawings...)
+	for _, asset := range assets {
+		folder := strings.SplitN(asset.Path, "/", 2)[0]
+		exact, exactOK := inputs[folder]
+		members, groupOK := validSharedMembers(folder, inputs)
+		if !exactOK || !groupOK {
+			continue
+		}
+		mode := "group"
+		if containsString(asset.Codes, exact.MoldNumber) {
+			mode = "single"
+		}
+		current := choices[folder]
+		if current.mode != "" && current.mode != mode {
+			data.Errors = append(data.Errors, importError(folder, "同一歧义目录中的资料不能混合选择单模和共模归属"))
+			continue
+		}
+		choices[folder] = choice{mode: mode, members: members}
+	}
+	for folder, selected := range choices {
+		if selected.mode == "single" {
+			data.AssetMolds[folder] = true
+			continue
+		}
+		for _, member := range selected.members {
+			data.AssetMolds[member] = true
+		}
+	}
+	reported := map[string]bool{}
+	for path := range files {
+		folder := strings.SplitN(strings.TrimSuffix(path, "/"), "/", 2)[0]
+		if reported[folder] {
+			continue
+		}
+		if _, exactOK := inputs[folder]; !exactOK {
+			continue
+		}
+		if _, groupOK := validSharedMembers(folder, inputs); !groupOK || choices[folder].mode != "" || pending[folder] {
+			continue
+		}
+		data.Errors = append(data.Errors, importError(folder, "含 + 的空资料目录同时匹配单模和共模，无法确认覆盖范围，请添加资料后在预览中确认或调整目录"))
+		reported[folder] = true
+	}
+}
+
+// normalizeMoldZipEntryName accepts the legacy GBK file names produced by the
+// Windows archive used as the business reference. UTF-8 names remain untouched.
+func normalizeMoldZipEntryName(item *zip.File) error {
+	if item == nil || (!item.NonUTF8 && utf8.ValidString(item.Name)) {
+		return nil
+	}
+	decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes([]byte(item.Name))
+	if err != nil || !utf8.Valid(decoded) {
+		return echo.NewHTTPError(http.StatusBadRequest, "资料包文件名编码不支持，请使用 UTF-8 或 GBK ZIP")
+	}
+	item.Name = string(decoded)
+	item.NonUTF8 = false
+	return nil
+}
+
+// normalizeMoldPackageFiles strips the one optional packaging directory used
+// by file managers when a folder is compressed (for example 001/...).  The
+// business archive itself must still have molds.xlsx at its root.  Returning a
+// normalized map also makes correction paths stable between preview and
+// commit, regardless of whether the user compressed the containing folder.
+func normalizeMoldPackageFiles(zr *zip.Reader) (map[string]*zip.File, error) {
+	rawFiles := make(map[string]*zip.File, len(zr.File))
+	for _, item := range zr.File {
+		rawName := filepath.ToSlash(item.Name)
+		isDirectory := strings.HasSuffix(rawName, "/")
+		clean := filepath.ToSlash(filepath.Clean(strings.TrimSuffix(rawName, "/")))
+		if isDirectory {
+			clean += "/"
+		}
+		if isIgnorableMoldPackagePath(clean) {
+			continue
+		}
+		if _, exists := rawFiles[clean]; exists {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包包含重复文件")
+		}
+		rawFiles[clean] = item
+	}
+
+	mainPath := ""
+	if rawFiles["molds.xlsx"] != nil {
+		mainPath = "molds.xlsx"
+	} else {
+		candidates := make([]string, 0, 1)
+		for path, item := range rawFiles {
+			if item.FileInfo().IsDir() || strings.ToLower(filepath.Base(path)) != "molds.xlsx" {
+				continue
+			}
+			candidates = append(candidates, path)
+		}
+		if len(candidates) == 0 {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "缺少 molds.xlsx")
+		}
+		if len(candidates) != 1 {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包包含多个 molds.xlsx")
+		}
+		mainPath = candidates[0]
+	}
+
+	prefix := ""
+	if mainPath != "molds.xlsx" {
+		prefix = strings.TrimSuffix(mainPath, "molds.xlsx")
+		if !strings.HasSuffix(prefix, "/") {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包包含非法 molds.xlsx 路径")
+		}
+		wrapper := strings.TrimSuffix(prefix, "/")
+		if wrapper == "" || strings.Contains(wrapper, "/") {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包只支持一层包装目录")
+		}
+	}
+
+	files := make(map[string]*zip.File, len(rawFiles))
+	for path, item := range rawFiles {
+		if prefix != "" {
+			if path == prefix {
+				continue
+			}
+			if !strings.HasPrefix(path, prefix) {
+				return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包包含包装目录外的文件")
+			}
+			path = strings.TrimPrefix(path, prefix)
+		}
+		if path == "" {
+			continue
+		}
+		if _, exists := files[path]; exists {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "资料包包含重复文件")
+		}
+		files[path] = item
+	}
+	if files["molds.xlsx"] == nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "缺少 molds.xlsx")
+	}
+	return files, nil
+}
+
+func isIgnorableMoldPackagePath(path string) bool {
+	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
+	for _, part := range parts {
+		if strings.EqualFold(part, "__MACOSX") {
+			return true
+		}
+	}
+	base := filepath.Base(strings.TrimSuffix(path, "/"))
+	switch {
+	case strings.EqualFold(base, ".DS_Store"):
+		return true
+	case strings.EqualFold(base, "Thumbs.db"):
+		return true
+	case strings.EqualFold(base, "desktop.ini"):
+		return true
+	}
+	return false
+}
+
+func markMoldAssetScope(path string, directory bool, known map[string]bool, inputs map[string]Input, scopes map[string]bool) {
+	if scopes == nil {
+		return
+	}
+	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return
+	}
+	folder := parts[0]
+	if folder == "images" || folder == "drawings" {
+		if len(parts) < 2 {
+			return
+		}
+		folder = parts[1]
+	}
+	if known[folder] {
+		if _, ambiguous := validSharedMembers(folder, inputs); ambiguous {
+			return
+		}
+		scopes[folder] = true
+		return
+	}
+	if members, ok := validSharedMembers(folder, inputs); ok {
+		for _, member := range members {
+			scopes[member] = true
+		}
+	}
+	_ = directory
+}
+
+// parseFlatImageAsset parses the current archive format, where files are
+// directly below either a mold-number directory or an exact common-group
+// directory.  A valid group with no exact member in its filename is returned
+// as an unresolved asset so the preview can offer manual correction.
+func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool, bool) {
+	if len(parts) != 2 || !validImageEntry(item) {
+		return packageAsset{}, false, false
+	}
+	folder, name := parts[0], parts[1]
+	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name, Category: inferCategory(name), Kind: "image"}
+	if input, ok := known[folder]; ok {
+		if members, groupOK := validSharedMembers(folder, known); groupOK {
+			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
+			return asset, true, false
+		}
+		asset.Codes = []string{input.MoldNumber}
+		asset.AllowedCodes = asset.Codes
+		return asset, true, false
+	}
+	members, ok := validSharedMembers(folder, known)
+	if !ok {
+		return packageAsset{}, false, false
+	}
+	asset.AllowedCodes = members
+	asset.Codes = moldNumbersInName(name, members)
+	return asset, true, false
+}
+
+func parseFlatDrawingAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool, bool) {
+	if len(parts) != 2 || item == nil || item.UncompressedSize64 == 0 || !allowedDrawingExt(filepath.Ext(parts[1])) {
+		return packageAsset{}, false, false
+	}
+	folder, name := parts[0], parts[1]
+	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name, Kind: "drawing"}
+	if input, ok := known[folder]; ok {
+		if members, groupOK := validSharedMembers(folder, known); groupOK {
+			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
+			return asset, true, false
+		}
+		asset.Codes = []string{input.MoldNumber}
+		asset.AllowedCodes = asset.Codes
+		return asset, true, false
+	}
+	members, ok := validSharedMembers(folder, known)
+	if !ok {
+		return packageAsset{}, false, false
+	}
+	asset.AllowedCodes = members
+	asset.Codes = moldNumbersInName(name, members)
+	return asset, true, false
 }
 
 func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
@@ -561,9 +902,13 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 		if typ == "单模" {
 			typ = model.MoldTypeSingle
 		}
-		input := Input{MoldNumber: cells[1], Model: cells[2], MoldType: typ, LocationCode: cells[4], CommonGroupNo: cells[5], Remark: cells[7]}
+		input := normalizeInput(Input{MoldNumber: cells[1], Model: cells[2], MoldType: typ, LocationCode: cells[4], CommonGroupNo: cells[5], Remark: cells[7]})
 		if input.MoldNumber == "" || input.Model == "" || input.LocationCode == "" {
 			errs = append(errs, rowError(i+1, "模具编号/模具型号/模具位置", "不能为空"))
+			continue
+		}
+		if err := validateArchiveSegment(input.MoldNumber); err != nil {
+			errs = append(errs, rowError(i+1, "模具编号", err.Error()))
 			continue
 		}
 		if seen[input.MoldNumber] {
@@ -619,25 +964,27 @@ func parseImageAsset(item *zip.File, parts []string, known map[string]bool) (pac
 	if len(parts) >= 4 {
 		code, category := parts[1], normalizeCategory(parts[2])
 		if known[code] && category != "" {
-			return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{code}, Category: category, Name: parts[len(parts)-1]}, true
+			return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{code}, AllowedCodes: []string{code}, Category: category, Name: parts[len(parts)-1]}, true
 		}
 	}
 	name := parts[len(parts)-1]
 	category := inferCategory(name)
+	if len(parts) >= 3 && known[parts[1]] {
+		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, AllowedCodes: []string{parts[1]}, Category: category, Name: name, Kind: "image"}, true
+	}
 	knownCodes := make([]string, 0, len(known))
 	for code := range known {
 		knownCodes = append(knownCodes, code)
 	}
 	codes := moldNumbersInName(name, knownCodes)
 	if len(codes) == 0 {
-		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name}, true
+		sort.Strings(knownCodes)
+		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), AllowedCodes: knownCodes, Name: name, Kind: "image"}, true
 	}
-	// 无分组关键词但能匹配模具编号时，按客户资料图的常见命名约定归入产品材料。
-	if category == "" {
-		category = "product_material"
-	}
+	// 旧格式平铺文件同样遵守当前命名规则：-序号和产品刷墨图是产品图，
+	// 其余合法图片统一作为模具图，不再因为缺少关键词而伪装成产品图。
 	sort.Strings(codes)
-	return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: codes, Category: category, Name: name}, true
+	return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: codes, AllowedCodes: append([]string(nil), codes...), Category: category, Name: name, Kind: "image"}, true
 }
 
 func isCanonicalImagePath(parts []string, known map[string]bool) bool {
@@ -657,13 +1004,16 @@ func parseGroupedImageAsset(item *zip.File, parts []string, known map[string]Inp
 	switch len(parts) {
 	case 3: // images/<group>/<file>
 		asset.Codes = moldNumbersInName(asset.Name, members)
+		asset.AllowedCodes = append([]string(nil), members...)
 		asset.Category = inferCategory(asset.Name)
 	case 4:
 		if parts[2] == "共用" {
 			asset.Codes = members
+			asset.AllowedCodes = append([]string(nil), members...)
 			asset.Category = inferCategory(asset.Name)
 		} else if category := normalizeCategory(parts[2]); category != "" {
 			asset.Codes = moldNumbersInName(asset.Name, members)
+			asset.AllowedCodes = append([]string(nil), members...)
 			asset.Category = category
 		} else {
 			return packageAsset{}, false
@@ -676,25 +1026,27 @@ func parseGroupedImageAsset(item *zip.File, parts []string, known map[string]Inp
 		switch parts[2] {
 		case "共用":
 			asset.Codes = members
+			asset.AllowedCodes = append([]string(nil), members...)
 		default:
 			if !containsString(members, parts[2]) {
 				return packageAsset{}, false
 			}
 			asset.Codes = []string{parts[2]}
+			asset.AllowedCodes = []string{parts[2]}
 		}
 	default:
 		return packageAsset{}, false
 	}
 	if asset.Category == "" && len(asset.Codes) > 0 {
-		// 共模平铺文件沿用旧资料包的兜底约定：能精确匹配编号但未写分类关键词时，归入产品材料。
-		asset.Category = "product_material"
+		// 共模平铺文件遵守文件名分类规则；inferCategory 已将其余图片归为模具图。
+		asset.Category = inferCategory(asset.Name)
 	}
 	return asset, true
 }
 
 func parseDrawingAsset(item *zip.File, parts []string, known map[string]bool) (packageAsset, bool) {
 	if len(parts) >= 3 && known[parts[1]] && allowedDrawingExt(filepath.Ext(parts[len(parts)-1])) {
-		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, Name: parts[len(parts)-1]}, true
+		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, AllowedCodes: []string{parts[1]}, Name: parts[len(parts)-1]}, true
 	}
 	return packageAsset{}, false
 }
@@ -716,15 +1068,18 @@ func parseGroupedDrawingAsset(item *zip.File, parts []string, known map[string]I
 	switch len(parts) {
 	case 3: // drawings/<group>/<file>
 		asset.Codes = moldNumbersInName(asset.Name, members)
+		asset.AllowedCodes = append([]string(nil), members...)
 	case 4: // drawings/<group>/<共用|具体编号>/<file>
 		switch parts[2] {
 		case "共用":
 			asset.Codes = members
+			asset.AllowedCodes = append([]string(nil), members...)
 		default:
 			if !containsString(members, parts[2]) {
 				return packageAsset{}, false
 			}
 			asset.Codes = []string{parts[2]}
+			asset.AllowedCodes = []string{parts[2]}
 		}
 	default:
 		return packageAsset{}, false
@@ -845,9 +1200,9 @@ func containsString(values []string, target string) bool {
 func normalizeCategory(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
-	case "product_material", "产品材料", "产品图", "材质":
+	case "product_material", "产品材料", "产品材料图片", "产品图", "材质":
 		return "product_material"
-	case "supplement", "补充图":
+	case "supplement", "补充图", "补充图片", "模具图":
 		return "supplement"
 	}
 	return ""
@@ -872,36 +1227,71 @@ func applyImageCorrection(asset packageAsset, correction ImportCorrection, known
 	if category == "" {
 		return packageAsset{}, false
 	}
-	codes := make([]string, 0, len(correction.Codes))
+	codes, ok := correctedAssetCodes(asset, correction.Codes, known)
+	if !ok {
+		return packageAsset{}, false
+	}
+	asset.Codes, asset.Category = codes, category
+	return asset, true
+}
+
+func applyDrawingCorrection(asset packageAsset, correction ImportCorrection, known map[string]bool) (packageAsset, bool) {
+	codes, ok := correctedAssetCodes(asset, correction.Codes, known)
+	if !ok {
+		return packageAsset{}, false
+	}
+	asset.Codes = codes
+	return asset, true
+}
+
+func correctedAssetCodes(asset packageAsset, correctionCodes []string, known map[string]bool) ([]string, bool) {
+	codes := make([]string, 0, len(correctionCodes))
 	seen := map[string]bool{}
-	for _, code := range correction.Codes {
+	for _, code := range correctionCodes {
 		code = strings.TrimSpace(code)
-		if code == "" || !known[code] || seen[code] {
-			return packageAsset{}, false
+		if code == "" || !known[code] || seen[code] || (len(asset.AllowedCodes) > 0 && !containsString(asset.AllowedCodes, code)) {
+			return nil, false
 		}
 		seen[code] = true
 		codes = append(codes, code)
 	}
 	if len(codes) == 0 {
-		return packageAsset{}, false
+		return nil, false
+	}
+	if len(asset.AllowedCodes) >= 3 && strings.Contains(asset.AllowedCodes[0], "+") && containsString(codes, asset.AllowedCodes[0]) && len(codes) != 1 {
+		return nil, false
 	}
 	sort.Strings(codes)
-	asset.Codes, asset.Category = codes, category
-	return asset, true
+	return codes, true
 }
 
 func inferCategory(name string) string {
-	for _, word := range []string{"产品材料", "产品图", "材质"} {
-		if strings.Contains(name, word) {
-			return "product_material"
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	if strings.Contains(stem, "产品刷墨图") || hasPositiveImageSequenceSuffix(stem) {
+		return "product_material"
+	}
+	// The relationship-archive contract intentionally treats every other
+	// valid image as a mold image.  This includes front/rear/local/size and
+	// otherwise unnamed pictures; only ownership ambiguity remains unresolved.
+	return "supplement"
+}
+
+func hasPositiveImageSequenceSuffix(stem string) bool {
+	index := strings.LastIndexByte(stem, '-')
+	if index < 0 || index == len(stem)-1 {
+		return false
+	}
+	digits := stem[index+1:]
+	nonZero := false
+	for i := 0; i < len(digits); i++ {
+		if !isASCIIDigit(digits[i]) {
+			return false
+		}
+		if digits[i] != '0' {
+			nonZero = true
 		}
 	}
-	for _, word := range []string{"前模", "后模", "开模", "尺寸", "局部", "原理图"} {
-		if strings.Contains(name, word) {
-			return "supplement"
-		}
-	}
-	return ""
+	return nonZero
 }
 func allowedDrawingExt(ext string) bool {
 	ext = strings.ToLower(ext)
@@ -1084,11 +1474,48 @@ func (h *Handler) stageAssets(data packageData) ([]stagedAsset, error) {
 }
 
 func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, uploadedBy uint) error {
-	if err := tx.Unscoped().Where("owner_type = ?", "mold").Delete(&model.ImageFile{}).Error; err != nil {
+	// Snapshot the old owners before replacing the workbook.  Assets belonging
+	// to a mold that remains in the workbook and has no archive directory are
+	// migrated to the new row; every other asset is removed transactionally.
+	var oldMolds []model.Mold
+	if err := tx.Unscoped().Find(&oldMolds).Error; err != nil {
 		return err
 	}
-	if err := tx.Unscoped().Where("1 = 1").Delete(&model.MoldDrawing{}).Error; err != nil {
+	oldByNumber := make(map[string]model.Mold, len(oldMolds))
+	for _, item := range oldMolds {
+		oldByNumber[item.MoldNumber] = item
+	}
+	preserveOldIDs := make(map[uint]struct{})
+	for _, row := range data.Rows {
+		if !data.AssetMolds[row.MoldNumber] {
+			if old, ok := oldByNumber[row.MoldNumber]; ok {
+				preserveOldIDs[old.ID] = struct{}{}
+			}
+		}
+	}
+	var oldImages []model.ImageFile
+	if err := tx.Unscoped().Where("owner_type = ?", "mold").Find(&oldImages).Error; err != nil {
 		return err
+	}
+	for _, image := range oldImages {
+		if _, preserve := preserveOldIDs[image.OwnerID]; preserve {
+			continue
+		}
+		if err := tx.Unscoped().Delete(&image).Error; err != nil {
+			return err
+		}
+	}
+	var oldDrawings []model.MoldDrawing
+	if err := tx.Unscoped().Find(&oldDrawings).Error; err != nil {
+		return err
+	}
+	for _, drawing := range oldDrawings {
+		if _, preserve := preserveOldIDs[drawing.MoldID]; preserve {
+			continue
+		}
+		if err := tx.Unscoped().Delete(&drawing).Error; err != nil {
+			return err
+		}
 	}
 	if err := tx.Unscoped().Where("1 = 1").Delete(&model.Mold{}).Error; err != nil {
 		return err
@@ -1102,7 +1529,9 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 	}
 	locationIDs := map[string]uint{}
 	for _, location := range locations {
+		location := location
 		location.ID = 0
+		location.DeletedAt = gorm.DeletedAt{}
 		location.Status = locationStatus(location.Status)
 		if err := tx.Create(&location).Error; err != nil {
 			return err
@@ -1120,6 +1549,23 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 			return err
 		}
 		moldIDs[row.MoldNumber] = item.ID
+	}
+	// Repoint retained rows only after the replacement molds exist.  Updating
+	// by primary key keeps their original storage paths and metadata intact.
+	for _, old := range oldMolds {
+		if _, preserve := preserveOldIDs[old.ID]; !preserve {
+			continue
+		}
+		newID, ok := moldIDs[old.MoldNumber]
+		if !ok {
+			continue
+		}
+		if err := tx.Unscoped().Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ?", "mold", old.ID).Update("owner_id", newID).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Model(&model.MoldDrawing{}).Where("mold_id = ?", old.ID).Update("mold_id", newID).Error; err != nil {
+			return err
+		}
 	}
 	imageOrder := map[string]int{}
 	for _, asset := range staged {
@@ -1143,6 +1589,68 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 		}
 	}
 	return nil
+}
+
+func (h *Handler) moldPreservedPaths(data packageData) ([]string, error) {
+	if h.DB == nil || len(data.Rows) == 0 {
+		return nil, nil
+	}
+	numbers := make([]string, 0, len(data.Rows))
+	for _, row := range data.Rows {
+		if !data.AssetMolds[row.MoldNumber] {
+			numbers = append(numbers, row.MoldNumber)
+		}
+	}
+	if len(numbers) == 0 {
+		return nil, nil
+	}
+	var molds []model.Mold
+	if err := h.DB.Where("mold_number IN ?", numbers).Find(&molds).Error; err != nil {
+		return nil, err
+	}
+	ids := make([]uint, 0, len(molds))
+	for _, item := range molds {
+		ids = append(ids, item.ID)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	paths := make([]string, 0)
+	var images []model.ImageFile
+	if err := h.DB.Where("owner_type = ? AND owner_id IN ?", "mold", ids).Select("storage_path", "preview_path").Find(&images).Error; err != nil {
+		return nil, err
+	}
+	for _, image := range images {
+		paths = append(paths, image.StoragePath)
+		if image.PreviewPath != "" {
+			paths = append(paths, image.PreviewPath)
+		}
+	}
+	var drawings []model.MoldDrawing
+	if err := h.DB.Where("mold_id IN ?", ids).Select("storage_path").Find(&drawings).Error; err != nil {
+		return nil, err
+	}
+	for _, drawing := range drawings {
+		paths = append(paths, drawing.StoragePath)
+	}
+	return paths, nil
+}
+
+func subtractStoredPaths(paths, excluded []string) []string {
+	if len(excluded) == 0 {
+		return paths
+	}
+	keep := make(map[string]struct{}, len(excluded))
+	for _, path := range excluded {
+		keep[path] = struct{}{}
+	}
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if _, found := keep[path]; !found {
+			result = append(result, path)
+		}
+	}
+	return result
 }
 
 func (h *Handler) moldStoredPaths() ([]string, error) {
@@ -1195,7 +1703,7 @@ func packageSummary(data packageData) MoldImportSummary {
 func unresolvedFiles(data packageData) []MoldImportFile {
 	items := make([]MoldImportFile, 0, len(data.Unresolved))
 	for _, item := range data.Unresolved {
-		items = append(items, MoldImportFile{Path: item.Path, Name: item.Name})
+		items = append(items, MoldImportFile{Path: item.Path, Name: item.Name, Kind: item.Kind, AllowedCodes: append([]string(nil), item.AllowedCodes...)})
 	}
 	return items
 }
@@ -1258,10 +1766,12 @@ type archiveImageKey struct {
 
 func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struct{}, error) {
 	byGroup := map[string][]model.Mold{}
+	knownNumbers := make(map[string]struct{}, len(molds))
 	for _, item := range molds {
 		if err := validateArchiveSegment(item.MoldNumber); err != nil {
 			return nil, nil, err
 		}
+		knownNumbers[item.MoldNumber] = struct{}{}
 		if item.MoldType == model.MoldTypeCommon && strings.TrimSpace(item.CommonGroupNo) != "" {
 			key := strings.TrimSpace(item.CommonGroupNo)
 			byGroup[key] = append(byGroup[key], item)
@@ -1301,11 +1811,28 @@ func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struc
 		numbers := make([]string, 0, len(members))
 		for _, member := range members {
 			numbers = append(numbers, member.MoldNumber)
-			grouped[member.MoldNumber] = struct{}{}
 		}
 		outer := strings.Join(numbers, "+")
+		// A historical single mold may itself be named "A+B".  Emitting the
+		// common group at that same path would make the flat archive ambiguous
+		// and could silently associate assets with the wrong record.
+		if _, collision := knownNumbers[outer]; collision {
+			belongsToGroup := false
+			for _, member := range members {
+				if member.MoldNumber == outer {
+					belongsToGroup = true
+					break
+				}
+			}
+			if !belongsToGroup {
+				continue
+			}
+		}
 		if err := validateArchiveSegment(outer); err != nil {
 			return nil, nil, err
+		}
+		for _, member := range members {
+			grouped[member.MoldNumber] = struct{}{}
 		}
 		groups = append(groups, moldArchiveGroup{Outer: outer, Members: members})
 	}
@@ -1318,54 +1845,41 @@ func addMoldArchiveDirectories(zw *zip.Writer, molds []model.Mold) error {
 		return err
 	}
 	seen := map[string]struct{}{}
-	for _, directory := range []string{"images/", "drawings/"} {
-		if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
+	for _, group := range groups {
+		if err := addUniqueZipDirectory(zw, filepath.ToSlash(group.Outer)+"/", seen); err != nil {
 			return err
 		}
 	}
-	groupedFolders := map[string]string{}
+	grouped := make(map[string]struct{})
 	for _, group := range groups {
 		for _, member := range group.Members {
-			groupedFolders[member.MoldNumber] = filepath.ToSlash(filepath.Join(group.Outer, member.MoldNumber))
-		}
-		for _, directory := range []string{
-			filepath.ToSlash(filepath.Join("images", group.Outer, "共用")) + "/",
-			filepath.ToSlash(filepath.Join("images", group.Outer, "共用", "product_material")) + "/",
-			filepath.ToSlash(filepath.Join("images", group.Outer, "共用", "supplement")) + "/",
-			filepath.ToSlash(filepath.Join("drawings", group.Outer, "共用")) + "/",
-		} {
-			if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
-				return err
-			}
+			grouped[member.MoldNumber] = struct{}{}
 		}
 	}
 	for _, item := range molds {
-		folder := item.MoldNumber
-		if groupedFolder, ok := groupedFolders[item.MoldNumber]; ok {
-			folder = groupedFolder
+		if _, ok := grouped[item.MoldNumber]; ok {
+			continue
 		}
-		for _, directory := range []string{
-			filepath.ToSlash(filepath.Join("images", folder)) + "/",
-			filepath.ToSlash(filepath.Join("images", folder, "product_material")) + "/",
-			filepath.ToSlash(filepath.Join("images", folder, "supplement")) + "/",
-			filepath.ToSlash(filepath.Join("drawings", folder)) + "/",
-		} {
-			if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
-				return err
-			}
+		if err := addUniqueZipDirectory(zw, filepath.ToSlash(item.MoldNumber)+"/", seen); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func exportMoldAssets(zw *zip.Writer, root, folder, moldNumber string, images []model.ImageFile, drawings []model.MoldDrawing, used map[string]struct{}) error {
+	productSequence := 1
 	for _, image := range images {
-		if err := exportImageAsset(zw, root, filepath.Join("images", folder, exportCategory(image.Category)), image, used); err != nil {
+		name := archiveImageOutputName(image, moldNumber, productSequence, false)
+		if image.Category == "product_material" && !isProductInkImage(image.OriginalName) {
+			productSequence++
+		}
+		if err := exportImageAssetNamed(zw, root, folder, image, name, used); err != nil {
 			return err
 		}
 	}
 	for _, drawing := range drawings {
-		if err := exportDrawingAsset(zw, root, filepath.Join("drawings", folder), drawing, used); err != nil {
+		if err := exportDrawingAssetNamed(zw, root, folder, drawing, archiveFileName(drawing.OriginalName), used); err != nil {
 			return err
 		}
 	}
@@ -1393,17 +1907,35 @@ func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, 
 		}
 		return imageKeys[i].Category < imageKeys[j].Category
 	})
+	productSequence := make(map[string]int, len(group.Members))
+	sharedProductSequence := 1
+	for _, member := range group.Members {
+		productSequence[member.MoldNumber] = 1
+	}
 	for _, key := range imageKeys {
 		members := imageGroups[key]
 		if shared, ok := sharedImageAsset(root, group.Members, members); ok {
-			if err := exportImageAsset(zw, root, filepath.Join("images", group.Outer, "共用", key.Category), shared, used); err != nil {
+			name := archiveImageOutputName(shared, group.Outer, sharedProductSequence, true)
+			if shared.Category == "product_material" && !isProductInkImage(shared.OriginalName) {
+				sharedProductSequence++
+			}
+			if err := exportImageAssetNamed(zw, root, group.Outer, shared, name, used); err != nil {
 				return err
 			}
 			continue
 		}
 		for _, member := range group.Members {
 			for _, image := range members[member.MoldNumber] {
-				if err := exportImageAsset(zw, root, filepath.Join("images", group.Outer, member.MoldNumber, key.Category), image, used); err != nil {
+				name := archiveImageOutputName(image, member.MoldNumber, productSequence[member.MoldNumber], true)
+				fallbackLabel := "模具图"
+				if image.Category == "product_material" {
+					fallbackLabel = "产品刷墨图"
+				}
+				name = memberSpecificArchiveName(member.MoldNumber, name, group.Members, fallbackLabel)
+				if image.Category == "product_material" && !isProductInkImage(image.OriginalName) {
+					productSequence[member.MoldNumber]++
+				}
+				if err := exportImageAssetNamed(zw, root, group.Outer, image, name, used); err != nil {
 					return err
 				}
 			}
@@ -1428,20 +1960,35 @@ func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, 
 	for _, name := range drawingNames {
 		members := drawingGroups[name]
 		if shared, ok := sharedDrawingAsset(root, group.Members, members); ok {
-			if err := exportDrawingAsset(zw, root, filepath.Join("drawings", group.Outer, "共用"), shared, used); err != nil {
+			if err := exportDrawingAssetNamed(zw, root, group.Outer, shared, prefixArchiveName(group.Outer, archiveFileName(shared.OriginalName)), used); err != nil {
 				return err
 			}
 			continue
 		}
 		for _, member := range group.Members {
 			for _, drawing := range members[member.MoldNumber] {
-				if err := exportDrawingAsset(zw, root, filepath.Join("drawings", group.Outer, member.MoldNumber), drawing, used); err != nil {
+				name := memberSpecificArchiveName(member.MoldNumber, archiveFileName(drawing.OriginalName), group.Members, "图纸")
+				if err := exportDrawingAssetNamed(zw, root, group.Outer, drawing, name, used); err != nil {
 					return err
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func memberSpecificArchiveName(member, name string, group []model.Mold, fallbackLabel string) string {
+	codes := make([]string, 0, len(group))
+	for _, item := range group {
+		codes = append(codes, item.MoldNumber)
+	}
+	for _, matched := range moldNumbersInName(name, codes) {
+		if matched != member {
+			ext := filepath.Ext(name)
+			return member + "-" + fallbackLabel + ext
+		}
+	}
+	return prefixArchiveName(member, name)
 }
 
 func sharedImageAsset(root string, members []model.Mold, assets map[string][]model.ImageFile) (model.ImageFile, bool) {
@@ -1493,9 +2040,63 @@ func exportImageAsset(zw *zip.Writer, root, directory string, image model.ImageF
 	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), image.StoragePath)
 }
 
+func exportImageAssetNamed(zw *zip.Writer, root, directory string, image model.ImageFile, name string, used map[string]struct{}) error {
+	name = uniqueArchiveFileName(name, image.ID, directory, used)
+	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), image.StoragePath)
+}
+
 func exportDrawingAsset(zw *zip.Writer, root, directory string, drawing model.MoldDrawing, used map[string]struct{}) error {
 	name := uniqueArchiveFileName(archiveFileName(drawing.OriginalName), drawing.ID, directory, used)
 	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), drawing.StoragePath)
+}
+
+func exportDrawingAssetNamed(zw *zip.Writer, root, directory string, drawing model.MoldDrawing, name string, used map[string]struct{}) error {
+	name = uniqueArchiveFileName(name, drawing.ID, directory, used)
+	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), drawing.StoragePath)
+}
+
+func archiveImageOutputName(image model.ImageFile, prefix string, sequence int, grouped bool) string {
+	original := archiveFileName(image.OriginalName)
+	ext := filepath.Ext(original)
+	if image.Category == "product_material" {
+		if isProductInkImage(original) {
+			if grouped {
+				return prefixArchiveName(prefix, original)
+			}
+			return original
+		}
+		return fmt.Sprintf("%s-%d%s", prefix, sequence, ext)
+	}
+	if strings.Contains(strings.TrimSuffix(original, ext), "产品刷墨图") {
+		original = strings.ReplaceAll(strings.TrimSuffix(original, ext), "产品刷墨图", "模具图") + ext
+	}
+	if hasPositiveImageSequenceSuffix(strings.TrimSuffix(original, ext)) {
+		original = strings.TrimSuffix(original, ext) + "-模具图" + ext
+	}
+	if grouped {
+		return prefixArchiveName(prefix, original)
+	}
+	return original
+}
+
+func isProductInkImage(name string) bool {
+	name = archiveFileName(name)
+	return strings.Contains(strings.TrimSuffix(name, filepath.Ext(name)), "产品刷墨图")
+}
+
+func prefixArchiveName(prefix, name string) string {
+	prefix = archiveFileName(prefix)
+	name = archiveFileName(name)
+	if prefix == "" {
+		return name
+	}
+	lowerPrefix, lowerName := strings.ToLower(prefix), strings.ToLower(name)
+	if strings.HasPrefix(lowerName, lowerPrefix) {
+		if len(lowerName) == len(lowerPrefix) || !isASCIILetterOrDigit(lowerName[len(lowerPrefix)]) {
+			return name
+		}
+	}
+	return prefix + "-" + name
 }
 
 func storedFilesEqual(root string, left, right string) (bool, error) {
@@ -1551,9 +2152,9 @@ func uniqueArchiveFileName(name string, id uint, directory string, used map[stri
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	for suffix := 1; ; suffix++ {
-		candidate := fmt.Sprintf("%s-%d%s", stem, id, ext)
+		candidate := fmt.Sprintf("%s-副本%d%s", stem, id, ext)
 		if suffix > 1 {
-			candidate = fmt.Sprintf("%s-%d-%d%s", stem, id, suffix, ext)
+			candidate = fmt.Sprintf("%s-副本%d_%d%s", stem, id, suffix, ext)
 		}
 		path = filepath.ToSlash(filepath.Join(directory, candidate))
 		if _, exists := used[path]; !exists {

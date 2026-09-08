@@ -2,8 +2,14 @@
 
 ## 模具位置、共模资料包与拖放优化（2026-09-08）
 
+- 本轮代码已实现：模具模板和新导出改为根部扁平单模/共模目录，图片与 DWG 直接混放；可导入额外套一层包装目录的资料包，并兼容旧 `images/`、`drawings/` 格式。
+- 本轮代码已实现：文件名含“产品刷墨图”或以 `-正整数` 结尾的图片归产品图，其他合法图片归模具图；界面名称已同步，内部分类值保持不变。系统元数据文件被忽略，Windows 样本 ZIP 的 GBK 中文文件名可正常解码，图片和图纸的型号别名均不自动猜测。
+- 本轮人工确认已实现：未匹配的共模图片/图纸以及“含 `+` 单模编号与共模目录同名”的歧义资料在预览中返回限定候选，用户逐项选择归属；图片类型不再默认，未明确选择前不能提交。
+- 本轮事务边界已实现：模具档案和位置按 Excel 全量更新；有资料目录的模具覆盖资料，无目录的同编号模具迁移并保留旧资料，Excel 删除的模具及资料一并清理。
+- 本轮一致性防护已实现：导出名称不会使模具图回导成产品图或使成员专属资料扩大为共用资料；含 `+` 的歧义目录必须一致选择单模或共模解释，显式空歧义目录阻断；模具普通新增、编辑和资料全量导入共用互斥边界。
+- 本轮已验证：`go test ./internal/mold -count=1`、`go test -race ./internal/mold -count=1`、`go test ./...`、`go vet ./...`、Web 专项 9 项测试和 `npm run build` 均通过；覆盖扁平目录、单层包装、GBK 文件名、分类、共模匹配、含 `+` 歧义人工确认、导出回读和无目录资料保留。已读取核对 `001.zip` 的真实目录与文件名；尚未执行带标准 Excel/位置文件的真实 HTTP 提交、浏览器/Tauri/Windows 资料包验收。
 - 代码已实现：默认 100 个货架位置和卡板，整区事务补齐接口（支持 E2×2 扩展到 E8×8），不删除位置、不重启用停用项；既有 `location_id` 契约和位置字符串保持。
-- 代码已实现：共模导出按组创建“共用 / 具体编号”目录，全组同名同类同内容文件只导出一份；旧目录、新目录、组内平铺文件均可预览，按完整编号识别，不猜别名。列表仍一模具一行，资料包共用文件回导到各成员自己的资料记录。
+- 代码已实现：共模导出按组创建一个以全部成员编号连接的扁平目录，图片与图纸直接混放；全组同名同类同内容文件只导出一份，成员专属资料保留唯一归属。旧 `images/`、`drawings/` 目录与新扁平目录均可预览，按完整编号识别，不猜别名。列表仍一模具一行，共用文件回导到各成员自己的资料记录。
 - 代码已实现：原生拖放识别 SVG 子元素、离开旧目标清理高亮、注册失败提示；图片/图纸/ZIP/Excel 校验保持一致。原生上传补齐 401 会话续期，并保留 Rust 返回的字符串错误；连接结果不明时不自动重传。
 - 已同步：Handler Swagger、`docs/API.md`、Swagger 三产物、`test.http`、`docs/WEB_STATUS.md`、`client/API_SYNC.md`。
 - 已验证：主代理 `GOCACHE=/private/tmp/bb_erp_echo_go_cache go test ./...`、`go vet ./...`；Rust 26 项测试与 `cargo check`；Web 当前 65 项测试。Rust HTTP 实测涵盖中文/空格文件名、multipart 流式上传和服务器错误响应。
@@ -56,7 +62,7 @@ Go 后端是博邦 ERP 的业务、权限、审计和数据最终裁决者。当
 | 基础资料 | 部分暂缓 | 物料、产品等共享基础表继续创建；新数据库暂不创建供应商、仓库和库位表，已有表与数据不删除 |
 | 库存 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建库存表，访问返回统一 `503 module_not_initialized`，已有表时继续工作 |
 | 任务单 | 数据结构暂缓 | 页面和 API 保留；新数据库不自动建任务/部门任务/流转表，写操作不可用，已有表时继续工作 |
-| 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；模板下载为可直接回导的 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 和标准空目录；资料包上限 2 GiB；不保留旧生命周期 |
+| 模具 | 已完成 | 新模具、固定位置、图片分组/排序、DWG 文件、资料包导入导出和批量移位；模板下载为可直接回导的 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 和扁平单模/共模示例目录；资料包上限 2 GiB；不保留旧生命周期 |
 | 统计审计 | 降级兼容已完成 | 缺少供应商、库存或任务数据源时仍返回 200，并用 `data_status`、`unavailable_sources`、`message` 明确标识；审计查询不受影响 |
 | 文件图片 | 已完成，待 Windows 运行态验收 | 受保护批量上传、原图保留、扩展静态格式解码、JPEG 预览、替换和删除 |
 | 客户端更新 | 已完成，待 Windows 单 EXE 真机验收 | 固定 `../client` 投放、匿名 protocol v1、内网同源内容寻址、签名、哈希、原子缓存、临时替换与失败回滚；无 HTTP/目录双源、服务端自升级或安装器 |
@@ -125,7 +131,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 数量使用四位定点整数，金额/单价使用分；禁止把前端浮点值直接作为库存或金额事实。
 - 图片权限继承业务对象权限；身份发现接口不得返回组织、账号、业务数据、更新地址或凭据。
 - 图片上传支持 JPG/JFIF、PNG、GIF、WebP、HEIC/HEIF、AVIF、BMP、TIFF、SVG；动画只取静态封面，JPEG 应用 EXIF 方向。服务端保存原图并派生受保护 JPEG 预览，SVG 原图只允许附件下载。已取消 20 MiB 业务上限，但保留单批 100 张、单批预览 256 MiB、3200 万像素、HEIC/HEIF/AVIF 128 MiB、SVG 8 MiB、全局两个并发转换任务和全局请求上限等运行安全边界；Windows 正式服务构建固定使用 `nodynamic`，不探测外部图片解码 DLL。
-- 模具资料包导入使用预览令牌和全量事务替换，仅清理模具、模具图片、预览文件、DWG 与位置字典；模板和正式导出均为 ZIP，模板固定包含一条 `MOLD-001` 示例行、`A1-1`/`B1-1` 位置和 `images/`、`drawings/` 标准空目录，下载响应统一使用安全的 UTF-8 `Content-Disposition`、`no-store` 和 `nosniff` 头；最多 2000 个源条目、共模复制后 5000 个资产，声明解压总量与实际落盘总量均限制为 4 GiB，工作簿/位置/修正参数另有 64/4/4 MiB 边界。导入忽略 Excel 的 ID/图片总数，图片按产品材料/补充图分组并支持共模复制，未知图片可在预览中人工指定分组和模具编号。资料包图片与图库共用扩展格式、预览阶段真实解码和静态预览规则，大小写扩展名均可识别，系统导出的新格式可回导；图片、DWG、整模删除和全量导入使用同一资产互斥边界。
+- 模具资料包导入使用预览令牌和事务更新，仅清理模具、模具图片、预览文件、DWG 与位置字典；模板和正式导出均为 ZIP，新模板包含单模、共模示例行、默认位置以及根部扁平资料目录，旧 `images/`、`drawings/` 结构仅保留导入兼容。下载响应统一使用安全的 UTF-8 `Content-Disposition`、`no-store` 和 `nosniff` 头；最多 2000 个源条目、共模复制后 5000 个资产，声明解压总量与实际落盘总量均限制为 4 GiB，工作簿/位置/修正参数另有 64/4/4 MiB 边界。模具档案和位置按 Excel 全量更新；ZIP 中有目录的模具覆盖资料、无目录的同编号模具迁移并保留旧资料、Excel 删除的模具及资料一并删除。导入忽略 Excel 的 ID/图片总数，图片在界面按产品图/模具图分组，未知图片可在预览中人工指定内部分类和模具编号。资料包图片与图库共用扩展格式、预览阶段真实解码和静态预览规则，大小写扩展名均可识别，新格式可回导；图片、DWG、整模删除和全量导入使用同一资产互斥边界。
 - API 只保留当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，以及库存单据/余额/流水和 `/api/v1/warehouse/items`、`/tabs` 路径；不注册旧任务、单数基础资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根别名。图片权限只校验当前业务对象权限。
 - 新库直接由 GORM schema 创建非空幂等键部分唯一索引；账号和 JWT 的 `password_version` 明确从 `1` 开始，不执行旧库字段/索引修复。
 - 管理员重置账号密码在同一事务递增 `password_version` 并撤销目标账号全部 refresh token，旧 access/refresh 会话均失效。
@@ -153,7 +159,7 @@ BB_ERP_DISCOVERY_HTTP_TIMEOUT
 - 开箱启动实测：明确移除 `BB_ERP_SILENCE_PASSWORD`，使用全新临时 SQLite 启动服务，`/health` 与 `/ready` 通过，用户表仅包含原有 admin；`GOCACHE=/tmp/bb-erp-go-cache go test ./...` 全量通过。Windows 安装包重建与真机双击仍属发布验收。
 - 权限 provider 并发 `Enforce` + `ReloadPolicies` 无竞态；注入快照构建失败时旧权限仍可用。
 - `git diff --check`
-- 本轮导入导出专项：统一下载响应头由 `internal/spreadsheet` 提供，客户 XLSX 模板/导出契约保持不变；模具模板改为 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 与标准空目录，模板和正式导出均通过现有 `readPackage` 回读测试；`go test ./internal/spreadsheet ./internal/customer ./internal/mold` 通过。
+- 本轮导入导出专项：统一下载响应头由 `internal/spreadsheet` 提供，客户 XLSX 模板/导出契约保持不变；模具模板为 `博邦模具导入模板.zip`，包含 `molds.xlsx`、`locations.json` 与扁平单模/共模示例目录，模板和正式导出均通过现有 `readPackage` 回读测试；`go test ./internal/spreadsheet ./internal/customer ./internal/mold` 通过。
 - 模具重构专项：`GOCACHE=/private/tmp/bb-erp-go-cache go test ./...`、`go vet ./...`、Web/Client `npm run build` 已通过；Swagger 三份产物已重新生成。
 - 旧 API 路由、tasks/inventory 旧权限、图片权限回退、旧幂等索引升级和旧用户表密码版本迁移测试均已删除。
 - CI 只构建、签名并保存 Windows Artifact，不向 Gitee、GitHub Release 或公网稳定清单发布。正式交付包含 all-in-one、客户端更新包和服务端人工替换包。
