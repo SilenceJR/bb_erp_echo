@@ -2,6 +2,7 @@ package mold
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	filemodule "bb_erp_echo/internal/file"
@@ -9,6 +10,7 @@ import (
 	"bb_erp_echo/internal/shared/pagination"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 	ErrMoldLocationDisabled  = errors.New("mold location disabled")
 	ErrMoldLocationInUse     = errors.New("mold location is in use")
 	ErrMoldSelectionRequired = errors.New("mold selection required")
+	ErrMoldLocationZone      = errors.New("mold location zone invalid")
+	ErrMoldLocationRange     = errors.New("mold location range invalid")
 )
 
 type Input struct {
@@ -63,6 +67,18 @@ type LocationStatusInput struct {
 	Status string `json:"status" validate:"required,oneof=active disabled"`
 }
 
+// BulkLocationInput 是按区批量补充货架位置的请求参数。
+type BulkLocationInput struct {
+	Zone    string `json:"zone" validate:"required"`
+	Rows    int    `json:"rows"`
+	Columns int    `json:"columns"`
+}
+
+// BulkLocationResult 是批量位置接口返回的实际新增数量。
+type BulkLocationResult struct {
+	Created int `json:"created"`
+}
+
 type BulkMoveInput struct {
 	MoldIDs    []uint `json:"mold_ids" validate:"required,min=1"`
 	LocationID uint   `json:"location_id" validate:"required"`
@@ -77,6 +93,7 @@ type Service interface {
 	Locations(includeDisabled bool) ([]model.MoldLocation, error)
 	CreateLocation(input LocationInput) (model.MoldLocation, error)
 	UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error)
+	BulkCreateLocations(input BulkLocationInput) (BulkLocationResult, error)
 	BulkMove(input BulkMoveInput) error
 }
 
@@ -93,15 +110,31 @@ func NewServiceWithStorage(db *gorm.DB, storageRoot string) Service {
 	return &gormService{db: db, storageRoot: storageRoot}
 }
 
-// SeedLocations 保证全新数据库具备最小固定位置字典。
+// SeedLocations 补齐默认货架和卡板位置，但不重启用已有停用位置。
 func SeedLocations(db *gorm.DB) error {
-	for _, code := range []string{"A1-1", "B1-1"} {
-		item := model.MoldLocation{Code: code, Status: model.MoldLocationActive}
-		if err := db.Where("code = ?", code).FirstOrCreate(&item).Error; err != nil {
-			return err
+	locations := defaultMoldLocations()
+	return db.Transaction(func(tx *gorm.DB) error {
+		return tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "code"}}, DoNothing: true}).Create(&locations).Error
+	})
+}
+
+// defaultMoldLocations 返回默认的 100 个货架位和 1 个卡板位。
+// 返回新切片，调用方可以安全地修改 ID 或状态后写入数据库。
+func defaultMoldLocations() []model.MoldLocation {
+	locations := make([]model.MoldLocation, 0, 101)
+	for _, zone := range []string{"A", "B", "C", "D"} {
+		maxRow := 6
+		if zone == "A" {
+			maxRow = 7
+		}
+		for row := 1; row <= maxRow; row++ {
+			for column := 1; column <= 4; column++ {
+				locations = append(locations, model.MoldLocation{Code: fmt.Sprintf("%s%d-%d", zone, row, column), Status: model.MoldLocationActive})
+			}
 		}
 	}
-	return nil
+	locations = append(locations, model.MoldLocation{Code: model.MoldLocationPallet, Status: model.MoldLocationActive})
+	return locations
 }
 
 func (s *gormService) List(query pagination.Query, filter ListFilter) (pagination.Result[MoldResponse], error) {
@@ -255,6 +288,36 @@ func (s *gormService) CreateLocation(input LocationInput) (model.MoldLocation, e
 	return item, nil
 }
 
+// BulkCreateLocations 按区和行列上限幂等补充货架位置。
+func (s *gormService) BulkCreateLocations(input BulkLocationInput) (BulkLocationResult, error) {
+	input.Zone = strings.ToUpper(strings.TrimSpace(input.Zone))
+	if !validLocationZone(input.Zone) {
+		return BulkLocationResult{}, ErrMoldLocationZone
+	}
+	if input.Rows < 1 || input.Rows > 100 || input.Columns < 1 || input.Columns > 100 {
+		return BulkLocationResult{}, ErrMoldLocationRange
+	}
+	locations := make([]model.MoldLocation, 0, input.Rows*input.Columns)
+	for row := 1; row <= input.Rows; row++ {
+		for column := 1; column <= input.Columns; column++ {
+			locations = append(locations, model.MoldLocation{Code: fmt.Sprintf("%s%d-%d", input.Zone, row, column), Status: model.MoldLocationActive})
+		}
+	}
+	var result BulkLocationResult
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		created := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "code"}}, DoNothing: true}).CreateInBatches(&locations, 500)
+		if created.Error != nil {
+			return created.Error
+		}
+		result.Created = int(created.RowsAffected)
+		return nil
+	})
+	if err != nil {
+		return BulkLocationResult{}, err
+	}
+	return result, nil
+}
+
 func (s *gormService) UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error) {
 	var item model.MoldLocation
 	if err := s.db.First(&item, id).Error; err != nil {
@@ -343,6 +406,18 @@ func uniqueIDs(ids []uint) []uint {
 		}
 	}
 	return result
+}
+
+func validLocationZone(value string) bool {
+	if len(value) < 1 || len(value) > 8 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < 'A' || value[i] > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func mapMoldError(err error) error {

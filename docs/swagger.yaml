@@ -1075,6 +1075,22 @@ definitions:
       work_order_id:
         type: integer
     type: object
+  mold.BulkLocationInput:
+    properties:
+      columns:
+        type: integer
+      rows:
+        type: integer
+      zone:
+        type: string
+    required:
+    - zone
+    type: object
+  mold.BulkLocationResult:
+    properties:
+      created:
+        type: integer
+    type: object
   mold.BulkMoveInput:
     properties:
       location_id:
@@ -3356,6 +3372,29 @@ paths:
       summary: 更新模具位置状态
       tags:
       - mold
+  /api/v1/mold-locations/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 区名及行列上限
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/mold.BulkLocationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mold.BulkLocationResult'
+      security:
+      - BearerAuth: []
+      summary: 批量新增模具位置
+      tags:
+      - mold
   /api/v1/molds:
     get:
       parameters:
@@ -3608,8 +3647,7 @@ paths:
       - mold
   /api/v1/molds/import-template:
     get:
-      description: 返回 `博邦模具导入模板.zip`，包含 molds.xlsx、locations.json 和 images/drawings
-        标准空目录。
+      description: 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。
       produces:
       - application/zip
       responses:

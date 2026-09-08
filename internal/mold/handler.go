@@ -52,6 +52,7 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 	locations := v1.Group("/mold-locations", audit)
 	locations.GET("", h.ListLocations, require("/api/v1/molds", "read"))
 	locations.POST("", h.CreateLocation, require("/api/v1/molds", "write"))
+	locations.POST("/bulk", h.BulkCreateLocations, require("/api/v1/molds", "write"))
 	locations.PATCH("/:id", h.UpdateLocation, require("/api/v1/molds", "write"))
 }
 
@@ -221,6 +222,27 @@ func (h *Handler) CreateLocation(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
+// BulkCreateLocations 按区和行列上限幂等补充货架位置。
+// @Summary 批量新增模具位置
+// @Tags mold
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body BulkLocationInput true "区名及行列上限"
+// @Success 200 {object} BulkLocationResult
+// @Router /api/v1/mold-locations/bulk [post]
+func (h *Handler) BulkCreateLocations(c *echo.Context) error {
+	var input BulkLocationInput
+	if err := request.BindAndValidate(c, &input); err != nil {
+		return err
+	}
+	result, err := h.Service.BulkCreateLocations(input)
+	if err != nil {
+		return moldHTTPError(err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
 // UpdateLocation 启用或停用固定位置。
 // @Summary 更新模具位置状态
 // @Tags mold
@@ -253,7 +275,7 @@ func moldHTTPError(err error) error {
 		return echo.NewHTTPError(http.StatusNotFound, "模具或位置不存在")
 	case errors.Is(err, ErrMoldNumberConflict):
 		return echo.NewHTTPError(http.StatusConflict, "模具编号已存在")
-	case errors.Is(err, ErrMoldInvalidType), errors.Is(err, ErrMoldGroupRequired), errors.Is(err, ErrMoldGroupForbidden), errors.Is(err, ErrMoldLocationRequired), errors.Is(err, ErrMoldLocationDisabled), errors.Is(err, ErrMoldSelectionRequired):
+	case errors.Is(err, ErrMoldInvalidType), errors.Is(err, ErrMoldGroupRequired), errors.Is(err, ErrMoldGroupForbidden), errors.Is(err, ErrMoldLocationRequired), errors.Is(err, ErrMoldLocationDisabled), errors.Is(err, ErrMoldSelectionRequired), errors.Is(err, ErrMoldLocationZone), errors.Is(err, ErrMoldLocationRange):
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrMoldLocationInUse):
 		return echo.NewHTTPError(http.StatusConflict, "位置仍被模具使用，不能停用")

@@ -76,6 +76,7 @@ declare module 'vue' {
     ModuleCreateForm: typeof import('./src/components/pages/module/ModuleCreateForm.vue')['default']
     ModulePage: typeof import('./src/components/pages/ModulePage.vue')['default']
     ModulePageFrame: typeof import('./src/components/pages/module/ModulePageFrame.vue')['default']
+    MoldLocationPicker: typeof import('./src/components/pages/module/MoldLocationPicker.vue')['default']
     MoldModuleContent: typeof import('./src/components/pages/module/MoldModuleContent.vue')['default']
     NavButton: typeof import('./src/components/ui/NavButton.vue')['default']
     OperatorSelect: typeof import('./src/components/ui/OperatorSelect.vue')['default']

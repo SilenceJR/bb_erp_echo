@@ -6,6 +6,8 @@ const (
 
 	MoldLocationActive   = "active"
 	MoldLocationDisabled = "disabled"
+	// MoldLocationPallet 是不带货架编号的独立卡板位置。
+	MoldLocationPallet = "卡板"
 )
 
 // Mold 是按产品型号维护的模具档案。
