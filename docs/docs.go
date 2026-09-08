@@ -2350,6 +2350,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/mold-locations/bulk": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mold"
+                ],
+                "summary": "批量新增模具位置",
+                "parameters": [
+                    {
+                        "description": "区名及行列上限",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mold.BulkLocationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mold.BulkLocationResult"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/mold-locations/{id}": {
             "patch": {
                 "security": [
@@ -2556,7 +2594,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含 molds.xlsx、locations.json 和 images/drawings 标准空目录。",
+                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。",
                 "produces": [
                     "application/zip"
                 ],
@@ -6783,6 +6821,31 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_order_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "mold.BulkLocationInput": {
+            "type": "object",
+            "required": [
+                "zone"
+            ],
+            "properties": {
+                "columns": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
+                }
+            }
+        },
+        "mold.BulkLocationResult": {
+            "type": "object",
+            "properties": {
+                "created": {
                     "type": "integer"
                 }
             }

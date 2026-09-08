@@ -95,7 +95,7 @@ type packageAsset struct {
 
 // ImportTemplate 下载可直接回导的模具 ZIP 模板。
 // @Summary 下载模具导入模板
-// @Description 返回 `博邦模具导入模板.zip`，包含 molds.xlsx、locations.json 和 images/drawings 标准空目录。
+// @Description 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。
 // @Tags mold
 // @Security BearerAuth
 // @Produce application/zip
@@ -112,12 +112,20 @@ func (h *Handler) ImportTemplate(c *echo.Context) error {
 const moldImportTemplateFilename = "博邦模具导入模板.zip"
 
 // buildMoldImportTemplate 生成与正式模具资料包相同目录规范的空模板。
-// 模板包含一条可通过 readPackage 校验的示例模具记录，用户可直接替换
-// molds.xlsx 内容并向预留目录添加图片、DWG 文件后提交导入。
+// 模板包含单模和共模示例记录，用户可直接替换 molds.xlsx 内容并向预留目录添加图片、DWG 文件后提交导入。
 func buildMoldImportTemplate(ctx context.Context) ([]byte, error) {
+	templateMolds := []model.Mold{
+		{MoldNumber: "MOLD-001", Model: "示例产品", MoldType: model.MoldTypeSingle},
+		{MoldNumber: "MOLD-002", Model: "示例共模 A", MoldType: model.MoldTypeCommon, CommonGroupNo: "TEMPLATE-GROUP"},
+		{MoldNumber: "MOLD-003", Model: "示例共模 B", MoldType: model.MoldTypeCommon, CommonGroupNo: "TEMPLATE-GROUP"},
+	}
 	xlsx, err := spreadsheet.XLSXWriter{}.Write(ctx, spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Title: "博邦模具", Columns: moldColumns,
-		Rows: [][]string{{"", "MOLD-001", "示例产品", "单模", "A1-1", "", "0", "示例备注"}}, TotalRows: 1,
+		Rows: [][]string{
+			{"", "MOLD-001", "示例产品", "单模", "A1-1", "", "0", "示例备注"},
+			{"", "MOLD-002", "示例共模 A", "共模", "A1-1", "TEMPLATE-GROUP", "0", "共模示例"},
+			{"", "MOLD-003", "示例共模 B", "共模", "A1-1", "TEMPLATE-GROUP", "0", "共模示例"},
+		}, TotalRows: 3,
 	})
 	if err != nil {
 		return nil, err
@@ -127,20 +135,14 @@ func buildMoldImportTemplate(ctx context.Context) ([]byte, error) {
 	if err := addZipBytes(zw, "molds.xlsx", xlsx); err != nil {
 		return nil, err
 	}
-	locations, err := json.MarshalIndent([]struct {
-		Code   string `json:"code"`
-		Status string `json:"status"`
-	}{
-		{Code: "A1-1", Status: model.MoldLocationActive},
-		{Code: "B1-1", Status: model.MoldLocationActive},
-	}, "", "  ")
+	locations, err := json.MarshalIndent(defaultMoldLocations(), "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	if err := addZipBytes(zw, "locations.json", append(locations, '\n')); err != nil {
 		return nil, err
 	}
-	if err := addMoldArchiveDirectories(zw, []string{"MOLD-001"}); err != nil {
+	if err := addMoldArchiveDirectories(zw, templateMolds); err != nil {
 		return nil, err
 	}
 	if err := zw.Close(); err != nil {
@@ -283,6 +285,14 @@ func (h *Handler) Export(c *echo.Context) error {
 	if h.DB == nil || h.StorageRoot == "" {
 		return echo.NewHTTPError(http.StatusNotImplemented, "模具资料包服务未配置")
 	}
+	unlock := filemodule.LockMoldAssetMutation()
+	locked := true
+	defer func() {
+		if locked {
+			unlock()
+		}
+	}()
+
 	var molds []model.Mold
 	if err := h.DB.Preload("Location").Order("id asc").Find(&molds).Error; err != nil {
 		return err
@@ -319,36 +329,45 @@ func (h *Handler) Export(c *echo.Context) error {
 		temp.Close()
 		return err
 	}
-	moldNumbers := make([]string, 0, len(molds))
-	for _, item := range molds {
-		moldNumbers = append(moldNumbers, item.MoldNumber)
-	}
-	if err := addMoldArchiveDirectories(zw, moldNumbers); err != nil {
+	if err := addMoldArchiveDirectories(zw, molds); err != nil {
 		temp.Close()
 		return err
 	}
+	imageByMold := make(map[string][]model.ImageFile, len(molds))
+	drawingByMold := make(map[string][]model.MoldDrawing, len(molds))
 	for _, item := range molds {
 		var images []model.ImageFile
 		if err := h.DB.Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Order("category asc, sort_order asc, id asc").Find(&images).Error; err != nil {
 			temp.Close()
 			return err
 		}
-		for _, image := range images {
-			if err := addStoredFile(zw, h.StorageRoot, filepath.Join("images", item.MoldNumber, exportCategory(image.Category), image.OriginalName), image.StoragePath); err != nil {
-				temp.Close()
-				return err
-			}
-		}
+		imageByMold[item.MoldNumber] = images
 		var drawings []model.MoldDrawing
 		if err := h.DB.Where("mold_id = ?", item.ID).Order("id asc").Find(&drawings).Error; err != nil {
 			temp.Close()
 			return err
 		}
-		for _, drawing := range drawings {
-			if err := addStoredFile(zw, h.StorageRoot, filepath.Join("drawings", item.MoldNumber, drawing.OriginalName), drawing.StoragePath); err != nil {
-				temp.Close()
-				return err
-			}
+		drawingByMold[item.MoldNumber] = drawings
+	}
+	groups, groupedMolds, err := moldArchiveGroups(molds)
+	if err != nil {
+		temp.Close()
+		return err
+	}
+	archiveNames := map[string]struct{}{}
+	for _, item := range molds {
+		if _, grouped := groupedMolds[item.MoldNumber]; grouped {
+			continue
+		}
+		if err := exportMoldAssets(zw, h.StorageRoot, item.MoldNumber, item.MoldNumber, imageByMold[item.MoldNumber], drawingByMold[item.MoldNumber], archiveNames); err != nil {
+			temp.Close()
+			return err
+		}
+	}
+	for _, group := range groups {
+		if err := exportMoldGroupAssets(zw, h.StorageRoot, group, imageByMold, drawingByMold, archiveNames); err != nil {
+			temp.Close()
+			return err
 		}
 	}
 	if err := zw.Close(); err != nil {
@@ -358,6 +377,10 @@ func (h *Handler) Export(c *echo.Context) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
+	// The ZIP is now independent of stored assets; downloading must not block writes.
+	unlock()
+	locked = false
+
 	f, err := os.Open(name)
 	if err != nil {
 		return err
@@ -370,12 +393,8 @@ func (h *Handler) Export(c *echo.Context) error {
 	return sendMoldDownload(c, "博邦模具资料包.zip", "application/zip", f, info.Size())
 }
 
-func (h *Handler) readPackage(path string, size int64, corrections map[string]ImportCorrection) (packageData, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return packageData{}, err
-	}
-	defer f.Close()
+// The caller owns the reader and must keep it open through asset staging.
+func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]ImportCorrection) (packageData, error) {
 	zr, err := zip.NewReader(f, size)
 	if err != nil {
 		return packageData{}, echo.NewHTTPError(http.StatusBadRequest, "ZIP 资料包无效")
@@ -436,8 +455,10 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 		}
 	}
 	known := map[string]bool{}
+	moldInputs := map[string]Input{}
 	for _, row := range data.Rows {
 		known[row.MoldNumber] = true
+		moldInputs[row.MoldNumber] = row
 	}
 	for path, item := range files {
 		if item.FileInfo().IsDir() || path == "molds.xlsx" || path == "locations.json" {
@@ -455,6 +476,12 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 				continue
 			}
 			asset, ok := parseImageAsset(item, parts, known)
+			if strings.Contains(parts[1], "+") && !isCanonicalImagePath(parts, known) {
+				asset, ok = parseGroupedImageAsset(item, parts, moldInputs)
+				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputs) {
+					asset, ok = parseImageAsset(item, parts, known)
+				}
+			}
 			if !ok {
 				data.Errors = append(data.Errors, importError(path, "图片无法匹配模具编号或图片分组"))
 			} else if correction, exists := corrections[path]; exists {
@@ -471,6 +498,12 @@ func (h *Handler) readPackage(path string, size int64, corrections map[string]Im
 			}
 		case "drawings":
 			asset, ok := parseDrawingAsset(item, parts, known)
+			if strings.Contains(parts[1], "+") && !isCanonicalDrawingPath(parts, known) {
+				asset, ok = parseGroupedDrawingAsset(item, parts, moldInputs)
+				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputs) {
+					asset, ok = parseDrawingAsset(item, parts, known)
+				}
+			}
 			if !ok {
 				data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具编号"))
 			} else {
@@ -548,7 +581,7 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 }
 
 func parseLocations(item *zip.File) ([]model.MoldLocation, error) {
-	result := []model.MoldLocation{{Code: "A1-1", Status: model.MoldLocationActive}, {Code: "B1-1", Status: model.MoldLocationActive}}
+	result := defaultMoldLocations()
 	if item != nil {
 		if item.UncompressedSize64 > maxMoldLocationsBytes {
 			return nil, echo.NewHTTPError(http.StatusBadRequest, "locations.json 超过 4 MiB")
@@ -564,7 +597,19 @@ func parseLocations(item *zip.File) ([]model.MoldLocation, error) {
 			return nil, err
 		}
 	}
+	if !hasPalletLocation(result) {
+		result = append(result, model.MoldLocation{Code: model.MoldLocationPallet, Status: model.MoldLocationActive})
+	}
 	return result, nil
+}
+
+func hasPalletLocation(locations []model.MoldLocation) bool {
+	for _, location := range locations {
+		if strings.TrimSpace(location.Code) == model.MoldLocationPallet {
+			return true
+		}
+	}
+	return false
 }
 
 func parseImageAsset(item *zip.File, parts []string, known map[string]bool) (packageAsset, bool) {
@@ -579,12 +624,11 @@ func parseImageAsset(item *zip.File, parts []string, known map[string]bool) (pac
 	}
 	name := parts[len(parts)-1]
 	category := inferCategory(name)
-	var codes []string
+	knownCodes := make([]string, 0, len(known))
 	for code := range known {
-		if strings.Contains(name, code) {
-			codes = append(codes, code)
-		}
+		knownCodes = append(knownCodes, code)
 	}
+	codes := moldNumbersInName(name, knownCodes)
 	if len(codes) == 0 {
 		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name}, true
 	}
@@ -595,12 +639,209 @@ func parseImageAsset(item *zip.File, parts []string, known map[string]bool) (pac
 	sort.Strings(codes)
 	return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: codes, Category: category, Name: name}, true
 }
+
+func isCanonicalImagePath(parts []string, known map[string]bool) bool {
+	return len(parts) >= 4 && known[parts[1]] && normalizeCategory(parts[2]) != ""
+}
+
+// parseGroupedImageAsset 解析共模组外层目录，具体编号目录只归属该编号，平铺文件按文件名匹配组内编号。
+func parseGroupedImageAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool) {
+	if len(parts) < 3 || !validImageEntry(item) {
+		return packageAsset{}, false
+	}
+	members, ok := validSharedMembers(parts[1], known)
+	if !ok {
+		return packageAsset{}, false
+	}
+	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: parts[len(parts)-1]}
+	switch len(parts) {
+	case 3: // images/<group>/<file>
+		asset.Codes = moldNumbersInName(asset.Name, members)
+		asset.Category = inferCategory(asset.Name)
+	case 4:
+		if parts[2] == "共用" {
+			asset.Codes = members
+			asset.Category = inferCategory(asset.Name)
+		} else if category := normalizeCategory(parts[2]); category != "" {
+			asset.Codes = moldNumbersInName(asset.Name, members)
+			asset.Category = category
+		} else {
+			return packageAsset{}, false
+		}
+	case 5: // images/<group>/<共用|具体编号>/<category>/<file>
+		asset.Category = normalizeCategory(parts[3])
+		if asset.Category == "" {
+			return packageAsset{}, false
+		}
+		switch parts[2] {
+		case "共用":
+			asset.Codes = members
+		default:
+			if !containsString(members, parts[2]) {
+				return packageAsset{}, false
+			}
+			asset.Codes = []string{parts[2]}
+		}
+	default:
+		return packageAsset{}, false
+	}
+	if asset.Category == "" && len(asset.Codes) > 0 {
+		// 共模平铺文件沿用旧资料包的兜底约定：能精确匹配编号但未写分类关键词时，归入产品材料。
+		asset.Category = "product_material"
+	}
+	return asset, true
+}
+
 func parseDrawingAsset(item *zip.File, parts []string, known map[string]bool) (packageAsset, bool) {
 	if len(parts) >= 3 && known[parts[1]] && allowedDrawingExt(filepath.Ext(parts[len(parts)-1])) {
 		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, Name: parts[len(parts)-1]}, true
 	}
 	return packageAsset{}, false
 }
+
+func isCanonicalDrawingPath(parts []string, known map[string]bool) bool {
+	return len(parts) == 3 && known[parts[1]] && allowedDrawingExt(filepath.Ext(parts[len(parts)-1]))
+}
+
+// parseGroupedDrawingAsset 解析共模组图纸目录和平铺图纸。
+func parseGroupedDrawingAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool) {
+	if len(parts) < 3 || item == nil || item.UncompressedSize64 == 0 || !allowedDrawingExt(filepath.Ext(parts[len(parts)-1])) {
+		return packageAsset{}, false
+	}
+	members, ok := validSharedMembers(parts[1], known)
+	if !ok {
+		return packageAsset{}, false
+	}
+	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: parts[len(parts)-1]}
+	switch len(parts) {
+	case 3: // drawings/<group>/<file>
+		asset.Codes = moldNumbersInName(asset.Name, members)
+	case 4: // drawings/<group>/<共用|具体编号>/<file>
+		switch parts[2] {
+		case "共用":
+			asset.Codes = members
+		default:
+			if !containsString(members, parts[2]) {
+				return packageAsset{}, false
+			}
+			asset.Codes = []string{parts[2]}
+		}
+	default:
+		return packageAsset{}, false
+	}
+	return asset, len(asset.Codes) > 0
+}
+
+func validSharedMembers(value string, known map[string]Input) ([]string, bool) {
+	parts := strings.Split(value, "+")
+	if len(parts) < 2 {
+		return nil, false
+	}
+	seen := make(map[string]bool, len(parts))
+	var group string
+	for _, code := range parts {
+		if code == "" || seen[code] {
+			return nil, false
+		}
+		input, ok := known[code]
+		if !ok || input.MoldType != model.MoldTypeCommon || strings.TrimSpace(input.CommonGroupNo) == "" {
+			return nil, false
+		}
+		if group == "" {
+			group = strings.TrimSpace(input.CommonGroupNo)
+		} else if group != strings.TrimSpace(input.CommonGroupNo) {
+			return nil, false
+		}
+		seen[code] = true
+	}
+	expected := make([]string, 0, len(parts))
+	for code, input := range known {
+		if input.MoldType == model.MoldTypeCommon && strings.TrimSpace(input.CommonGroupNo) == group {
+			expected = append(expected, code)
+		}
+	}
+	sort.SliceStable(expected, func(i, j int) bool { return naturalAssetLess(expected[i], expected[j]) })
+	if len(parts) != len(expected) {
+		return nil, false
+	}
+	for _, code := range expected {
+		if !seen[code] {
+			return nil, false
+		}
+	}
+	// 导出使用稳定自然序，导入则按集合校验，兼容人工整理目录时的任意成员顺序。
+	return expected, true
+}
+
+func legacySharedOuterAllowed(value string, known map[string]bool, inputs map[string]Input) bool {
+	parts := strings.Split(value, "+")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, code := range parts {
+		if !known[code] {
+			return false
+		}
+		if input, ok := inputs[code]; ok && input.MoldType == model.MoldTypeCommon {
+			return false
+		}
+	}
+	return true
+}
+
+func moldNumbersInName(name string, members []string) []string {
+	// Match longer known numbers first so AB cannot consume part of AB-CD.
+	ordered := append([]string(nil), members...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+	lower := strings.ToLower(name)
+	used := make([]bool, len(lower))
+	codes := make([]string, 0, len(members))
+	for _, member := range ordered {
+		code := strings.ToLower(member)
+		if code == "" {
+			continue
+		}
+		matched := false
+		for start := 0; start < len(lower); {
+			index := strings.Index(lower[start:], code)
+			if index < 0 {
+				break
+			}
+			index += start
+			end := index + len(code)
+			available := (index == 0 || !isASCIILetterOrDigit(lower[index-1])) && (end == len(lower) || !isASCIILetterOrDigit(lower[end]))
+			for i := index; i < end && available; i++ {
+				available = !used[i]
+			}
+			if available {
+				matched = true
+				for i := index; i < end; i++ {
+					used[i] = true
+				}
+			}
+			start = index + 1
+		}
+		if matched {
+			codes = append(codes, member)
+		}
+	}
+	sort.SliceStable(codes, func(i, j int) bool { return naturalAssetLess(codes[i], codes[j]) })
+	return codes
+}
+
+func isASCIILetterOrDigit(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9'
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeCategory(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
@@ -655,7 +896,7 @@ func inferCategory(name string) string {
 			return "product_material"
 		}
 	}
-	for _, word := range []string{"前模", "后模", "开模", "尺寸", "局部"} {
+	for _, word := range []string{"前模", "后模", "开模", "尺寸", "局部", "原理图"} {
 		if strings.Contains(name, word) {
 			return "supplement"
 		}
@@ -846,18 +1087,18 @@ func replaceMoldData(tx *gorm.DB, data packageData, staged []stagedAsset, upload
 	if err := tx.Unscoped().Where("owner_type = ?", "mold").Delete(&model.ImageFile{}).Error; err != nil {
 		return err
 	}
-	if err := tx.Unscoped().Delete(&model.MoldDrawing{}).Error; err != nil {
+	if err := tx.Unscoped().Where("1 = 1").Delete(&model.MoldDrawing{}).Error; err != nil {
 		return err
 	}
-	if err := tx.Unscoped().Delete(&model.Mold{}).Error; err != nil {
+	if err := tx.Unscoped().Where("1 = 1").Delete(&model.Mold{}).Error; err != nil {
 		return err
 	}
-	if err := tx.Unscoped().Delete(&model.MoldLocation{}).Error; err != nil {
+	if err := tx.Unscoped().Where("1 = 1").Delete(&model.MoldLocation{}).Error; err != nil {
 		return err
 	}
 	locations := data.Locations
 	if len(locations) == 0 {
-		locations = []model.MoldLocation{{Code: "A1-1", Status: model.MoldLocationActive}, {Code: "B1-1", Status: model.MoldLocationActive}}
+		locations = defaultMoldLocations()
 	}
 	locationIDs := map[string]uint{}
 	for _, location := range locations {
@@ -958,37 +1199,36 @@ func unresolvedFiles(data packageData) []MoldImportFile {
 	}
 	return items
 }
-func receivePackage(c *echo.Context) (string, string, int64, func(), error) {
+func receivePackage(c *echo.Context) (*os.File, string, int64, func(), error) {
 	header, err := c.FormFile("file")
 	if err != nil || header == nil {
-		return "", "", 0, func() {}, echo.NewHTTPError(http.StatusBadRequest, "请选择 ZIP 资料包")
+		return nil, "", 0, func() {}, echo.NewHTTPError(http.StatusBadRequest, "请选择 ZIP 资料包")
 	}
 	if header.Size <= 0 || header.Size > MaxPackageSize {
-		return "", "", 0, func() {}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "资料包不能超过 2 GiB")
+		return nil, "", 0, func() {}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "资料包不能超过 2 GiB")
 	}
 	src, err := header.Open()
 	if err != nil {
-		return "", "", 0, func() {}, err
+		return nil, "", 0, func() {}, err
 	}
 	temp, err := os.CreateTemp("", "bb-molds-import-*.zip")
 	if err != nil {
 		src.Close()
-		return "", "", 0, func() {}, err
+		return nil, "", 0, func() {}, err
 	}
 	hash := sha256.New()
 	written, copyErr := io.Copy(temp, io.LimitReader(io.TeeReader(src, hash), MaxPackageSize+1))
 	src.Close()
-	closeErr := temp.Close()
 	name := temp.Name()
-	cleanup := func() { os.Remove(name) }
-	if copyErr != nil || closeErr != nil || written > MaxPackageSize {
+	cleanup := func() { temp.Close(); os.Remove(name) }
+	if copyErr != nil || written > MaxPackageSize {
 		cleanup()
 		if copyErr != nil {
-			return "", "", 0, func() {}, copyErr
+			return nil, "", 0, func() {}, copyErr
 		}
-		return "", "", 0, func() {}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "资料包不能超过 2 GiB")
+		return nil, "", 0, func() {}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "资料包不能超过 2 GiB")
 	}
-	return name, hex.EncodeToString(hash.Sum(nil)), written, cleanup, nil
+	return temp, hex.EncodeToString(hash.Sum(nil)), written, cleanup, nil
 }
 func addZipBytes(zw *zip.Writer, name string, data []byte) error {
 	w, err := zw.Create(name)
@@ -1005,26 +1245,330 @@ func addZipDirectory(zw *zip.Writer, name string) error {
 	_, err := zw.Create(name)
 	return err
 }
-func addMoldArchiveDirectories(zw *zip.Writer, moldNumbers []string) error {
-	if err := addZipDirectory(zw, "images/"); err != nil {
+
+type moldArchiveGroup struct {
+	Outer   string
+	Members []model.Mold
+}
+
+type archiveImageKey struct {
+	Category string
+	Name     string
+}
+
+func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struct{}, error) {
+	byGroup := map[string][]model.Mold{}
+	for _, item := range molds {
+		if err := validateArchiveSegment(item.MoldNumber); err != nil {
+			return nil, nil, err
+		}
+		if item.MoldType == model.MoldTypeCommon && strings.TrimSpace(item.CommonGroupNo) != "" {
+			key := strings.TrimSpace(item.CommonGroupNo)
+			byGroup[key] = append(byGroup[key], item)
+		}
+	}
+	groupNames := make([]string, 0, len(byGroup))
+	for name := range byGroup {
+		groupNames = append(groupNames, name)
+	}
+	sort.Strings(groupNames)
+	groups := make([]moldArchiveGroup, 0, len(groupNames))
+	grouped := map[string]struct{}{}
+	for _, name := range groupNames {
+		members := byGroup[name]
+		if len(members) < 2 {
+			continue
+		}
+		// "A+B" is a valid historical mold number. It cannot safely be used
+		// inside a '+'-joined group folder, so keep such groups in the legacy
+		// per-mold layout and let the exact mold-number parser handle them.
+		ambiguous := false
+		for _, member := range members {
+			if strings.Contains(member.MoldNumber, "+") {
+				ambiguous = true
+				break
+			}
+		}
+		if ambiguous {
+			continue
+		}
+		sort.SliceStable(members, func(i, j int) bool {
+			if members[i].MoldNumber == members[j].MoldNumber {
+				return members[i].ID < members[j].ID
+			}
+			return naturalAssetLess(members[i].MoldNumber, members[j].MoldNumber)
+		})
+		numbers := make([]string, 0, len(members))
+		for _, member := range members {
+			numbers = append(numbers, member.MoldNumber)
+			grouped[member.MoldNumber] = struct{}{}
+		}
+		outer := strings.Join(numbers, "+")
+		if err := validateArchiveSegment(outer); err != nil {
+			return nil, nil, err
+		}
+		groups = append(groups, moldArchiveGroup{Outer: outer, Members: members})
+	}
+	return groups, grouped, nil
+}
+
+func addMoldArchiveDirectories(zw *zip.Writer, molds []model.Mold) error {
+	groups, _, err := moldArchiveGroups(molds)
+	if err != nil {
 		return err
 	}
-	if err := addZipDirectory(zw, "drawings/"); err != nil {
-		return err
+	seen := map[string]struct{}{}
+	for _, directory := range []string{"images/", "drawings/"} {
+		if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
+			return err
+		}
 	}
-	for _, number := range moldNumbers {
+	groupedFolders := map[string]string{}
+	for _, group := range groups {
+		for _, member := range group.Members {
+			groupedFolders[member.MoldNumber] = filepath.ToSlash(filepath.Join(group.Outer, member.MoldNumber))
+		}
 		for _, directory := range []string{
-			filepath.ToSlash(filepath.Join("images", number)) + "/",
-			filepath.ToSlash(filepath.Join("images", number, "product_material")) + "/",
-			filepath.ToSlash(filepath.Join("images", number, "supplement")) + "/",
-			filepath.ToSlash(filepath.Join("drawings", number)) + "/",
+			filepath.ToSlash(filepath.Join("images", group.Outer, "共用")) + "/",
+			filepath.ToSlash(filepath.Join("images", group.Outer, "共用", "product_material")) + "/",
+			filepath.ToSlash(filepath.Join("images", group.Outer, "共用", "supplement")) + "/",
+			filepath.ToSlash(filepath.Join("drawings", group.Outer, "共用")) + "/",
 		} {
-			if err := addZipDirectory(zw, directory); err != nil {
+			if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
+				return err
+			}
+		}
+	}
+	for _, item := range molds {
+		folder := item.MoldNumber
+		if groupedFolder, ok := groupedFolders[item.MoldNumber]; ok {
+			folder = groupedFolder
+		}
+		for _, directory := range []string{
+			filepath.ToSlash(filepath.Join("images", folder)) + "/",
+			filepath.ToSlash(filepath.Join("images", folder, "product_material")) + "/",
+			filepath.ToSlash(filepath.Join("images", folder, "supplement")) + "/",
+			filepath.ToSlash(filepath.Join("drawings", folder)) + "/",
+		} {
+			if err := addUniqueZipDirectory(zw, directory, seen); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func exportMoldAssets(zw *zip.Writer, root, folder, moldNumber string, images []model.ImageFile, drawings []model.MoldDrawing, used map[string]struct{}) error {
+	for _, image := range images {
+		if err := exportImageAsset(zw, root, filepath.Join("images", folder, exportCategory(image.Category)), image, used); err != nil {
+			return err
+		}
+	}
+	for _, drawing := range drawings {
+		if err := exportDrawingAsset(zw, root, filepath.Join("drawings", folder), drawing, used); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, imageByMold map[string][]model.ImageFile, drawingByMold map[string][]model.MoldDrawing, used map[string]struct{}) error {
+	imageGroups := map[archiveImageKey]map[string][]model.ImageFile{}
+	for _, member := range group.Members {
+		for _, image := range imageByMold[member.MoldNumber] {
+			key := archiveImageKey{Category: exportCategory(image.Category), Name: archiveFileName(image.OriginalName)}
+			if imageGroups[key] == nil {
+				imageGroups[key] = map[string][]model.ImageFile{}
+			}
+			imageGroups[key][member.MoldNumber] = append(imageGroups[key][member.MoldNumber], image)
+		}
+	}
+	imageKeys := make([]archiveImageKey, 0, len(imageGroups))
+	for key := range imageGroups {
+		imageKeys = append(imageKeys, key)
+	}
+	sort.SliceStable(imageKeys, func(i, j int) bool {
+		if imageKeys[i].Category == imageKeys[j].Category {
+			return naturalAssetLess(imageKeys[i].Name, imageKeys[j].Name)
+		}
+		return imageKeys[i].Category < imageKeys[j].Category
+	})
+	for _, key := range imageKeys {
+		members := imageGroups[key]
+		if shared, ok := sharedImageAsset(root, group.Members, members); ok {
+			if err := exportImageAsset(zw, root, filepath.Join("images", group.Outer, "共用", key.Category), shared, used); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, member := range group.Members {
+			for _, image := range members[member.MoldNumber] {
+				if err := exportImageAsset(zw, root, filepath.Join("images", group.Outer, member.MoldNumber, key.Category), image, used); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	drawingGroups := map[string]map[string][]model.MoldDrawing{}
+	for _, member := range group.Members {
+		for _, drawing := range drawingByMold[member.MoldNumber] {
+			name := archiveFileName(drawing.OriginalName)
+			if drawingGroups[name] == nil {
+				drawingGroups[name] = map[string][]model.MoldDrawing{}
+			}
+			drawingGroups[name][member.MoldNumber] = append(drawingGroups[name][member.MoldNumber], drawing)
+		}
+	}
+	drawingNames := make([]string, 0, len(drawingGroups))
+	for name := range drawingGroups {
+		drawingNames = append(drawingNames, name)
+	}
+	sort.SliceStable(drawingNames, func(i, j int) bool { return naturalAssetLess(drawingNames[i], drawingNames[j]) })
+	for _, name := range drawingNames {
+		members := drawingGroups[name]
+		if shared, ok := sharedDrawingAsset(root, group.Members, members); ok {
+			if err := exportDrawingAsset(zw, root, filepath.Join("drawings", group.Outer, "共用"), shared, used); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, member := range group.Members {
+			for _, drawing := range members[member.MoldNumber] {
+				if err := exportDrawingAsset(zw, root, filepath.Join("drawings", group.Outer, member.MoldNumber), drawing, used); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func sharedImageAsset(root string, members []model.Mold, assets map[string][]model.ImageFile) (model.ImageFile, bool) {
+	if len(assets) != len(members) {
+		return model.ImageFile{}, false
+	}
+	var first model.ImageFile
+	for i, member := range members {
+		items := assets[member.MoldNumber]
+		if len(items) != 1 {
+			return model.ImageFile{}, false
+		}
+		if i == 0 {
+			first = items[0]
+			continue
+		}
+		equal, err := storedFilesEqual(root, first.StoragePath, items[0].StoragePath)
+		if err != nil || !equal {
+			return model.ImageFile{}, false
+		}
+	}
+	return first, true
+}
+
+func sharedDrawingAsset(root string, members []model.Mold, assets map[string][]model.MoldDrawing) (model.MoldDrawing, bool) {
+	if len(assets) != len(members) {
+		return model.MoldDrawing{}, false
+	}
+	var first model.MoldDrawing
+	for i, member := range members {
+		items := assets[member.MoldNumber]
+		if len(items) != 1 {
+			return model.MoldDrawing{}, false
+		}
+		if i == 0 {
+			first = items[0]
+			continue
+		}
+		equal, err := storedFilesEqual(root, first.StoragePath, items[0].StoragePath)
+		if err != nil || !equal {
+			return model.MoldDrawing{}, false
+		}
+	}
+	return first, true
+}
+
+func exportImageAsset(zw *zip.Writer, root, directory string, image model.ImageFile, used map[string]struct{}) error {
+	name := uniqueArchiveFileName(archiveFileName(image.OriginalName), image.ID, directory, used)
+	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), image.StoragePath)
+}
+
+func exportDrawingAsset(zw *zip.Writer, root, directory string, drawing model.MoldDrawing, used map[string]struct{}) error {
+	name := uniqueArchiveFileName(archiveFileName(drawing.OriginalName), drawing.ID, directory, used)
+	return addStoredFile(zw, root, filepath.ToSlash(filepath.Join(directory, name)), drawing.StoragePath)
+}
+
+func storedFilesEqual(root string, left, right string) (bool, error) {
+	leftHash, err := storedFileHash(root, left)
+	if err != nil {
+		return false, err
+	}
+	rightHash, err := storedFileHash(root, right)
+	if err != nil {
+		return false, err
+	}
+	return leftHash == rightHash, nil
+}
+
+func storedFileHash(root, relative string) ([sha256.Size]byte, error) {
+	file, err := os.Open(filepath.Join(root, filepath.FromSlash(relative)))
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	defer file.Close()
+	hashValue := sha256.New()
+	if _, err := io.Copy(hashValue, file); err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	var result [sha256.Size]byte
+	copy(result[:], hashValue.Sum(nil))
+	return result, nil
+}
+
+func validateArchiveSegment(value string) error {
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, "/\\") {
+		return fmt.Errorf("模具编号包含非法资料包路径字符")
+	}
+	return nil
+}
+
+func archiveFileName(name string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	name = filepath.Base(name)
+	if name == "" || name == "." || name == ".." {
+		return "file"
+	}
+	return name
+}
+
+func uniqueArchiveFileName(name string, id uint, directory string, used map[string]struct{}) string {
+	name = archiveFileName(name)
+	path := filepath.ToSlash(filepath.Join(directory, name))
+	if _, exists := used[path]; !exists {
+		used[path] = struct{}{}
+		return name
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for suffix := 1; ; suffix++ {
+		candidate := fmt.Sprintf("%s-%d%s", stem, id, ext)
+		if suffix > 1 {
+			candidate = fmt.Sprintf("%s-%d-%d%s", stem, id, suffix, ext)
+		}
+		path = filepath.ToSlash(filepath.Join(directory, candidate))
+		if _, exists := used[path]; !exists {
+			used[path] = struct{}{}
+			return candidate
+		}
+	}
+}
+
+func addUniqueZipDirectory(zw *zip.Writer, name string, seen map[string]struct{}) error {
+	if _, exists := seen[name]; exists {
+		return nil
+	}
+	seen[name] = struct{}{}
+	return addZipDirectory(zw, name)
 }
 func addStoredFile(zw *zip.Writer, root, archive, relative string) error {
 	path := filepath.Join(root, filepath.FromSlash(relative))

@@ -372,6 +372,17 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8080/api/v1/mold-locations
 Authorization: Bearer {{token}}
 
+### 按区批量补充模具位置
+POST http://127.0.0.1:8080/api/v1/mold-locations/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "zone": "E",
+  "rows": 2,
+  "columns": 2
+}
+
 ### 批量移动模具
 POST http://127.0.0.1:8080/api/v1/molds/bulk-location
 Content-Type: application/json

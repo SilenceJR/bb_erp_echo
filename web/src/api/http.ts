@@ -52,7 +52,8 @@ export class RequestTransportError extends Error {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback
+  if (error instanceof Error && error.message.trim()) return error.message
+  return typeof error === 'string' && error.trim() ? error : fallback
 }
 
 // request 统一封装 JSON 请求、Bearer Token 和错误解析。
@@ -125,6 +126,10 @@ export async function uploadNativeFiles<T>(
   let response: DesktopFileUploadResult
   try {
     response = await desktop.uploadFiles(paths, path, fields, token)
+    if (shouldRefreshAfterUnauthorized(path, token, response)) {
+      const refreshedToken = await refreshedAuthToken(token)
+      if (refreshedToken) response = await desktop.uploadFiles(paths, path, fields, refreshedToken)
+    }
   } catch (error) {
     const message = errorMessage(error, '原生文件上传失败')
     const mayBeUnknown = message.includes('拖放上传失败') || message.includes('读取上传响应失败')
@@ -174,22 +179,24 @@ async function fetchWithAuthRetry(path: string, init: RequestInit, token: string
 	let response = await activeTransport().fetch(path, init)
 	if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
 
-	let refreshedToken: string
-	try {
-		const currentToken = authSessionHooks!.getToken()
-		refreshedToken = currentToken && currentToken !== token
-			? currentToken
-			: await authSessionHooks!.refresh()
-	} catch {
-		authSessionHooks!.onFailure()
-		return response
-	}
+	const refreshedToken = await refreshedAuthToken(token)
+	if (!refreshedToken) return response
 	const retryHeaders = new Headers(init.headers)
 	retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
 	return await activeTransport().fetch(path, {...init, headers: retryHeaders})
 }
 
-function shouldRefreshAfterUnauthorized(path: string, token: string, response: Response): boolean {
+async function refreshedAuthToken(token: string): Promise<string | null> {
+  try {
+    const currentToken = authSessionHooks!.getToken()
+    return currentToken && currentToken !== token ? currentToken : await authSessionHooks!.refresh()
+  } catch {
+    authSessionHooks!.onFailure()
+    return null
+  }
+}
+
+function shouldRefreshAfterUnauthorized(path: string, token: string, response: {status: number}): boolean {
   if (response.status !== 401 || !token || !authSessionHooks) return false
   return !path.startsWith('/api/v1/auth/login')
     && !path.startsWith('/api/v1/auth/refresh')

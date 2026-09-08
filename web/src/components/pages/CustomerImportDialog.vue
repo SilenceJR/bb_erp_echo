@@ -125,11 +125,11 @@ useDirtyGuard('customer-import', {
 
 function openFilePicker() { if (!busy.value) fileInput.value?.click() }
 function hasDraggedFiles(event: DragEvent): boolean { return Array.from(event.dataTransfer?.types || []).includes('Files') }
-function handleDragEnter(event: DragEvent) { if (!hasDraggedFiles(event)) return; dragDepth++; dragging.value = true }
-function handleDragOver(event: DragEvent) { if (hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy' }
+function handleDragEnter(event: DragEvent) { if (busy.value || !hasDraggedFiles(event)) return; dragDepth++; dragging.value = true }
+function handleDragOver(event: DragEvent) { if (!busy.value && hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy' }
 function handleDragLeave() { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dragging.value = false }
-function handleDrop(event: DragEvent) { dragDepth = 0; dragging.value = false; const files = Array.from(event.dataTransfer?.files || []); if (files.length !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; acceptFile(files[0]) }
-function handleNativeFileDrag(event: Event) { const detail = (event as CustomEvent<NativeFileDragDetail>).detail; if (!detail) return; if (detail.phase === 'enter' || detail.phase === 'over') { if (!busy.value) dragging.value = true; return }; dragging.value = false; if (detail.phase !== 'drop' || busy.value) return; if (detail.error) { error.value = detail.error; return }; if (detail.paths.length !== 1 && detail.files.length !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; if (detail.paths.length === 1) { const path = detail.paths[0]; acceptFile(new File([], path.split(/[\\/]/).pop() || '拖入文件')); nativeFilePath.value = path; return }; acceptFile(detail.files[0]) }
+function handleDrop(event: DragEvent) { dragDepth = 0; dragging.value = false; if (busy.value) return; const files = Array.from(event.dataTransfer?.files || []); if (files.length !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; acceptFile(files[0]) }
+function handleNativeFileDrag(event: Event) { const detail = (event as CustomEvent<NativeFileDragDetail>).detail; if (!detail) return; if (detail.phase === 'enter' || detail.phase === 'over') { if (!busy.value) dragging.value = true; return }; dragging.value = false; if (detail.phase !== 'drop' || busy.value) return; if (detail.error) { error.value = detail.error; return }; if ((detail.paths.length || detail.files.length) !== 1) { error.value = '请一次拖入一个 Excel 文件'; return }; if (detail.paths.length === 1) { const path = detail.paths[0]; acceptFile(new File([], path.split(/[\\/]/).pop() || '拖入文件')); if (file.value) nativeFilePath.value = path; return }; acceptFile(detail.files[0]) }
 function selectFile(event: Event) {
   const input = event.target as HTMLInputElement
   const selected = input.files?.[0] || null
@@ -137,6 +137,7 @@ function selectFile(event: Event) {
   if (selected) acceptFile(selected)
 }
 function acceptFile(selected: File) {
+  if (busy.value) return
   nativeFilePath.value = null
   error.value = ''
   if (!/\.(xls|xlsx)$/i.test(selected.name)) { error.value = '仅支持 .xls 或 .xlsx 文件'; clearFile(); return }

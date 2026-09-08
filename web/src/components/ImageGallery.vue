@@ -1,9 +1,16 @@
 <template>
-  <section class="image-gallery" :aria-label="`${title}图片`">
+  <section
+    class="image-gallery"
+    :class="{
+      'image-gallery--mold-detail': variant === 'mold-detail',
+      'image-gallery--supplement': isMoldSupplementGallery,
+    }"
+    :aria-label="`${title}图片`"
+  >
     <div class="image-gallery-heading">
       <div>
         <h3>{{ title }}</h3>
-        <small>单次最多选择 100 张；支持 JPG、JFIF、PNG、GIF、WebP、HEIC、HEIF、AVIF、BMP、TIFF、SVG；仅生成静态预览，GIF/动态照片只显示封面；支持高清大图，实际可处理范围以服务器安全校验为准</small>
+        <small :title="variant === 'mold-detail' ? moldFormatDescription : formatDescription">{{ variant === 'mold-detail' ? moldFormatDescription : formatDescription }}</small>
       </div>
       <div class="image-gallery-actions">
         <el-button :loading="loading" :disabled="saving" @click="refreshImages">刷新</el-button>
@@ -77,36 +84,92 @@
       @bb-native-file-drag="handleNativeFileDrag"
     >
       <div v-loading="loading" class="image-gallery-grid" :aria-busy="loading || saving">
-        <article v-for="item in images" :key="item.id" class="image-gallery-item">
-          <div class="image-gallery-preview">
-            <el-image
-              v-if="previewUrls[item.id]"
-              :src="previewUrls[item.id]"
-              :alt="item.original_name"
-              :aria-label="`预览图片：${item.original_name}`"
-              tabindex="0"
-              role="button"
-              :preview-src-list="previewSources"
-              :initial-index="previewIndex(item.id)"
-              fit="cover"
-              preview-teleported
-              @keydown.enter.prevent="openPreviewFromKeyboard"
-              @keydown.space.prevent="openPreviewFromKeyboard"
-            >
-              <template #error><span class="image-gallery-error">图片加载失败</span></template>
-            </el-image>
-            <span v-else class="image-gallery-error">图片加载失败</span>
+        <template v-if="isMoldProductGallery">
+          <div v-if="featuredItem" class="image-gallery-product-layout">
+            <div class="image-gallery-product-main">
+              <el-image
+                v-if="previewUrls[featuredItem.id]"
+                :src="previewUrls[featuredItem.id]"
+                :alt="featuredItem.original_name"
+                :aria-label="`预览图片：${featuredItem.original_name}`"
+                tabindex="0"
+                role="button"
+                :preview-src-list="previewSources"
+                :initial-index="previewIndex(featuredItem.id)"
+                fit="contain"
+                preview-teleported
+                @keydown.enter.prevent="openPreviewFromKeyboard"
+                @keydown.space.prevent="openPreviewFromKeyboard"
+              >
+                <template #error><span class="image-gallery-error">图片加载失败</span></template>
+              </el-image>
+              <span v-else class="image-gallery-error">图片加载失败</span>
+            </div>
+            <div v-if="thumbnailImages.length" class="image-gallery-product-thumbnails" aria-label="其他产品图片">
+              <button
+                v-for="item in thumbnailImages"
+                :key="item.id"
+                type="button"
+                class="image-gallery-thumbnail"
+                :aria-label="`切换主图：${item.original_name}`"
+                @click="chooseMainImage(item.id)"
+              >
+                <el-image v-if="previewUrls[item.id]" :src="previewUrls[item.id]" :alt="item.original_name" fit="contain">
+                  <template #error><span class="image-gallery-error">加载失败</span></template>
+                </el-image>
+                <span v-else class="image-gallery-error">加载失败</span>
+              </button>
+              <div v-if="thumbnailPageCount > 1" class="image-gallery-thumbnail-pagination">
+                <el-button link :disabled="thumbnailPage === 0" aria-label="上一页缩略图" @click="changeThumbnailPage(-1)">‹</el-button>
+                <span aria-live="polite">{{ thumbnailPage + 1 }} / {{ thumbnailPageCount }}</span>
+                <el-button link :disabled="thumbnailPage >= thumbnailPageCount - 1" aria-label="下一页缩略图" @click="changeThumbnailPage(1)">›</el-button>
+              </div>
+            </div>
           </div>
-          <div class="image-gallery-meta">
-            <span :title="item.original_name">{{ item.original_name }}</span>
-            <small>{{ formatSize(item.size) }} · {{ formatDate(item.created_at) }}</small>
+          <div v-if="featuredItem" class="image-gallery-product-meta">
+            <div class="image-gallery-meta">
+              <span :title="featuredItem.original_name">{{ featuredItem.original_name }}</span>
+              <small>{{ formatSize(featuredItem.size) }} · {{ formatDate(featuredItem.created_at) }}</small>
+            </div>
+            <div v-if="canWrite" class="image-gallery-item-actions">
+              <el-button link type="primary" :disabled="loading || saving" @click="openReplace(featuredItem)">替换主图</el-button>
+              <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(featuredItem)">删除</el-button>
+            </div>
           </div>
-          <div v-if="canWrite" class="image-gallery-item-actions">
-            <el-button link type="primary" :disabled="loading || saving" @click="openReplace(item)">替换</el-button>
-            <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(item)">删除</el-button>
-          </div>
-        </article>
-        <p v-if="!loading && !images.length && !errorMessage" class="image-gallery-empty">暂无图片资料</p>
+          <p v-else-if="!loading && !errorMessage" class="image-gallery-empty">暂无产品图片</p>
+        </template>
+        <template v-else>
+          <article v-for="item in images" :key="item.id" class="image-gallery-item">
+            <div class="image-gallery-preview">
+              <el-image
+                v-if="previewUrls[item.id]"
+                :src="previewUrls[item.id]"
+                :alt="item.original_name"
+                :aria-label="`预览图片：${item.original_name}`"
+                tabindex="0"
+                role="button"
+                :preview-src-list="previewSources"
+                :initial-index="previewIndex(item.id)"
+                :fit="isMoldDetail ? 'contain' : 'cover'"
+                preview-teleported
+                @keydown.enter.prevent="openPreviewFromKeyboard"
+                @keydown.space.prevent="openPreviewFromKeyboard"
+              >
+                <template #error><span class="image-gallery-error">图片加载失败</span></template>
+              </el-image>
+              <span v-else class="image-gallery-error">图片加载失败</span>
+            </div>
+            <div class="image-gallery-meta">
+              <span :title="item.original_name">{{ item.original_name }}</span>
+              <small>{{ formatSize(item.size) }} · {{ formatDate(item.created_at) }}</small>
+            </div>
+            <div v-if="canWrite" class="image-gallery-item-actions">
+              <el-button link type="primary" :disabled="loading || saving" @click="openReplace(item)">替换</el-button>
+              <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(item)">删除</el-button>
+            </div>
+          </article>
+          <p v-if="!loading && !images.length && !errorMessage" class="image-gallery-empty">暂无图片资料</p>
+        </template>
       </div>
       <button
         v-if="canWrite"
@@ -138,9 +201,13 @@ const props = defineProps<{
   canWrite: boolean
   category?: string
   title?: string
+  variant?: 'default' | 'mold-detail'
 }>()
+const emit = defineEmits<{(event: 'busy-change', busy: boolean): void}>()
 
 const title = props.title || '图片资料'
+const formatDescription = '单次最多选择 100 张；支持 JPG、JFIF、PNG、GIF、WebP、HEIC、HEIF、AVIF、BMP、TIFF、SVG；仅生成静态预览，GIF/动态照片只显示封面；支持高清大图，实际可处理范围以服务器安全校验为准'
+const moldFormatDescription = '支持 JPG、JFIF、PNG、GIF、WebP、HEIC、HEIF、AVIF、BMP、TIFF、SVG；动态图片仅显示静态预览'
 
 const allowedExtensions = new Set([
   'jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp',
@@ -164,15 +231,48 @@ let dragDepth = 0
 let loadSequence = 0
 
 const saving = computed(() => operation.value !== null)
+const isMoldDetail = computed(() => props.variant === 'mold-detail')
+const isMoldProductGallery = computed(() => isMoldDetail.value && props.category === 'product_material')
+const isMoldSupplementGallery = computed(() => isMoldDetail.value && props.category === 'supplement')
+const mainImageID = ref<number | null>(null)
+const thumbnailPage = ref(0)
 
 useDirtyGuard('image-gallery', {
   busy: () => saving.value,
   busyMessage: '图片正在上传、替换或删除，请等待完成后再离开',
 })
 
+watch(saving, (busy) => emit('busy-change', busy), {immediate: true})
+
 const previewSources = computed(() => images.value
   .map((item) => previewUrls.value[item.id])
   .filter((url): url is string => Boolean(url)))
+
+const featuredItem = computed(() => {
+  if (!images.value.length) return undefined
+  return images.value.find((item) => item.id === mainImageID.value) || images.value[0]
+})
+const thumbnailCandidates = computed(() => images.value.filter((item) => item.id !== featuredItem.value?.id))
+const thumbnailPageCount = computed(() => Math.max(1, Math.ceil(thumbnailCandidates.value.length / 3)))
+const thumbnailImages = computed(() => thumbnailCandidates.value.slice(thumbnailPage.value * 3, thumbnailPage.value * 3 + 3))
+
+function preserveMainImage(result: ImageFile[]) {
+  if (!result.length) {
+    mainImageID.value = null
+    thumbnailPage.value = 0
+    return
+  }
+  if (!result.some((item) => item.id === mainImageID.value)) mainImageID.value = result[0].id
+  thumbnailPage.value = Math.min(thumbnailPage.value, Math.max(0, Math.ceil(Math.max(0, result.length - 1) / 3) - 1))
+}
+
+function chooseMainImage(id: number) {
+  if (images.value.some((item) => item.id === id)) mainImageID.value = id
+}
+
+function changeThumbnailPage(delta: number) {
+  thumbnailPage.value = Math.min(Math.max(0, thumbnailPage.value + delta), thumbnailPageCount.value - 1)
+}
 
 function queryPath(): string {
   const query = new URLSearchParams({
@@ -217,6 +317,7 @@ async function loadImages(allowDuringSave = false): Promise<LoadResult> {
     releasePreviewUrls()
     images.value = result
     previewUrls.value = Object.fromEntries(loaded)
+    preserveMainImage(result)
     if (previewFailures.length) {
       const examples = previewFailures.slice(0, 3).map(({item, error}) => {
         const reason = operationErrorMessage(error, '静态预览读取失败')
@@ -332,13 +433,13 @@ function hasDraggedFiles(event: DragEvent): boolean {
 }
 
 function handleDragEnter(event: DragEvent) {
-  if (!props.canWrite || !hasDraggedFiles(event)) return
+  if (!props.canWrite || loading.value || saving.value || !hasDraggedFiles(event)) return
   dragDepth++
   isDragging.value = true
 }
 
 function handleDragOver(event: DragEvent) {
-  if (props.canWrite && hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy'
+  if (props.canWrite && !loading.value && !saving.value && hasDraggedFiles(event)) event.dataTransfer!.dropEffect = 'copy'
 }
 
 function handleDragLeave() {
@@ -349,7 +450,8 @@ function handleDragLeave() {
 function handleDrop(event: DragEvent) {
   dragDepth = 0
   isDragging.value = false
-  if (!props.canWrite || saving.value) return
+  if (!props.canWrite) { errorMessage.value = '当前账号没有图片上传权限'; return }
+  if (loading.value || saving.value) { errorMessage.value = '图片正在处理，请完成后再拖入'; return }
   const files = Array.from(event.dataTransfer?.files || [])
   if (files.length) void uploadSelectedFiles(files)
 }
@@ -358,18 +460,20 @@ function handleNativeFileDrag(event: Event) {
   const detail = (event as CustomEvent<NativeFileDragDetail>).detail
   if (!detail) return
   if (detail.phase === 'enter' || detail.phase === 'over') {
-    if (props.canWrite) isDragging.value = true
+    if (props.canWrite && !loading.value && !saving.value) isDragging.value = true
     return
   }
   isDragging.value = false
-  if (detail.phase !== 'drop' || !props.canWrite || saving.value) return
+  if (detail.phase !== 'drop') return
+  if (!props.canWrite) { errorMessage.value = '当前账号没有图片上传权限'; return }
+  if (loading.value || saving.value) { errorMessage.value = '图片正在处理，请完成后再拖入'; return }
   if (detail.error) {
     errorMessage.value = detail.error
     statusMessage.value = ''
     return
   }
   if (detail.paths.length) void uploadNativePaths(detail.paths)
-  if (detail.files.length) void uploadSelectedFiles(detail.files)
+  else if (detail.files.length) void uploadSelectedFiles(detail.files)
 }
 
 async function uploadSelectedFiles(files: File[]) {
@@ -455,6 +559,11 @@ async function uploadNativePaths(paths: string[]) {
     statusMessage.value = ''
     return
   }
+  if (paths.some((path) => !allowedExtensions.has(imageFileName(path).split('.').pop()?.toLowerCase() || ''))) {
+    errorMessage.value = `${allowedFormatMessage}。本次未发起上传。`
+    statusMessage.value = ''
+    return
+  }
   operation.value = 'upload'
   errorMessage.value = ''
   statusTone.value = 'success'
@@ -519,6 +628,7 @@ async function deleteImage(item: ImageFile) {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
+      confirmButtonType: 'danger',
     })
   } catch {
     return

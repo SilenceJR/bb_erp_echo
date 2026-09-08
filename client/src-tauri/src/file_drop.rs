@@ -111,3 +111,85 @@ fn api_url(server_url: &str, endpoint: &str) -> Result<reqwest::Url, String> {
     base.join(endpoint)
         .map_err(|_| "拖放上传接口无效".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
+
+    #[test]
+    fn dropped_files_stream_unicode_names_fields_and_preserve_server_errors() {
+        let directory = std::env::temp_dir().join(format!(
+            "bb-drop-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        for (extension, endpoint, status) in [
+            ("png", "/api/v1/files/images", 200),
+            ("dwg", "/api/v1/molds/1/drawings", 201),
+            ("zip", "/api/v1/molds/import/preview", 400),
+            ("xlsx", "/api/v1/customers/import/preview", 403),
+        ] {
+            let name = format!("模具 图片 1.{extension}");
+            let file = directory.join(&name);
+            fs::write(&file, b"file-stream-check").unwrap();
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 4096];
+                loop {
+                    let read = stream.read(&mut buffer).unwrap();
+                    assert!(read > 0, "request ended before multipart body");
+                    request.extend_from_slice(&buffer[..read]);
+                    if let Some(end) = request.windows(4).position(|value| value == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&request[..end]).to_ascii_lowercase();
+                        let length: usize = headers
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        if request.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let request = String::from_utf8_lossy(&request);
+                assert!(request.starts_with(&format!("POST {endpoint} HTTP/1.1")));
+                assert!(request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer test-token"));
+                assert!(request.contains(&format!("filename=\"{name}\"")));
+                assert!(request.contains("name=\"owner_id\"\r\n\r\n1"));
+                assert!(request.contains("file-stream-check"));
+                let body = r#"{"message":"server-result"}"#;
+                write!(stream, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            });
+            let result = tauri::async_runtime::block_on(upload_dropped_files(DroppedFileUpload {
+                server_url: origin,
+                endpoint: endpoint.into(),
+                paths: vec![file.to_str().unwrap().into()],
+                fields: HashMap::from([("owner_id".into(), "1".into())]),
+                token: "test-token".into(),
+            }))
+            .unwrap();
+            server.join().unwrap();
+            assert_eq!(result.status, status);
+            assert_eq!(result.content_type, "application/json");
+            assert!(result.body.contains("server-result"));
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+}
