@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "博邦 ERP",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "identifier": "com.bobang.erp.client",
   "build": {
     "beforeDevCommand": "npm run dev",
