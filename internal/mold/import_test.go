@@ -54,16 +54,19 @@ func TestMoldImportAcceptsGalleryImageExtensions(t *testing.T) {
 	}
 }
 
-func TestLegacySingleMoldFlatImageUsesDirectoryOwnership(t *testing.T) {
+func TestFlatSingleMoldImageUsesModelDirectoryOwnership(t *testing.T) {
 	entry := &zip.File{Name: "关系图.png", UncompressedSize64: 1}
-	asset, ok := parseImageAsset(entry, []string{"images", "A", "关系图.png"}, map[string]bool{"A": true})
-	if !ok || strings.Join(asset.Codes, ",") != "A" || strings.Join(asset.AllowedCodes, ",") != "A" || asset.Category != "supplement" {
-		t.Fatalf("legacy single-mold image ownership failed: ok=%v asset=%+v", ok, asset)
+	known := map[string]Input{
+		"型号A": {MoldNumber: "A", Model: "型号A", MoldType: model.MoldTypeSingle},
+	}
+	asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"型号A", "关系图.png"}, known)
+	if !ok || ambiguous || strings.Join(asset.Codes, ",") != "A" || strings.Join(asset.AllowedCodes, ",") != "A" || asset.Category != "supplement" {
+		t.Fatalf("flat single-mold image ownership failed: ok=%v ambiguous=%v asset=%+v", ok, ambiguous, asset)
 	}
 }
 
-func TestNormalizeMoldZipEntryNameAcceptsLegacyGBK(t *testing.T) {
-	encoded, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("001/BB3611/BB3611产品刷墨图.jpg"))
+func TestNormalizeMoldZipEntryNameAcceptsGBK(t *testing.T) {
+	encoded, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("001/型号A/型号A产品刷墨图.jpg"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,8 +74,8 @@ func TestNormalizeMoldZipEntryNameAcceptsLegacyGBK(t *testing.T) {
 	if err := normalizeMoldZipEntryName(entry); err != nil {
 		t.Fatal(err)
 	}
-	if entry.Name != "001/BB3611/BB3611产品刷墨图.jpg" || entry.NonUTF8 {
-		t.Fatalf("legacy name was not decoded: name=%q non_utf8=%v", entry.Name, entry.NonUTF8)
+	if entry.Name != "001/型号A/型号A产品刷墨图.jpg" || entry.NonUTF8 {
+		t.Fatalf("GBK name was not decoded: name=%q non_utf8=%v", entry.Name, entry.NonUTF8)
 	}
 }
 
@@ -304,11 +307,11 @@ func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *t
 func TestAmbiguousEmptyDirectoryCannotSilentlyPreserveAssets(t *testing.T) {
 	data := packageData{AssetMolds: map[string]bool{}}
 	inputs := map[string]Input{
-		"A+B": {MoldNumber: "A+B", MoldType: model.MoldTypeSingle},
-		"A":   {MoldNumber: "A", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
-		"B":   {MoldNumber: "B", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"A+B": {MoldNumber: "SINGLE", Model: "A+B", MoldType: model.MoldTypeSingle},
+		"A":   {MoldNumber: "A", Model: "A", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"B":   {MoldNumber: "B", Model: "B", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
 	}
-	resolveAmbiguousAssetScopes(&data, inputs, map[string]*zip.File{"A+B/": {}})
+	resolveAmbiguousModelAssetScopes(&data, inputs, map[string]*zip.File{"A+B/": {}})
 	if len(data.Errors) != 1 || !strings.Contains(data.Errors[0].Reason, "空资料目录") || len(data.AssetMolds) != 0 {
 		t.Fatalf("ambiguous empty directory must be rejected: errors=%+v scopes=%v", data.Errors, data.AssetMolds)
 	}
@@ -317,7 +320,7 @@ func TestAmbiguousEmptyDirectoryCannotSilentlyPreserveAssets(t *testing.T) {
 func TestReadPackageTemplateAndSharedImage(t *testing.T) {
 	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Columns: moldColumns,
-		Rows: [][]string{{"", "A", "产品 A", "单模", "A1-1", "", "99", ""}, {"", "B", "产品 B", "单模", "A1-1", "", "0", ""}}, TotalRows: 2,
+		Rows: [][]string{{"", "A", "产品 A", "共模", "A1-1", "G", "99", ""}, {"", "B", "产品 B", "共模", "A1-1", "G", "0", ""}}, TotalRows: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -325,10 +328,10 @@ func TestReadPackageTemplateAndSharedImage(t *testing.T) {
 	var archive bytes.Buffer
 	zw := zip.NewWriter(&archive)
 	for name, content := range map[string][]byte{
-		"molds.xlsx":                            xlsx,
-		"images/A/product_material/A-1.png":     tinyPNG,
-		"images/A+B/product_material/A+B-2.png": tinyPNG,
-		"drawings/A/A.dwg":                      []byte("dwg"),
+		"molds.xlsx":      xlsx,
+		"产品 A/产品 A-1.png": tinyPNG,
+		"产品 A+产品 B/产品 A+产品 B-2.png": tinyPNG,
+		"产品 A/产品 A.dwg":             []byte("dwg"),
 	} {
 		w, createErr := zw.Create(name)
 		if createErr != nil {
@@ -354,12 +357,56 @@ func TestReadPackageTemplateAndSharedImage(t *testing.T) {
 	}
 	var shared packageAsset
 	for _, image := range data.Images {
-		if image.Name == "A+B-2.png" {
+		if image.Name == "产品 A+产品 B-2.png" {
 			shared = image
 		}
 	}
 	if len(shared.Codes) != 2 || shared.Category != "product_material" {
-		t.Fatalf("shared image was not copied to both molds: %+v", shared)
+		t.Fatalf("shared image was not copied to both molds: %+v images=%+v", shared, data.Images)
+	}
+}
+
+func TestReadPackageRejectsCategorizedAssetDirectories(t *testing.T) {
+	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
+		SheetName: "模具", Columns: moldColumns,
+		Rows: [][]string{{"", "A", "产品 A", "单模", "A1-1", "", "0", ""}}, TotalRows: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	zw := zip.NewWriter(&archive)
+	for name, content := range map[string][]byte{
+		"molds.xlsx":                         xlsx,
+		"images/产品 A/product_material/a.png": tinyPNG,
+		"drawings/产品 A/a.dwg":                []byte("dwg"),
+	} {
+		w, createErr := zw.Create(name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := w.Write(content); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "categorized.zip")
+	if err := os.WriteFile(path, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := readTestPackage(t, path, int64(archive.Len()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data.Images) != 0 || len(data.Drawings) != 0 || len(data.Errors) != 2 {
+		t.Fatalf("categorized asset directories were accepted: images=%+v drawings=%+v errors=%+v", data.Images, data.Drawings, data.Errors)
+	}
+	for _, item := range data.Errors {
+		if !strings.Contains(item.Reason, "扁平模具目录") {
+			t.Fatalf("unexpected categorized directory error: %+v", item)
+		}
 	}
 }
 
@@ -693,41 +740,36 @@ func TestReplaceMoldDataPreservesAssetsOnlyWhenDirectoryIsAbsent(t *testing.T) {
 	}
 }
 
-func TestGroupedPackageMatchingIsExactAndRejectsUnknownMembers(t *testing.T) {
+func TestFlatGroupMatchingIsExactAndRejectsUnknownMembers(t *testing.T) {
 	known := map[string]Input{
-		"FL1408": {MoldNumber: "FL1408", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
-		"FL2814": {MoldNumber: "FL2814", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"型号1408": {MoldNumber: "FL1408", Model: "型号1408", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"型号2814": {MoldNumber: "FL2814", Model: "型号2814", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
 	}
 	entry := &zip.File{Name: "前模.png", UncompressedSize64: 1}
-	asset, ok := parseGroupedImageAsset(entry, []string{"images", "FL1408+FL2814", "FL1408-尺寸.png"}, known)
-	if !ok || len(asset.Codes) != 1 || asset.Codes[0] != "FL1408" || asset.Category != "supplement" {
-		t.Fatalf("exact grouped match=%+v ok=%v", asset, ok)
+	asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"型号1408+型号2814", "型号1408-尺寸.png"}, known)
+	if !ok || ambiguous || len(asset.Codes) != 1 || asset.Codes[0] != "FL1408" || asset.Category != "supplement" {
+		t.Fatalf("exact grouped match=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
 	}
-	asset, ok = parseGroupedImageAsset(entry, []string{"images", "FL1408+FL2814", "FSL2214-尺寸.png"}, known)
-	if !ok || len(asset.Codes) != 0 {
-		t.Fatalf("unknown alias should remain unresolved: %+v ok=%v", asset, ok)
+	asset, ok, ambiguous = parseFlatImageAsset(entry, []string{"型号1408+型号2814", "别名型号-尺寸.png"}, known)
+	if !ok || ambiguous || len(asset.Codes) != 0 {
+		t.Fatalf("unknown alias should remain unresolved: %+v ok=%v ambiguous=%v", asset, ok, ambiguous)
 	}
-	if _, ok := parseGroupedImageAsset(entry, []string{"images", "FL1408+UNKNOWN", "FL1408-尺寸.png"}, known); ok {
+	if _, ok, _ := parseFlatImageAsset(entry, []string{"型号1408+UNKNOWN", "型号1408-尺寸.png"}, known); ok {
 		t.Fatal("unknown shared member unexpectedly accepted")
 	}
 	known = map[string]Input{
-		"FL1408":  {MoldNumber: "FL1408", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
-		"FL2814":  {MoldNumber: "FL2814", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
-		"FL2214":  {MoldNumber: "FL2214", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
-		"FL15083": {MoldNumber: "FL15083", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
+		"型号1408":  {MoldNumber: "FL1408", Model: "型号1408", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
+		"型号2814":  {MoldNumber: "FL2814", Model: "型号2814", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
+		"型号2214":  {MoldNumber: "FL2214", Model: "型号2214", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
+		"型号15083": {MoldNumber: "FL15083", Model: "型号15083", MoldType: model.MoldTypeCommon, CommonGroupNo: "SCREENSHOT-GROUP"},
 	}
-	asset, ok = parseGroupedImageAsset(entry, []string{"images", "FL1408+FL2814+FL2214+FL15083", "FL2214-1.png"}, known)
-	if !ok || asset.Category != "product_material" || len(asset.Codes) != 1 || asset.Codes[0] != "FL2214" {
-		t.Fatalf("unordered shared outer or flat material was rejected: %+v ok=%v", asset, ok)
+	asset, ok, ambiguous = parseFlatImageAsset(entry, []string{"型号15083+型号1408+型号2214+型号2814", "型号2214-1.png"}, known)
+	if !ok || ambiguous || asset.Category != "product_material" || len(asset.Codes) != 1 || asset.Codes[0] != "FL2214" {
+		t.Fatalf("unordered shared outer or flat material was rejected: %+v ok=%v ambiguous=%v", asset, ok, ambiguous)
 	}
-	if asset, ok = parseGroupedImageAsset(entry, []string{"images", "FL1408+FL2814+FL2214+FL15083", "共用", "原理图.png"}, known); !ok || asset.Category != "supplement" || len(asset.Codes) != 4 {
-		t.Fatalf("shared schematic classification failed: %+v ok=%v", asset, ok)
-	}
-
-	legacyKnown := map[string]bool{"BB5644": true, "BB56442": true, "BB56443": true}
-	legacy, ok := parseImageAsset(entry, []string{"images", "BB56442+BB56443", "product_material", "BB56442-产品图.png"}, legacyKnown)
-	if !ok || len(legacy.Codes) != 1 || legacy.Codes[0] != "BB56442" {
-		t.Fatalf("legacy shared flat file matched a short mold number: %+v ok=%v", legacy, ok)
+	asset, ok, ambiguous = parseFlatImageAsset(entry, []string{"型号1408+型号2814+型号2214+型号15083", "型号1408+型号2814+型号2214+型号15083原理图.png"}, known)
+	if !ok || ambiguous || asset.Category != "supplement" || len(asset.Codes) != 4 {
+		t.Fatalf("shared schematic classification failed: %+v ok=%v ambiguous=%v", asset, ok, ambiguous)
 	}
 }
 
@@ -741,53 +783,6 @@ func TestMoldNumberMatchingUsesNonOverlappingLongestNumbers(t *testing.T) {
 	} {
 		if got := strings.Join(moldNumbersInName(test.name, []string{"AB", "AB-CD"}), ","); got != test.want {
 			t.Fatalf("%s: got %q, want %q", test.name, got, test.want)
-		}
-	}
-}
-
-func TestReadPackagePreservesHistoricalPlusMoldNumber(t *testing.T) {
-	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
-		SheetName: "模具", Columns: moldColumns,
-		Rows: [][]string{{"", "A+B", "历史编号", "单模", "A1-1", "", "0", ""}, {"", "A", "型号A", "共模", "A1-1", "G", "0", ""}, {"", "B", "型号B", "共模", "A1-1", "G", "0", ""}}, TotalRows: 3,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var archive bytes.Buffer
-	zw := zip.NewWriter(&archive)
-	for name, content := range map[string][]byte{
-		"molds.xlsx":                        xlsx,
-		"images/A+B/product_material/a.png": tinyPNG,
-		"drawings/A+B/a.dwg":                []byte("dwg"),
-		"drawings/A+B/共用/shared.dwg":        []byte("shared"),
-		"drawings/A+B/A/specific.dwg":       []byte("specific"),
-	} {
-		w, createErr := zw.Create(name)
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		if _, writeErr := w.Write(content); writeErr != nil {
-			t.Fatal(writeErr)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "historical-plus.zip")
-	if err := os.WriteFile(path, archive.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	data, err := readTestPackage(t, path, int64(archive.Len()), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data.Errors) != 0 || len(data.Images) != 1 || len(data.Drawings) != 3 || len(data.Images[0].Codes) != 1 || data.Images[0].Codes[0] != "A+B" {
-		t.Fatalf("historical plus mold number was not read back: images=%+v drawings=%+v errors=%v", data.Images, data.Drawings, data.Errors)
-	}
-	for _, asset := range data.Drawings {
-		want := map[string]string{"a.dwg": "A+B", "shared.dwg": "A,B", "specific.dwg": "A"}[asset.Name]
-		if got := strings.Join(asset.Codes, ","); got != want {
-			t.Fatalf("%s: got %s want %s", asset.Path, got, want)
 		}
 	}
 }

@@ -7,13 +7,13 @@
 - 模具查看、新建、编辑使用中央全宽页面；列表保持每个模具一行，返回保留查询、分页与选择。Web 与 Tauri 继续共用页面，不复制平台业务 UI。
 - 原生拖放保留 Rust 流式上传和内网服务地址限制。Tauri 物理坐标换算为 DOM CSS 坐标；SVG 子元素、跨区域离开和监听失败都有处理。原生上传收到 401 时复用会话续期并最多重试一次；无响应/结果不明时不自动重传。
 - Windows 原生拖放上传的嵌套 Rust 参数固定使用 `request.server_url`；ZIP、图片和 DWG/FDWG 共用该桥接，禁止改回仅适用于顶层命令参数的 `serverUrl`。
-- 模具新导出使用根部扁平目录：单模目录为完整模具型号，共模目录为同组全部成员型号以 `+` 连接，图片与 DWG 直接混放。导入可剔除一层统一包装目录；文件名先保留合法 UTF-8，仅对无效 UTF-8 字节尝试 Windows GBK 解码，仍兼容旧 `images/`、`drawings/` 资料包（旧结构继续按模具编号识别）。新平铺文件按完整型号识别，不猜拼写或别名。文件名含“产品刷墨图”或以 `-正整数` 结尾归产品图，其他图片归模具图；内部分类值仍为 `product_material` / `supplement`。未匹配及含 `+` 单模/共模歧义资料通过预览项的 `kind`、`allowed_codes` 选择归属，候选值仍提交内部模具编号，端点和 `corrections` 机制不变。
+- 模具导入导出统一使用根部扁平目录：单模目录为完整模具型号，共模目录为同组全部成员型号以 `+` 连接，图片与 DWG 直接混放；旧 `images/`、`drawings/` 目录和图片分类子目录不再接受。导入可剔除一层统一包装目录；文件名先保留合法 UTF-8，仅对无效 UTF-8 字节尝试 Windows GBK 解码。平铺文件按完整型号识别，不猜拼写或别名。文件名含“产品刷墨图”或以 `-正整数` 结尾归产品图，其他图片归模具图；内部分类值仍为 `product_material` / `supplement`。未匹配及含 `+` 单模/共模歧义资料通过预览项的 `kind`、`allowed_codes` 选择归属，候选值仍提交内部模具编号，端点和 `corrections` 机制不变。
 - 验证层级分别记录在 `docs/BACKEND_STATUS.md`；本机 Rust HTTP 上传检查和浏览器检查不代表 Windows 资源管理器/WebView2 拖放通过。
 
 
 ## Windows 发布与客户端版本
 
-Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及签名 `client-update.json` 的版本独立取自 `src-tauri/tauri.conf.json`。`package.json`/lock、Cargo manifest/lock 和 Tauri 配置必须保持同一客户端版本；CI 会检查更新清单与该源码版本一致。当前客户端版本为 `0.2.7`。
+Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及签名 `client-update.json` 的版本独立取自 `src-tauri/tauri.conf.json`。`package.json`/lock、Cargo manifest/lock 和 Tauri 配置必须保持同一客户端版本；CI 会检查更新清单与该源码版本一致。当前客户端版本为 `0.2.8`。
 
 ## 2026-09-05 Astra 整改验证边界
 
