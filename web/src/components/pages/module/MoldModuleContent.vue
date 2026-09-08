@@ -137,13 +137,13 @@
       <el-alert v-if="importResult" :title="`模具 ${importResult.summary.molds} 条，图片 ${importResult.summary.images} 张，图纸 ${importResult.summary.drawings} 个`" type="info" :closable="false" />
       <div v-if="importResult?.errors?.length" class="import-errors"><p v-for="item in importResult.errors" :key="`${item.row}-${item.column}-${item.value}`">{{ item.value || item.column }}：{{ item.reason }}</p></div>
       <div v-if="importResult?.unresolved?.length" class="import-corrections">
-        <p>以下资料无法从文件名确定归属，请人工选择完整模具编号；图片还需选择类型：</p>
-        <div class="import-correction-header" aria-hidden="true"><span>文件</span><span>类型</span><span>归属模具</span></div>
+        <p>以下资料无法从文件名确定归属，请人工选择完整模具型号；图片默认归为模具图，可按需改为产品图：</p>
+        <div class="import-correction-header" aria-hidden="true"><span>文件</span><span>类型</span><span>归属模具型号</span></div>
         <div v-for="item in importResult.unresolved" :key="item.path">
           <span>{{ item.name }}</span>
           <el-select v-if="item.kind !== 'drawing'" v-model="corrections[item.path].category" :aria-label="`${item.name}图片类型`" placeholder="选择图片类型"><el-option label="产品图" value="product_material" /><el-option label="模具图" value="supplement" /></el-select>
           <span v-else class="import-correction-kind">图纸</span>
-          <el-select v-model="corrections[item.path].codes" multiple collapse-tags :aria-label="`${item.name}对应模具编号`" placeholder="选择模具编号"><el-option v-for="code in item.allowed_codes" :key="code" :label="code" :value="code" /></el-select>
+          <el-select v-model="corrections[item.path].codes" multiple collapse-tags :aria-label="`${item.name}对应模具型号`" placeholder="选择模具型号"><el-option v-for="mold in importAllowedMolds(item)" :key="mold.code" :label="mold.model" :value="mold.code" /></el-select>
         </div>
       </div>
       <template #footer><el-button :disabled="importing || importPreviewing || templateLoading" @click="requestImportClose">取消</el-button><el-button v-if="importFile && !importResult" :disabled="importing || importPreviewing || templateLoading" @click="chooseImportFile">重新选择</el-button><el-button type="primary" :loading="importing" :disabled="!canCommitImport || importPreviewing || templateLoading" @click="commitImport">确认导入并更新资料</el-button></template>
@@ -176,7 +176,8 @@ import {missingShelfCodes, type MoldLocationOption} from './moldLocation'
 type Location = MoldLocationOption & {status: 'active' | 'disabled'}
 type Mold = {id: number; mold_number: string; model: string; mold_type: 'single' | 'common'; location_id?: number; location?: Location; common_group_no?: string; remark?: string; image_count?: number}
 type Drawing = {id: number; original_name: string; size: number}
-type Preview = {token?: string; summary: {molds: number; images: number; drawings: number; unresolved: number}; errors: Array<{row: number; column: string; value?: string; reason: string}>; unresolved: Array<{path: string; name: string; kind?: 'image' | 'drawing'; allowed_codes: string[]}>}
+type ImportAllowedMold = {code: string; model: string}
+type Preview = {token?: string; summary: {molds: number; images: number; drawings: number; unresolved: number}; errors: Array<{row: number; column: string; value?: string; reason: string}>; unresolved: Array<{path: string; name: string; kind?: 'image' | 'drawing'; allowed_codes: string[]; allowed_molds?: ImportAllowedMold[]}>}
 const {token, hasPermission, setPageDetailPanelVisible} = useWorkspaceContext()
 const importDefinition = getTransferImportDefinition('molds')
 const templateDefinition = getTransferDefinition('molds', 'template')
@@ -409,7 +410,12 @@ function handleNativeImportDrag(event: Event) { const detail = (event as CustomE
 function previewImport(event: Event) { const input = event.target as HTMLInputElement; const file = input.files?.[0]; input.value = ''; if (file) void previewImportFile(file) }
 const importExtensions = importDefinition.accept.split(',').map((value) => value.trim().toLowerCase()).filter((value) => value.startsWith('.'))
 function acceptsImportFileName(name: string) { const normalizedName = name.trim().toLowerCase(); return importExtensions.some((extension) => normalizedName.endsWith(extension)) }
-async function applyImportPreview(result: Preview) { importResult.value = result; Object.keys(corrections).forEach((key) => delete corrections[key]); for (const item of result.unresolved || []) corrections[item.path] = {category: '', codes: []} }
+function importAllowedMolds(item: Preview['unresolved'][number]): ImportAllowedMold[] {
+  const modelsByCode = new Map((item.allowed_molds || []).filter((mold) => mold.code && mold.model).map((mold) => [mold.code, mold.model]))
+  const rowModelsByCode = new Map(rows.value.filter((mold) => mold.mold_number && mold.model).map((mold) => [mold.mold_number, mold.model]))
+  return item.allowed_codes.map((code) => ({code, model: modelsByCode.get(code) || rowModelsByCode.get(code) || `编号 ${code}（旧服务未返回型号）`}))
+}
+async function applyImportPreview(result: Preview) { importResult.value = result; Object.keys(corrections).forEach((key) => delete corrections[key]); for (const item of result.unresolved || []) corrections[item.path] = {category: item.kind === 'drawing' ? '' : 'supplement', codes: []} }
 async function previewImportFile(file: File) { importPath.value = null; if (!acceptsImportFileName(file.name)) { importError.value = '仅支持 ZIP 资料包'; return }; importFile.value = file; importResult.value = null; importError.value = ''; const body = new FormData(); body.append('file', file); importPreviewing.value = true; try { await applyImportPreview(await request<Preview>(importDefinition.previewPath, {method: 'POST', body}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null } finally { importPreviewing.value = false } }
 async function previewImportPath(path: string) { if (!acceptsImportFileName(path)) { importError.value = '仅支持 ZIP 资料包'; return }; importPath.value = path; importFile.value = new File([], path.split(/[\\/]/).pop() || '拖入资料包'); importResult.value = null; importError.value = ''; importPreviewing.value = true; try { await applyImportPreview(await uploadNativeFiles<Preview>(importDefinition.previewPath, [path], {}, token.value)) } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包预览失败'; importFile.value = null; importPath.value = null } finally { importPreviewing.value = false } }
 async function commitImport() { if (!canCommitImport.value || !importFile.value || !importResult.value?.token) return; importing.value = true; importError.value = ''; try { const normalized = Object.fromEntries(Object.entries(corrections).map(([path, item]) => [path, {category: item.category, codes: item.codes}])); if (importPath.value) await uploadNativeFiles(importDefinition.commitPath, [importPath.value], {token: importResult.value.token, corrections: JSON.stringify(normalized)}, token.value); else { const body = new FormData(); body.append('file', importFile.value); body.append('token', importResult.value.token); body.append('corrections', JSON.stringify(normalized)); await request(importDefinition.commitPath, {method: 'POST', body}, token.value) } importDialog.value = false; await Promise.all([load(), loadLocations()]); ElMessage.success('模具资料包已导入') } catch (cause) { importError.value = cause instanceof Error ? cause.message : '资料包导入失败' } finally { importing.value = false } }

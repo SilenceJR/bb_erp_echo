@@ -66,10 +66,20 @@ type MoldImportSummary struct {
 	Replaced   bool `json:"replaced"`
 }
 type MoldImportFile struct {
-	Path         string   `json:"path"`
-	Name         string   `json:"name"`
-	Kind         string   `json:"kind"`
-	AllowedCodes []string `json:"allowed_codes"`
+	Path         string                  `json:"path"`
+	Name         string                  `json:"name"`
+	Kind         string                  `json:"kind"`
+	AllowedCodes []string                `json:"allowed_codes"`
+	AllowedMolds []MoldImportAllowedMold `json:"allowed_molds"`
+}
+
+// MoldImportAllowedMold is the user-facing candidate for an unresolved asset.
+// The code remains the stable MoldNumber accepted by corrections.codes while
+// Model is the relationship-archive directory/file identity displayed by the
+// client.
+type MoldImportAllowedMold struct {
+	Code  string `json:"code"`
+	Model string `json:"model"`
 }
 type ImportCorrection struct {
 	Codes    []string `json:"codes"`
@@ -99,6 +109,7 @@ type packageAsset struct {
 	Path         string
 	Codes        []string
 	AllowedCodes []string
+	AllowedMolds []MoldImportAllowedMold
 	Category     string
 	Name         string
 	Kind         string
@@ -804,10 +815,12 @@ func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input)
 	if input, ok := known[folder]; ok {
 		if members, groupOK := validSharedModelMembers(folder, known); groupOK {
 			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
+			asset.AllowedMolds = allowedMoldsForCodes(asset.AllowedCodes, known)
 			return asset, true, false
 		}
 		asset.Codes = []string{input.MoldNumber}
 		asset.AllowedCodes = asset.Codes
+		asset.AllowedMolds = allowedMoldsForCodes(asset.AllowedCodes, known)
 		return asset, true, false
 	}
 	members, ok := validSharedModelMembers(folder, known)
@@ -815,7 +828,8 @@ func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input)
 		return packageAsset{}, false, false
 	}
 	asset.AllowedCodes = members
-	asset.Codes = moldNumbersInModelName(name, members, known)
+	asset.AllowedMolds = allowedMoldsForCodes(members, known)
+	asset.Codes, _ = moldNumbersInModelNameResult(name, members, known)
 	return asset, true, false
 }
 
@@ -828,10 +842,12 @@ func parseFlatDrawingAsset(item *zip.File, parts []string, known map[string]Inpu
 	if input, ok := known[folder]; ok {
 		if members, groupOK := validSharedModelMembers(folder, known); groupOK {
 			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
+			asset.AllowedMolds = allowedMoldsForCodes(asset.AllowedCodes, known)
 			return asset, true, false
 		}
 		asset.Codes = []string{input.MoldNumber}
 		asset.AllowedCodes = asset.Codes
+		asset.AllowedMolds = allowedMoldsForCodes(asset.AllowedCodes, known)
 		return asset, true, false
 	}
 	members, ok := validSharedModelMembers(folder, known)
@@ -839,7 +855,8 @@ func parseFlatDrawingAsset(item *zip.File, parts []string, known map[string]Inpu
 		return packageAsset{}, false, false
 	}
 	asset.AllowedCodes = members
-	asset.Codes = moldNumbersInModelName(name, members, known)
+	asset.AllowedMolds = allowedMoldsForCodes(members, known)
+	asset.Codes, _ = moldNumbersInModelNameResult(name, members, known)
 	return asset, true, false
 }
 
@@ -1056,6 +1073,15 @@ func moldNumbersInName(name string, members []string) []string {
 // relationship archive's model-directory contract separate from the stable
 // MoldNumber identity used by storage and replacement.
 func moldNumbersInModelName(name string, members []string, known map[string]Input) []string {
+	numbers, _ := moldNumbersInModelNameResult(name, members, known)
+	return numbers
+}
+
+// moldNumbersInModelNameResult matches a flat common-model asset against the
+// models in its directory and translates the selected models back to their
+// stable MoldNumbers.  The boolean is true when a non-exact alias maps to
+// overlapping real models and therefore must be confirmed in the preview.
+func moldNumbersInModelNameResult(name string, members []string, known map[string]Input) ([]string, bool) {
 	// validSharedModelMembers returns MoldNumbers for the package contract.
 	// Translate those numbers back to model keys before matching the file name.
 	models := make([]string, 0, len(members))
@@ -1064,15 +1090,324 @@ func moldNumbersInModelName(name string, members []string, known map[string]Inpu
 			models = append(models, modelName)
 		}
 	}
-	matchedModels := moldNumbersInName(name, models)
-	numbers := make([]string, 0, len(models))
+	matchedModels, ambiguous := matchModelNamesInName(name, models)
+	if ambiguous {
+		return nil, true
+	}
+	numbers := make([]string, 0, len(matchedModels))
 	for _, modelName := range matchedModels {
 		if input, ok := known[modelName]; ok {
 			numbers = append(numbers, input.MoldNumber)
 		}
 	}
 	sort.SliceStable(numbers, func(i, j int) bool { return naturalAssetLess(numbers[i], numbers[j]) })
-	return numbers
+	return numbers, false
+}
+
+// allowedMoldsForCodes keeps the wire-compatible allowed_codes list while
+// supplying model labels for manual selection.  Iterating codes (rather than
+// the map) makes preview order deterministic and keeps both lists aligned.
+func allowedMoldsForCodes(codes []string, known map[string]Input) []MoldImportAllowedMold {
+	result := make([]MoldImportAllowedMold, 0, len(codes))
+	seen := make(map[string]bool, len(codes))
+	for _, code := range codes {
+		if code == "" || seen[code] {
+			continue
+		}
+		for _, input := range known {
+			if input.MoldNumber != code {
+				continue
+			}
+			result = append(result, MoldImportAllowedMold{Code: code, Model: input.Model})
+			seen[code] = true
+			break
+		}
+	}
+	return result
+}
+
+type modelNameOccurrence struct {
+	Model string
+	Start int
+	End   int
+	Exact bool
+}
+
+// matchModelNamesInName applies exact matching first, then a deliberately
+// narrow alias rule.  Hyphens are ignored, and a single S may be inserted at
+// the end of an alphabetic prefix immediately before the numeric portion (or
+// removed from that position).  It does not remove arbitrary S characters:
+// models such as S-123 remain distinct from 123.
+func matchModelNamesInName(name string, models []string) ([]string, bool) {
+	ordered := uniqueNonEmptyModelNames(models)
+	if len(ordered) == 0 {
+		return nil, false
+	}
+
+	occurrences := make([]modelNameOccurrence, 0, len(ordered))
+	seen := make(map[modelNameOccurrence]bool)
+	lowerName := strings.ToLower(name)
+	for _, modelName := range ordered {
+		for _, span := range findLiteralModelOccurrences(lowerName, strings.ToLower(modelName)) {
+			occurrence := modelNameOccurrence{Model: modelName, Start: span.Start, End: span.End, Exact: true}
+			seen[occurrence] = true
+			occurrences = append(occurrences, occurrence)
+		}
+		for _, key := range modelMatchKeys(modelName) {
+			for _, span := range findCompactModelOccurrences(lowerName, key) {
+				alias := modelNameOccurrence{Model: modelName, Start: span.Start, End: span.End}
+				if _, ok := findOccurrence(seen, alias); ok {
+					// The literal occurrence is already represented as exact; an
+					// alias occurrence at the same span is a duplicate too.
+					continue
+				}
+				seen[alias] = true
+				occurrences = append(occurrences, alias)
+			}
+		}
+	}
+	if len(occurrences) == 0 {
+		return nil, false
+	}
+
+	sort.SliceStable(occurrences, func(i, j int) bool {
+		if occurrences[i].Start != occurrences[j].Start {
+			return occurrences[i].Start < occurrences[j].Start
+		}
+		if occurrences[i].End != occurrences[j].End {
+			return occurrences[i].End > occurrences[j].End
+		}
+		if occurrences[i].Exact != occurrences[j].Exact {
+			return occurrences[i].Exact
+		}
+		return naturalAssetLess(occurrences[i].Model, occurrences[j].Model)
+	})
+
+	selected := make(map[string]bool)
+	ambiguous := false
+	group := make([]modelNameOccurrence, 0, len(occurrences))
+	groupEnd := -1
+	flush := func() {
+		if len(group) == 0 {
+			return
+		}
+		exact := make([]modelNameOccurrence, 0, len(group))
+		aliases := make([]modelNameOccurrence, 0, len(group))
+		for _, occurrence := range group {
+			if occurrence.Exact {
+				exact = append(exact, occurrence)
+			} else {
+				aliases = append(aliases, occurrence)
+			}
+		}
+		if len(exact) > 0 {
+			// A literal match wins over aliases occupying the same span.  Within
+			// literals, retain the existing longest-token behavior (AB-CD wins
+			// over AB in AB-CD).
+			sort.SliceStable(exact, func(i, j int) bool {
+				left, right := exact[i].End-exact[i].Start, exact[j].End-exact[j].Start
+				if left != right {
+					return left > right
+				}
+				return naturalAssetLess(exact[i].Model, exact[j].Model)
+			})
+			chosen := make([]modelNameOccurrence, 0, len(exact))
+			for _, occurrence := range exact {
+				overlaps := false
+				for _, prior := range chosen {
+					if modelSpansOverlap(occurrence, prior) {
+						overlaps = true
+						break
+					}
+				}
+				if !overlaps {
+					chosen = append(chosen, occurrence)
+					selected[occurrence.Model] = true
+				}
+			}
+		} else {
+			candidates := make(map[string]bool)
+			for _, occurrence := range aliases {
+				candidates[occurrence.Model] = true
+			}
+			if len(candidates) > 1 {
+				ambiguous = true
+			} else {
+				for candidate := range candidates {
+					selected[candidate] = true
+				}
+			}
+		}
+		group = group[:0]
+		groupEnd = -1
+	}
+	for _, occurrence := range occurrences {
+		if len(group) == 0 || occurrence.Start >= groupEnd {
+			flush()
+		}
+		group = append(group, occurrence)
+		if occurrence.End > groupEnd {
+			groupEnd = occurrence.End
+		}
+	}
+	flush()
+
+	result := make([]string, 0, len(selected))
+	for modelName := range selected {
+		result = append(result, modelName)
+	}
+	sort.SliceStable(result, func(i, j int) bool { return naturalAssetLess(result[i], result[j]) })
+	return result, ambiguous
+}
+
+func uniqueNonEmptyModelNames(models []string) []string {
+	seen := make(map[string]bool, len(models))
+	result := make([]string, 0, len(models))
+	for _, modelName := range models {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" || seen[modelName] {
+			continue
+		}
+		seen[modelName] = true
+		result = append(result, modelName)
+	}
+	sort.SliceStable(result, func(i, j int) bool { return naturalAssetLess(result[i], result[j]) })
+	return result
+}
+
+func findOccurrence(seen map[modelNameOccurrence]bool, wanted modelNameOccurrence) (modelNameOccurrence, bool) {
+	for occurrence := range seen {
+		if occurrence.Model == wanted.Model && occurrence.Start == wanted.Start && occurrence.End == wanted.End {
+			return occurrence, true
+		}
+	}
+	return modelNameOccurrence{}, false
+}
+
+func findLiteralModelOccurrences(value, needle string) []modelNameOccurrenceSpan {
+	if needle == "" {
+		return nil
+	}
+	result := make([]modelNameOccurrenceSpan, 0, 1)
+	for offset := 0; offset < len(value); {
+		index := strings.Index(value[offset:], needle)
+		if index < 0 {
+			break
+		}
+		index += offset
+		end := index + len(needle)
+		if modelNameBoundary(value, index, end) {
+			result = append(result, modelNameOccurrenceSpan{Start: index, End: end})
+		}
+		offset = index + 1
+	}
+	return result
+}
+
+type modelNameOccurrenceSpan struct {
+	Start int
+	End   int
+}
+
+func findCompactModelOccurrences(value, needle string) []modelNameOccurrenceSpan {
+	if needle == "" {
+		return nil
+	}
+	compact, positions := compactModelText(value)
+	result := make([]modelNameOccurrenceSpan, 0, 1)
+	for offset := 0; offset < len(compact); {
+		index := strings.Index(compact[offset:], needle)
+		if index < 0 {
+			break
+		}
+		index += offset
+		end := index + len(needle)
+		if end <= len(positions) {
+			startByte := positions[index]
+			endByte := positions[end-1] + 1
+			if modelNameBoundary(value, startByte, endByte) {
+				result = append(result, modelNameOccurrenceSpan{Start: startByte, End: endByte})
+			}
+		}
+		offset = index + 1
+	}
+	return result
+}
+
+func compactModelText(value string) (string, []int) {
+	var builder strings.Builder
+	positions := make([]int, 0, len(value))
+	for index := 0; index < len(value); index++ {
+		if value[index] == '-' {
+			continue
+		}
+		builder.WriteByte(value[index])
+		positions = append(positions, index)
+	}
+	return builder.String(), positions
+}
+
+func modelNameBoundary(value string, start, end int) bool {
+	return (start == 0 || !isASCIILetterOrDigit(value[start-1])) && (end == len(value) || !isASCIILetterOrDigit(value[end]))
+}
+
+func modelSpansOverlap(left, right modelNameOccurrence) bool {
+	return left.Start < right.End && right.Start < left.End
+}
+
+func modelMatchKeys(modelName string) []string {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	compact := strings.ReplaceAll(modelName, "-", "")
+	keys := make([]string, 0, 3)
+	appendKey := func(value string) {
+		if value == "" {
+			return
+		}
+		for _, existing := range keys {
+			if existing == value {
+				return
+			}
+		}
+		keys = append(keys, value)
+	}
+	appendKey(compact)
+	prefix, suffix, ok := splitModelPrefixSuffix(compact)
+	if !ok {
+		return keys
+	}
+	if strings.HasSuffix(prefix, "s") {
+		base := strings.TrimSuffix(prefix, "s")
+		if len(base) >= 2 {
+			appendKey(base + suffix)
+		}
+	} else if len(prefix) >= 2 {
+		appendKey(prefix + "s" + suffix)
+	}
+	return keys
+}
+
+func splitModelPrefixSuffix(value string) (string, string, bool) {
+	firstDigit := -1
+	for index := 0; index < len(value); index++ {
+		if value[index] >= '0' && value[index] <= '9' {
+			firstDigit = index
+			break
+		}
+	}
+	if firstDigit < 2 {
+		return "", "", false
+	}
+	for index := 0; index < firstDigit; index++ {
+		if !((value[index] >= 'a' && value[index] <= 'z') || (value[index] >= 'A' && value[index] <= 'Z')) {
+			return "", "", false
+		}
+	}
+	for index := firstDigit; index < len(value); index++ {
+		if !isASCIILetterOrDigit(value[index]) {
+			return "", "", false
+		}
+	}
+	return value[:firstDigit], value[firstDigit:], true
 }
 
 func isASCIILetterOrDigit(value byte) bool {
@@ -1594,7 +1929,13 @@ func packageSummary(data packageData) MoldImportSummary {
 func unresolvedFiles(data packageData) []MoldImportFile {
 	items := make([]MoldImportFile, 0, len(data.Unresolved))
 	for _, item := range data.Unresolved {
-		items = append(items, MoldImportFile{Path: item.Path, Name: item.Name, Kind: item.Kind, AllowedCodes: append([]string(nil), item.AllowedCodes...)})
+		items = append(items, MoldImportFile{
+			Path:         item.Path,
+			Name:         item.Name,
+			Kind:         item.Kind,
+			AllowedCodes: append([]string(nil), item.AllowedCodes...),
+			AllowedMolds: append([]MoldImportAllowedMold(nil), item.AllowedMolds...),
+		})
 	}
 	return items
 }
