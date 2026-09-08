@@ -6928,6 +6928,17 @@ const docTemplate = `{
                 }
             }
         },
+        "mold.MoldImportAllowedMold": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                }
+            }
+        },
         "mold.MoldImportFile": {
             "type": "object",
             "properties": {
@@ -6935,6 +6946,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "allowed_molds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mold.MoldImportAllowedMold"
                     }
                 },
                 "kind": {

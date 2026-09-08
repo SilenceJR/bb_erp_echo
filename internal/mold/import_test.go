@@ -227,6 +227,84 @@ func TestFlatRelationshipMatchesModelsAndReturnsMoldNumbers(t *testing.T) {
 	}
 }
 
+func TestFlatRelationshipModelAliasesResolveToMatchingMoldNumbers(t *testing.T) {
+	known := map[string]Input{
+		"XR5129":  {MoldNumber: "N5129", Model: "XR5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"XR4245":  {MoldNumber: "N4245", Model: "XR4245", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"XR32847": {MoldNumber: "N32847", Model: "XR32847", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	for _, test := range []struct {
+		name string
+		want string
+	}{
+		{"XRS5129前模局部图.jpg", "N5129"},
+		{"XRS-4245后模局部图.jpg", "N4245"},
+		{"XR-S32847前模局部图.jpg", "N32847"},
+		{"XR-S5129+XRS-4245+XR-S32847共模图.dwg", "N4245,N5129,N32847"},
+	} {
+		entry := &zip.File{Name: test.name, UncompressedSize64: 1}
+		asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"XR5129+XR4245+XR32847", test.name}, known)
+		if filepath.Ext(test.name) == ".dwg" {
+			var drawing packageAsset
+			drawing, ok, ambiguous = parseFlatDrawingAsset(entry, []string{"XR5129+XR4245+XR32847", test.name}, known)
+			asset = drawing
+		}
+		if !ok || ambiguous || strings.Join(asset.Codes, ",") != test.want {
+			t.Fatalf("alias %q: asset=%+v ok=%v ambiguous=%v, want %q", test.name, asset, ok, ambiguous, test.want)
+		}
+	}
+}
+
+func TestFlatRelationshipModelAliasConflictStaysUnresolvedWithModelCandidates(t *testing.T) {
+	known := map[string]Input{
+		"XR5129":  {MoldNumber: "N5129", Model: "XR5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"XRS5129": {MoldNumber: "NS5129", Model: "XRS5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	entry := &zip.File{Name: "XR-S5129前模局部图.jpg", UncompressedSize64: 1}
+	asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"XR5129+XRS5129", entry.Name}, known)
+	if !ok || ambiguous || len(asset.Codes) != 0 || strings.Join(asset.AllowedCodes, ",") != "N5129,NS5129" {
+		t.Fatalf("alias conflict should remain unresolved: asset=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
+	}
+	if len(asset.AllowedMolds) != 2 || asset.AllowedMolds[0] != (MoldImportAllowedMold{Code: "N5129", Model: "XR5129"}) || asset.AllowedMolds[1] != (MoldImportAllowedMold{Code: "NS5129", Model: "XRS5129"}) {
+		t.Fatalf("alias conflict candidates should be model-labelled: %+v", asset.AllowedMolds)
+	}
+}
+
+func TestFlatRelationshipExactModelWinsOverAlias(t *testing.T) {
+	known := map[string]Input{
+		"XR5129":  {MoldNumber: "N5129", Model: "XR5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"XRS5129": {MoldNumber: "NS5129", Model: "XRS5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	entry := &zip.File{Name: "XRS5129前模局部图.jpg", UncompressedSize64: 1}
+	asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"XR5129+XRS5129", entry.Name}, known)
+	if !ok || ambiguous || strings.Join(asset.Codes, ",") != "NS5129" {
+		t.Fatalf("exact model should win over alias: asset=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
+	}
+}
+
+func TestFlatRelationshipAliasDoesNotRemoveArbitraryS(t *testing.T) {
+	known := map[string]Input{
+		"S5129":  {MoldNumber: "NS5129", Model: "S5129", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"S5129B": {MoldNumber: "NS5129B", Model: "S5129B", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	entry := &zip.File{Name: "5129前模局部图.jpg", UncompressedSize64: 1}
+	asset, ok, ambiguous := parseFlatImageAsset(entry, []string{"S5129+S5129B", entry.Name}, known)
+	if !ok || ambiguous || len(asset.Codes) != 0 {
+		t.Fatalf("arbitrary S must not be removed during alias matching: asset=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
+	}
+}
+
+func TestMoldImportUnresolvedDTOIncludesAllowedModelsAndCompatibleCodes(t *testing.T) {
+	data := packageData{Unresolved: []packageAsset{{Path: "XR5129+XR4245/关系图.jpg", Name: "关系图.jpg", Kind: "image", AllowedCodes: []string{"N5129", "N4245"}, AllowedMolds: []MoldImportAllowedMold{{Code: "N5129", Model: "XR5129"}, {Code: "N4245", Model: "XR4245"}}}}}
+	items := unresolvedFiles(data)
+	if len(items) != 1 || strings.Join(items[0].AllowedCodes, ",") != "N5129,N4245" {
+		t.Fatalf("allowed_codes compatibility lost: %+v", items)
+	}
+	if len(items[0].AllowedMolds) != 2 || items[0].AllowedMolds[0].Model != "XR5129" || items[0].AllowedMolds[1].Code != "N4245" {
+		t.Fatalf("allowed_molds DTO missing: %+v", items)
+	}
+}
+
 func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *testing.T) {
 	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Columns: moldColumns,

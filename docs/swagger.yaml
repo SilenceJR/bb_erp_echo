@@ -1144,11 +1144,22 @@ definitions:
     required:
     - status
     type: object
+  mold.MoldImportAllowedMold:
+    properties:
+      code:
+        type: string
+      model:
+        type: string
+    type: object
   mold.MoldImportFile:
     properties:
       allowed_codes:
         items:
           type: string
+        type: array
+      allowed_molds:
+        items:
+          $ref: '#/definitions/mold.MoldImportAllowedMold'
         type: array
       kind:
         type: string
