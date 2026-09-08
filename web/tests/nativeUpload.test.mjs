@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import ts from 'typescript'
 
 const source = readFileSync(new URL('../src/api/http.ts', import.meta.url), 'utf8')
+const desktopSource = readFileSync(new URL('../../client/src/desktop-http.ts', import.meta.url), 'utf8')
 const js = ts.transpileModule(source.replace(/^import .*$/gm, '').replace(/^export /gm, ''), {compilerOptions: {target: ts.ScriptTarget.ES2022}}).outputText
 function harness(statuses, refresh = async () => 'fresh') {
   const calls = [], failures = []
@@ -18,6 +19,11 @@ function harness(statuses, refresh = async () => 'fresh') {
   api.configureAuthSession({getToken: () => 'expired', refresh, onFailure: () => failures.push(true)})
   return {...api, calls, failures}
 }
+
+test('desktop bridge sends the nested Rust request with snake_case server_url', () => {
+  assert.match(desktopSource, /request:\s*\{server_url:\s*currentServerUrl,\s*endpoint,\s*paths,\s*fields,\s*token\}/)
+  assert.doesNotMatch(desktopSource, /request:\s*\{serverUrl:/)
+})
 
 test('native file upload refreshes a rejected token once and preserves the batch', async () => {
   const h = harness([401, 200])

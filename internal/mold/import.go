@@ -379,7 +379,10 @@ func (h *Handler) Export(c *echo.Context) error {
 		if _, grouped := groupedMolds[item.MoldNumber]; grouped {
 			continue
 		}
-		if err := exportMoldAssets(zw, h.StorageRoot, item.MoldNumber, item.MoldNumber, imageByMold[item.MoldNumber], drawingByMold[item.MoldNumber], archiveNames); err != nil {
+		// Flat archive directories and file prefixes use the mold Model.  The
+		// maps above remain keyed by MoldNumber because that is the database
+		// owner key and the public correction contract.
+		if err := exportMoldAssets(zw, h.StorageRoot, item.Model, item.Model, imageByMold[item.MoldNumber], drawingByMold[item.MoldNumber], archiveNames); err != nil {
 			temp.Close()
 			return err
 		}
@@ -477,10 +480,16 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 		}
 	}
 	known := map[string]bool{}
-	moldInputs := map[string]Input{}
+	// Legacy images/ and drawings/ paths are keyed by MoldNumber.  The new
+	// relationship archive is intentionally keyed by Model instead; retain
+	// both indexes so a model-based path can still resolve to the number used
+	// by the database and correction payload.
+	moldInputsByNumber := map[string]Input{}
+	moldInputsByModel := map[string]Input{}
 	for _, row := range data.Rows {
 		known[row.MoldNumber] = true
-		moldInputs[row.MoldNumber] = row
+		moldInputsByNumber[row.MoldNumber] = row
+		moldInputsByModel[row.Model] = row
 	}
 	paths := make([]string, 0, len(files))
 	for path := range files {
@@ -493,7 +502,8 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			continue
 		}
 		parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
-		markMoldAssetScope(path, item.FileInfo().IsDir(), known, moldInputs, data.AssetMolds)
+		markMoldAssetScope(path, item.FileInfo().IsDir(), known, moldInputsByNumber, data.AssetMolds)
+		markMoldModelAssetScope(path, item.FileInfo().IsDir(), moldInputsByModel, data.AssetMolds)
 		if item.FileInfo().IsDir() {
 			continue
 		}
@@ -509,8 +519,8 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			}
 			asset, ok := parseImageAsset(item, parts, known)
 			if strings.Contains(parts[1], "+") && !isCanonicalImagePath(parts, known) {
-				asset, ok = parseGroupedImageAsset(item, parts, moldInputs)
-				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputs) {
+				asset, ok = parseGroupedImageAsset(item, parts, moldInputsByNumber)
+				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputsByNumber) {
 					asset, ok = parseImageAsset(item, parts, known)
 				}
 			}
@@ -531,8 +541,8 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 		case "drawings":
 			asset, ok := parseDrawingAsset(item, parts, known)
 			if strings.Contains(parts[1], "+") && !isCanonicalDrawingPath(parts, known) {
-				asset, ok = parseGroupedDrawingAsset(item, parts, moldInputs)
-				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputs) {
+				asset, ok = parseGroupedDrawingAsset(item, parts, moldInputsByNumber)
+				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputsByNumber) {
 					asset, ok = parseDrawingAsset(item, parts, known)
 				}
 			}
@@ -551,13 +561,13 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			}
 			ext := strings.ToLower(filepath.Ext(parts[1]))
 			if filemodule.AllowedImageExtension(ext) {
-				asset, ok, ambiguous := parseFlatImageAsset(item, parts, moldInputs)
+				asset, ok, ambiguous := parseFlatImageAsset(item, parts, moldInputsByModel)
 				if ambiguous {
-					data.Errors = append(data.Errors, importError(path, "资料包目录同时匹配单模编号和共模组，存在歧义"))
+					data.Errors = append(data.Errors, importError(path, "资料包目录同时匹配单个模具型号和共模组，存在歧义"))
 					continue
 				}
 				if !ok {
-					data.Errors = append(data.Errors, importError(path, "图片无法匹配模具编号或共模目录"))
+					data.Errors = append(data.Errors, importError(path, "图片无法匹配模具型号或共模目录"))
 					continue
 				}
 				if validationErr := validateImageEntry(item); validationErr != nil {
@@ -579,9 +589,9 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 				continue
 			}
 			if allowedDrawingExt(ext) {
-				asset, ok, ambiguous := parseFlatDrawingAsset(item, parts, moldInputs)
+				asset, ok, ambiguous := parseFlatDrawingAsset(item, parts, moldInputsByModel)
 				if ambiguous || !ok {
-					data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具编号或共模目录"))
+					data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具型号或共模目录"))
 				} else if correction, exists := corrections[path]; exists {
 					asset, ok = applyDrawingCorrection(asset, correction, known)
 					if !ok {
@@ -599,7 +609,8 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			data.Errors = append(data.Errors, importError(path, "资料包包含未识别文件"))
 		}
 	}
-	resolveAmbiguousAssetScopes(&data, moldInputs, files)
+	resolveAmbiguousAssetScopes(&data, moldInputsByNumber, files)
+	resolveAmbiguousModelAssetScopes(&data, moldInputsByModel, files)
 	sort.SliceStable(data.Images, func(i, j int) bool {
 		return naturalAssetLess(data.Images[i].Name, data.Images[j].Name)
 	})
@@ -664,10 +675,90 @@ func resolveAmbiguousAssetScopes(data *packageData, inputs map[string]Input, fil
 	}
 }
 
+// resolveAmbiguousModelAssetScopes is the counterpart for the current flat
+// relationship tree.  The folder key is a Model, while the selected scope is
+// recorded as MoldNumbers so replacement and cleanup remain number-based.
+func resolveAmbiguousModelAssetScopes(data *packageData, inputs map[string]Input, files map[string]*zip.File) {
+	if data == nil {
+		return
+	}
+	type choice struct {
+		mode    string
+		members []string
+	}
+	choices := map[string]choice{}
+	pending := map[string]bool{}
+	for _, asset := range data.Unresolved {
+		parts := strings.SplitN(asset.Path, "/", 2)
+		if len(parts) == 2 && parts[0] != "images" && parts[0] != "drawings" {
+			pending[parts[0]] = true
+		}
+	}
+	assets := append(append([]packageAsset(nil), data.Images...), data.Drawings...)
+	for _, asset := range assets {
+		parts := strings.SplitN(asset.Path, "/", 2)
+		if len(parts) != 2 || parts[0] == "images" || parts[0] == "drawings" {
+			continue
+		}
+		folder := parts[0]
+		exact, exactOK := inputs[folder]
+		members, groupOK := validSharedModelMembers(folder, inputs)
+		if !exactOK || !groupOK {
+			continue
+		}
+		mode := "group"
+		if containsString(asset.Codes, exact.MoldNumber) {
+			mode = "single"
+		}
+		current := choices[folder]
+		if current.mode != "" && current.mode != mode {
+			data.Errors = append(data.Errors, importError(folder, "同一歧义目录中的资料不能混合选择单模和共模归属"))
+			continue
+		}
+		choices[folder] = choice{mode: mode, members: members}
+	}
+	for folder, selected := range choices {
+		if selected.mode == "single" {
+			if input, ok := inputs[folder]; ok {
+				data.AssetMolds[input.MoldNumber] = true
+			}
+			continue
+		}
+		for _, member := range selected.members {
+			data.AssetMolds[member] = true
+		}
+	}
+	reported := map[string]bool{}
+	for path := range files {
+		parts := strings.SplitN(strings.TrimSuffix(path, "/"), "/", 2)
+		if len(parts) == 0 || parts[0] == "" || parts[0] == "images" || parts[0] == "drawings" {
+			continue
+		}
+		folder := parts[0]
+		if reported[folder] {
+			continue
+		}
+		if _, exactOK := inputs[folder]; !exactOK {
+			continue
+		}
+		if _, groupOK := validSharedModelMembers(folder, inputs); !groupOK || choices[folder].mode != "" || pending[folder] {
+			continue
+		}
+		data.Errors = append(data.Errors, importError(folder, "含 + 的空资料目录同时匹配单模和共模，无法确认覆盖范围，请添加资料后在预览中确认或调整目录"))
+		reported[folder] = true
+	}
+}
+
 // normalizeMoldZipEntryName accepts the legacy GBK file names produced by the
 // Windows archive used as the business reference. UTF-8 names remain untouched.
 func normalizeMoldZipEntryName(item *zip.File) error {
-	if item == nil || (!item.NonUTF8 && utf8.ValidString(item.Name)) {
+	// Some macOS ZIP writers leave the UTF-8 flag unset even though the name
+	// bytes are already valid UTF-8. Preserve valid UTF-8 regardless of that
+	// metadata bit; only legacy invalid byte sequences should be decoded as GBK.
+	if item == nil || utf8.ValidString(item.Name) {
+		if item != nil {
+			item.NonUTF8 = false
+		}
 		return nil
 	}
 	decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes([]byte(item.Name))
@@ -786,13 +877,17 @@ func markMoldAssetScope(path string, directory bool, known map[string]bool, inpu
 	if len(parts) == 0 || parts[0] == "" {
 		return
 	}
-	folder := parts[0]
-	if folder == "images" || folder == "drawings" {
-		if len(parts) < 2 {
-			return
-		}
-		folder = parts[1]
+	// This helper is deliberately limited to the legacy trees.  Flat
+	// relationship paths are resolved by model below; accepting a MoldNumber
+	// here would make a model/number collision silently select the wrong row.
+	if parts[0] != "images" && parts[0] != "drawings" {
+		return
 	}
+	folder := parts[0]
+	if len(parts) < 2 {
+		return
+	}
+	folder = parts[1]
 	if known[folder] {
 		if _, ambiguous := validSharedMembers(folder, inputs); ambiguous {
 			return
@@ -808,10 +903,40 @@ func markMoldAssetScope(path string, directory bool, known map[string]bool, inpu
 	_ = directory
 }
 
+// markMoldModelAssetScope records replacement scopes for the current flat
+// relationship archive.  Its folder and group keys are Models, but the scope
+// map remains keyed by MoldNumber for the database replacement transaction.
+func markMoldModelAssetScope(path string, directory bool, inputs map[string]Input, scopes map[string]bool) {
+	if scopes == nil {
+		return
+	}
+	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" || parts[0] == "images" || parts[0] == "drawings" {
+		return
+	}
+	folder := parts[0]
+	if input, ok := inputs[folder]; ok {
+		// A single model containing '+' can collide with the exact common-group
+		// folder.  Wait for the preview correction to select one interpretation.
+		if _, groupOK := validSharedModelMembers(folder, inputs); groupOK {
+			return
+		}
+		scopes[input.MoldNumber] = true
+		return
+	}
+	if members, ok := validSharedModelMembers(folder, inputs); ok {
+		for _, member := range members {
+			scopes[member] = true
+		}
+	}
+	_ = directory
+}
+
 // parseFlatImageAsset parses the current archive format, where files are
-// directly below either a mold-number directory or an exact common-group
+// directly below either a mold-model directory or an exact common-group
 // directory.  A valid group with no exact member in its filename is returned
-// as an unresolved asset so the preview can offer manual correction.
+// as an unresolved asset so the preview can offer manual correction.  Codes
+// and AllowedCodes always contain MoldNumbers even though matching uses Model.
 func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool, bool) {
 	if len(parts) != 2 || !validImageEntry(item) {
 		return packageAsset{}, false, false
@@ -819,7 +944,7 @@ func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input)
 	folder, name := parts[0], parts[1]
 	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name, Category: inferCategory(name), Kind: "image"}
 	if input, ok := known[folder]; ok {
-		if members, groupOK := validSharedMembers(folder, known); groupOK {
+		if members, groupOK := validSharedModelMembers(folder, known); groupOK {
 			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
 			return asset, true, false
 		}
@@ -827,12 +952,12 @@ func parseFlatImageAsset(item *zip.File, parts []string, known map[string]Input)
 		asset.AllowedCodes = asset.Codes
 		return asset, true, false
 	}
-	members, ok := validSharedMembers(folder, known)
+	members, ok := validSharedModelMembers(folder, known)
 	if !ok {
 		return packageAsset{}, false, false
 	}
 	asset.AllowedCodes = members
-	asset.Codes = moldNumbersInName(name, members)
+	asset.Codes = moldNumbersInModelName(name, members, known)
 	return asset, true, false
 }
 
@@ -843,7 +968,7 @@ func parseFlatDrawingAsset(item *zip.File, parts []string, known map[string]Inpu
 	folder, name := parts[0], parts[1]
 	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: name, Kind: "drawing"}
 	if input, ok := known[folder]; ok {
-		if members, groupOK := validSharedMembers(folder, known); groupOK {
+		if members, groupOK := validSharedModelMembers(folder, known); groupOK {
 			asset.AllowedCodes = append([]string{input.MoldNumber}, members...)
 			return asset, true, false
 		}
@@ -851,12 +976,12 @@ func parseFlatDrawingAsset(item *zip.File, parts []string, known map[string]Inpu
 		asset.AllowedCodes = asset.Codes
 		return asset, true, false
 	}
-	members, ok := validSharedMembers(folder, known)
+	members, ok := validSharedModelMembers(folder, known)
 	if !ok {
 		return packageAsset{}, false, false
 	}
 	asset.AllowedCodes = members
-	asset.Codes = moldNumbersInName(name, members)
+	asset.Codes = moldNumbersInModelName(name, members, known)
 	return asset, true, false
 }
 
@@ -885,11 +1010,19 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 	rows := make([]Input, 0)
 	errs := make([]spreadsheet.CellError, 0)
 	seen := map[string]bool{}
+	seenModels := map[string]bool{}
 	for i := header + 1; i < len(raw); i++ {
 		cells := make([]string, len(headers))
-		for j := range cells {
-			if j < len(raw[i]) {
-				cells[j] = strings.TrimSpace(raw[i][j])
+		offset := 0
+		// Manually edited workbooks may omit the blank serial-number cell A.
+		// Excelize then returns the populated row from column B, so restore the
+		// leading blank when the third returned value is clearly the mold type.
+		if len(raw[i]) >= 4 && isMoldTypeLabel(raw[i][2]) && !isMoldTypeLabel(raw[i][3]) {
+			offset = 1
+		}
+		for j, value := range raw[i] {
+			if j+offset < len(cells) {
+				cells[j+offset] = strings.TrimSpace(value)
 			}
 		}
 		if cells[1] == "" && cells[2] == "" {
@@ -911,11 +1044,20 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 			errs = append(errs, rowError(i+1, "模具编号", err.Error()))
 			continue
 		}
+		if err := validateArchiveSegment(input.Model); err != nil {
+			errs = append(errs, rowError(i+1, "模具型号", err.Error()))
+			continue
+		}
 		if seen[input.MoldNumber] {
 			errs = append(errs, rowError(i+1, "模具编号", "重复"))
 			continue
 		}
 		seen[input.MoldNumber] = true
+		if seenModels[input.Model] {
+			errs = append(errs, rowError(i+1, "模具型号", "重复，无法唯一匹配资料目录"))
+			continue
+		}
+		seenModels[input.Model] = true
 		if err := validateInput(normalizeInput(input)); err != nil {
 			errs = append(errs, rowError(i+1, "模具类型/共模组号", err.Error()))
 			continue
@@ -923,6 +1065,11 @@ func parseMoldRows(raw [][]string) ([]Input, []spreadsheet.CellError) {
 		rows = append(rows, input)
 	}
 	return rows, errs
+}
+
+func isMoldTypeLabel(value string) bool {
+	value = strings.TrimSpace(value)
+	return value == "单模" || value == "共模" || value == model.MoldTypeSingle || value == model.MoldTypeCommon
 }
 
 func parseLocations(item *zip.File) ([]model.MoldLocation, error) {
@@ -1128,6 +1275,55 @@ func validSharedMembers(value string, known map[string]Input) ([]string, bool) {
 	return expected, true
 }
 
+// validSharedModelMembers validates a flat relationship folder whose members
+// are Models and returns the corresponding MoldNumbers.  Keeping the result
+// in number space is important: packageAsset is consumed by the replacement
+// transaction and correction API, both of which intentionally use numbers.
+func validSharedModelMembers(value string, known map[string]Input) ([]string, bool) {
+	parts := strings.Split(value, "+")
+	if len(parts) < 2 {
+		return nil, false
+	}
+	seen := make(map[string]bool, len(parts))
+	var group string
+	for _, modelName := range parts {
+		if modelName == "" || seen[modelName] {
+			return nil, false
+		}
+		input, ok := known[modelName]
+		if !ok || input.MoldType != model.MoldTypeCommon || strings.TrimSpace(input.CommonGroupNo) == "" {
+			return nil, false
+		}
+		if group == "" {
+			group = strings.TrimSpace(input.CommonGroupNo)
+		} else if group != strings.TrimSpace(input.CommonGroupNo) {
+			return nil, false
+		}
+		seen[modelName] = true
+	}
+	expectedModels := make([]string, 0, len(parts))
+	for modelName, input := range known {
+		if input.MoldType == model.MoldTypeCommon && strings.TrimSpace(input.CommonGroupNo) == group {
+			expectedModels = append(expectedModels, modelName)
+		}
+	}
+	sort.SliceStable(expectedModels, func(i, j int) bool { return naturalAssetLess(expectedModels[i], expectedModels[j]) })
+	if len(parts) != len(expectedModels) {
+		return nil, false
+	}
+	for _, modelName := range expectedModels {
+		if !seen[modelName] {
+			return nil, false
+		}
+	}
+	numbers := make([]string, 0, len(expectedModels))
+	for _, modelName := range expectedModels {
+		numbers = append(numbers, known[modelName].MoldNumber)
+	}
+	sort.SliceStable(numbers, func(i, j int) bool { return naturalAssetLess(numbers[i], numbers[j]) })
+	return numbers, true
+}
+
 func legacySharedOuterAllowed(value string, known map[string]bool, inputs map[string]Input) bool {
 	parts := strings.Split(value, "+")
 	if len(parts) < 2 {
@@ -1182,6 +1378,30 @@ func moldNumbersInName(name string, members []string) []string {
 	}
 	sort.SliceStable(codes, func(i, j int) bool { return naturalAssetLess(codes[i], codes[j]) })
 	return codes
+}
+
+// moldNumbersInModelName matches a flat archive file name against Models and
+// translates every matched model back to its MoldNumber.  This boundary is
+// deliberately kept separate from moldNumbersInName so legacy archives keep
+// their MoldNumber matching semantics unchanged.
+func moldNumbersInModelName(name string, members []string, known map[string]Input) []string {
+	// validSharedModelMembers returns MoldNumbers for the package contract.
+	// Translate those numbers back to model keys before matching the file name.
+	models := make([]string, 0, len(members))
+	for modelName, input := range known {
+		if containsString(members, input.MoldNumber) {
+			models = append(models, modelName)
+		}
+	}
+	matchedModels := moldNumbersInName(name, models)
+	numbers := make([]string, 0, len(models))
+	for _, modelName := range matchedModels {
+		if input, ok := known[modelName]; ok {
+			numbers = append(numbers, input.MoldNumber)
+		}
+	}
+	sort.SliceStable(numbers, func(i, j int) bool { return naturalAssetLess(numbers[i], numbers[j]) })
+	return numbers
 }
 
 func isASCIILetterOrDigit(value byte) bool {
@@ -1764,14 +1984,31 @@ type archiveImageKey struct {
 	Name     string
 }
 
+func moldArchiveKey(item model.Mold) string {
+	if modelName := strings.TrimSpace(item.Model); modelName != "" {
+		return modelName
+	}
+	// Tests and a few historical records may not have populated Model.  Keep
+	// the fallback local to archive generation; real imported/API rows still
+	// require Model and therefore always take the model-based path.
+	return strings.TrimSpace(item.MoldNumber)
+}
+
 func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struct{}, error) {
 	byGroup := map[string][]model.Mold{}
-	knownNumbers := make(map[string]struct{}, len(molds))
+	knownModels := make(map[string]string, len(molds))
 	for _, item := range molds {
 		if err := validateArchiveSegment(item.MoldNumber); err != nil {
 			return nil, nil, err
 		}
-		knownNumbers[item.MoldNumber] = struct{}{}
+		archiveKey := moldArchiveKey(item)
+		if err := validateArchiveSegment(archiveKey); err != nil {
+			return nil, nil, fmt.Errorf("模具型号包含非法资料包路径字符: %s", archiveKey)
+		}
+		if previous, exists := knownModels[archiveKey]; exists && previous != item.MoldNumber {
+			return nil, nil, fmt.Errorf("模具型号重复，无法生成资料包目录: %s", archiveKey)
+		}
+		knownModels[archiveKey] = item.MoldNumber
 		if item.MoldType == model.MoldTypeCommon && strings.TrimSpace(item.CommonGroupNo) != "" {
 			key := strings.TrimSpace(item.CommonGroupNo)
 			byGroup[key] = append(byGroup[key], item)
@@ -1789,12 +2026,13 @@ func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struc
 		if len(members) < 2 {
 			continue
 		}
-		// "A+B" is a valid historical mold number. It cannot safely be used
-		// inside a '+'-joined group folder, so keep such groups in the legacy
-		// per-mold layout and let the exact mold-number parser handle them.
+		// A '+' in a model has the same ambiguity as a '+' in a historical mold
+		// number: it could be a single-model directory or a joined group path.
+		// Keep such groups out of the flat layout and let the legacy number tree
+		// remain the compatibility escape hatch.
 		ambiguous := false
 		for _, member := range members {
-			if strings.Contains(member.MoldNumber, "+") {
+			if strings.Contains(moldArchiveKey(member), "+") {
 				ambiguous = true
 				break
 			}
@@ -1803,23 +2041,24 @@ func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struc
 			continue
 		}
 		sort.SliceStable(members, func(i, j int) bool {
-			if members[i].MoldNumber == members[j].MoldNumber {
+			left, right := moldArchiveKey(members[i]), moldArchiveKey(members[j])
+			if left == right {
 				return members[i].ID < members[j].ID
 			}
-			return naturalAssetLess(members[i].MoldNumber, members[j].MoldNumber)
+			return naturalAssetLess(left, right)
 		})
-		numbers := make([]string, 0, len(members))
+		models := make([]string, 0, len(members))
 		for _, member := range members {
-			numbers = append(numbers, member.MoldNumber)
+			models = append(models, moldArchiveKey(member))
 		}
-		outer := strings.Join(numbers, "+")
+		outer := strings.Join(models, "+")
 		// A historical single mold may itself be named "A+B".  Emitting the
 		// common group at that same path would make the flat archive ambiguous
 		// and could silently associate assets with the wrong record.
-		if _, collision := knownNumbers[outer]; collision {
+		if _, collision := knownModels[outer]; collision {
 			belongsToGroup := false
 			for _, member := range members {
-				if member.MoldNumber == outer {
+				if moldArchiveKey(member) == outer {
 					belongsToGroup = true
 					break
 				}
@@ -1860,7 +2099,7 @@ func addMoldArchiveDirectories(zw *zip.Writer, molds []model.Mold) error {
 		if _, ok := grouped[item.MoldNumber]; ok {
 			continue
 		}
-		if err := addUniqueZipDirectory(zw, filepath.ToSlash(item.MoldNumber)+"/", seen); err != nil {
+		if err := addUniqueZipDirectory(zw, filepath.ToSlash(moldArchiveKey(item))+"/", seen); err != nil {
 			return err
 		}
 	}
@@ -1926,12 +2165,13 @@ func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, 
 		}
 		for _, member := range group.Members {
 			for _, image := range members[member.MoldNumber] {
-				name := archiveImageOutputName(image, member.MoldNumber, productSequence[member.MoldNumber], true)
+				memberKey := moldArchiveKey(member)
+				name := archiveImageOutputName(image, memberKey, productSequence[member.MoldNumber], true)
 				fallbackLabel := "模具图"
 				if image.Category == "product_material" {
 					fallbackLabel = "产品刷墨图"
 				}
-				name = memberSpecificArchiveName(member.MoldNumber, name, group.Members, fallbackLabel)
+				name = memberSpecificArchiveName(memberKey, name, group.Members, fallbackLabel)
 				if image.Category == "product_material" && !isProductInkImage(image.OriginalName) {
 					productSequence[member.MoldNumber]++
 				}
@@ -1967,7 +2207,7 @@ func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, 
 		}
 		for _, member := range group.Members {
 			for _, drawing := range members[member.MoldNumber] {
-				name := memberSpecificArchiveName(member.MoldNumber, archiveFileName(drawing.OriginalName), group.Members, "图纸")
+				name := memberSpecificArchiveName(moldArchiveKey(member), archiveFileName(drawing.OriginalName), group.Members, "图纸")
 				if err := exportDrawingAssetNamed(zw, root, group.Outer, drawing, name, used); err != nil {
 					return err
 				}
@@ -1980,7 +2220,7 @@ func exportMoldGroupAssets(zw *zip.Writer, root string, group moldArchiveGroup, 
 func memberSpecificArchiveName(member, name string, group []model.Mold, fallbackLabel string) string {
 	codes := make([]string, 0, len(group))
 	for _, item := range group {
-		codes = append(codes, item.MoldNumber)
+		codes = append(codes, moldArchiveKey(item))
 	}
 	for _, matched := range moldNumbersInName(name, codes) {
 		if matched != member {
