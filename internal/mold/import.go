@@ -480,15 +480,12 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 		}
 	}
 	known := map[string]bool{}
-	// Legacy images/ and drawings/ paths are keyed by MoldNumber.  The new
-	// relationship archive is intentionally keyed by Model instead; retain
-	// both indexes so a model-based path can still resolve to the number used
-	// by the database and correction payload.
-	moldInputsByNumber := map[string]Input{}
+	// Relationship archive directories are keyed by Model.  Keep the parsed
+	// MoldNumber in each Input because database replacement and correction
+	// payloads continue to use the stable MoldNumber identity.
 	moldInputsByModel := map[string]Input{}
 	for _, row := range data.Rows {
 		known[row.MoldNumber] = true
-		moldInputsByNumber[row.MoldNumber] = row
 		moldInputsByModel[row.Model] = row
 	}
 	paths := make([]string, 0, len(files))
@@ -502,7 +499,6 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			continue
 		}
 		parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
-		markMoldAssetScope(path, item.FileInfo().IsDir(), known, moldInputsByNumber, data.AssetMolds)
 		markMoldModelAssetScope(path, item.FileInfo().IsDir(), moldInputsByModel, data.AssetMolds)
 		if item.FileInfo().IsDir() {
 			continue
@@ -511,22 +507,26 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			data.Errors = append(data.Errors, importError(path, "资料包文件路径不符合模板"))
 			continue
 		}
-		switch parts[0] {
-		case "images":
-			if err := validateImageEntry(item); err != nil {
-				data.Errors = append(data.Errors, importError(path, err.Error()))
+		if len(parts) != 2 {
+			data.Errors = append(data.Errors, importError(path, "资料包文件路径不符合扁平模具目录"))
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(parts[1]))
+		if filemodule.AllowedImageExtension(ext) {
+			asset, ok, ambiguous := parseFlatImageAsset(item, parts, moldInputsByModel)
+			if ambiguous {
+				data.Errors = append(data.Errors, importError(path, "资料包目录同时匹配单个模具型号和共模组，存在歧义"))
 				continue
 			}
-			asset, ok := parseImageAsset(item, parts, known)
-			if strings.Contains(parts[1], "+") && !isCanonicalImagePath(parts, known) {
-				asset, ok = parseGroupedImageAsset(item, parts, moldInputsByNumber)
-				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputsByNumber) {
-					asset, ok = parseImageAsset(item, parts, known)
-				}
-			}
 			if !ok {
-				data.Errors = append(data.Errors, importError(path, "图片无法匹配模具编号或图片分组"))
-			} else if correction, exists := corrections[path]; exists {
+				data.Errors = append(data.Errors, importError(path, "图片无法匹配模具型号或共模目录"))
+				continue
+			}
+			if validationErr := validateImageEntry(item); validationErr != nil {
+				data.Errors = append(data.Errors, importError(path, validationErr.Error()))
+				continue
+			}
+			if correction, exists := corrections[path]; exists {
 				asset, ok = applyImageCorrection(asset, correction, known)
 				if !ok {
 					data.Errors = append(data.Errors, importError(path, "图片人工修正无效"))
@@ -538,78 +538,28 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 			} else {
 				data.Images = append(data.Images, asset)
 			}
-		case "drawings":
-			asset, ok := parseDrawingAsset(item, parts, known)
-			if strings.Contains(parts[1], "+") && !isCanonicalDrawingPath(parts, known) {
-				asset, ok = parseGroupedDrawingAsset(item, parts, moldInputsByNumber)
-				if !ok && legacySharedOuterAllowed(parts[1], known, moldInputsByNumber) {
-					asset, ok = parseDrawingAsset(item, parts, known)
-				}
-			}
-			if !ok {
-				data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具编号"))
-			} else {
-				data.Drawings = append(data.Drawings, asset)
-			}
-		default:
-			// The current export format places every asset directly below its
-			// mold/group folder.  Legacy images/ and drawings/ trees are handled
-			// above and remain accepted for existing archives.
-			if len(parts) != 2 {
-				data.Errors = append(data.Errors, importError(path, "资料包文件路径不符合扁平模具目录"))
-				continue
-			}
-			ext := strings.ToLower(filepath.Ext(parts[1]))
-			if filemodule.AllowedImageExtension(ext) {
-				asset, ok, ambiguous := parseFlatImageAsset(item, parts, moldInputsByModel)
-				if ambiguous {
-					data.Errors = append(data.Errors, importError(path, "资料包目录同时匹配单个模具型号和共模组，存在歧义"))
-					continue
-				}
+			continue
+		}
+		if allowedDrawingExt(ext) {
+			asset, ok, ambiguous := parseFlatDrawingAsset(item, parts, moldInputsByModel)
+			if ambiguous || !ok {
+				data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具型号或共模目录"))
+			} else if correction, exists := corrections[path]; exists {
+				asset, ok = applyDrawingCorrection(asset, correction, known)
 				if !ok {
-					data.Errors = append(data.Errors, importError(path, "图片无法匹配模具型号或共模目录"))
-					continue
-				}
-				if validationErr := validateImageEntry(item); validationErr != nil {
-					data.Errors = append(data.Errors, importError(path, validationErr.Error()))
-					continue
-				}
-				if correction, exists := corrections[path]; exists {
-					asset, ok = applyImageCorrection(asset, correction, known)
-					if !ok {
-						data.Errors = append(data.Errors, importError(path, "图片人工修正无效"))
-					} else {
-						data.Images = append(data.Images, asset)
-					}
-				} else if asset.Category == "" || len(asset.Codes) == 0 {
-					data.Unresolved = append(data.Unresolved, asset)
-				} else {
-					data.Images = append(data.Images, asset)
-				}
-				continue
-			}
-			if allowedDrawingExt(ext) {
-				asset, ok, ambiguous := parseFlatDrawingAsset(item, parts, moldInputsByModel)
-				if ambiguous || !ok {
-					data.Errors = append(data.Errors, importError(path, "图纸无法匹配模具型号或共模目录"))
-				} else if correction, exists := corrections[path]; exists {
-					asset, ok = applyDrawingCorrection(asset, correction, known)
-					if !ok {
-						data.Errors = append(data.Errors, importError(path, "图纸人工修正无效"))
-					} else {
-						data.Drawings = append(data.Drawings, asset)
-					}
-				} else if len(asset.Codes) == 0 {
-					data.Unresolved = append(data.Unresolved, asset)
+					data.Errors = append(data.Errors, importError(path, "图纸人工修正无效"))
 				} else {
 					data.Drawings = append(data.Drawings, asset)
 				}
-				continue
+			} else if len(asset.Codes) == 0 {
+				data.Unresolved = append(data.Unresolved, asset)
+			} else {
+				data.Drawings = append(data.Drawings, asset)
 			}
-			data.Errors = append(data.Errors, importError(path, "资料包包含未识别文件"))
+			continue
 		}
+		data.Errors = append(data.Errors, importError(path, "资料包包含未识别文件"))
 	}
-	resolveAmbiguousAssetScopes(&data, moldInputsByNumber, files)
 	resolveAmbiguousModelAssetScopes(&data, moldInputsByModel, files)
 	sort.SliceStable(data.Images, func(i, j int) bool {
 		return naturalAssetLess(data.Images[i].Name, data.Images[j].Name)
@@ -617,67 +567,9 @@ func (h *Handler) readPackage(f io.ReaderAt, size int64, corrections map[string]
 	return data, nil
 }
 
-func resolveAmbiguousAssetScopes(data *packageData, inputs map[string]Input, files map[string]*zip.File) {
-	if data == nil {
-		return
-	}
-	type choice struct {
-		mode    string
-		members []string
-	}
-	choices := map[string]choice{}
-	pending := map[string]bool{}
-	for _, asset := range data.Unresolved {
-		pending[strings.SplitN(asset.Path, "/", 2)[0]] = true
-	}
-	assets := append(append([]packageAsset(nil), data.Images...), data.Drawings...)
-	for _, asset := range assets {
-		folder := strings.SplitN(asset.Path, "/", 2)[0]
-		exact, exactOK := inputs[folder]
-		members, groupOK := validSharedMembers(folder, inputs)
-		if !exactOK || !groupOK {
-			continue
-		}
-		mode := "group"
-		if containsString(asset.Codes, exact.MoldNumber) {
-			mode = "single"
-		}
-		current := choices[folder]
-		if current.mode != "" && current.mode != mode {
-			data.Errors = append(data.Errors, importError(folder, "同一歧义目录中的资料不能混合选择单模和共模归属"))
-			continue
-		}
-		choices[folder] = choice{mode: mode, members: members}
-	}
-	for folder, selected := range choices {
-		if selected.mode == "single" {
-			data.AssetMolds[folder] = true
-			continue
-		}
-		for _, member := range selected.members {
-			data.AssetMolds[member] = true
-		}
-	}
-	reported := map[string]bool{}
-	for path := range files {
-		folder := strings.SplitN(strings.TrimSuffix(path, "/"), "/", 2)[0]
-		if reported[folder] {
-			continue
-		}
-		if _, exactOK := inputs[folder]; !exactOK {
-			continue
-		}
-		if _, groupOK := validSharedMembers(folder, inputs); !groupOK || choices[folder].mode != "" || pending[folder] {
-			continue
-		}
-		data.Errors = append(data.Errors, importError(folder, "含 + 的空资料目录同时匹配单模和共模，无法确认覆盖范围，请添加资料后在预览中确认或调整目录"))
-		reported[folder] = true
-	}
-}
-
-// resolveAmbiguousModelAssetScopes is the counterpart for the current flat
-// relationship tree.  The folder key is a Model, while the selected scope is
-// recorded as MoldNumbers so replacement and cleanup remain number-based.
+// resolveAmbiguousModelAssetScopes handles the flat relationship tree. The
+// folder key is a Model, while the selected scope is recorded as MoldNumbers
+// so replacement and cleanup remain number-based.
 func resolveAmbiguousModelAssetScopes(data *packageData, inputs map[string]Input, files map[string]*zip.File) {
 	if data == nil {
 		return
@@ -690,14 +582,14 @@ func resolveAmbiguousModelAssetScopes(data *packageData, inputs map[string]Input
 	pending := map[string]bool{}
 	for _, asset := range data.Unresolved {
 		parts := strings.SplitN(asset.Path, "/", 2)
-		if len(parts) == 2 && parts[0] != "images" && parts[0] != "drawings" {
+		if len(parts) == 2 {
 			pending[parts[0]] = true
 		}
 	}
 	assets := append(append([]packageAsset(nil), data.Images...), data.Drawings...)
 	for _, asset := range assets {
 		parts := strings.SplitN(asset.Path, "/", 2)
-		if len(parts) != 2 || parts[0] == "images" || parts[0] == "drawings" {
+		if len(parts) != 2 {
 			continue
 		}
 		folder := parts[0]
@@ -731,7 +623,7 @@ func resolveAmbiguousModelAssetScopes(data *packageData, inputs map[string]Input
 	reported := map[string]bool{}
 	for path := range files {
 		parts := strings.SplitN(strings.TrimSuffix(path, "/"), "/", 2)
-		if len(parts) == 0 || parts[0] == "" || parts[0] == "images" || parts[0] == "drawings" {
+		if len(parts) == 0 || parts[0] == "" {
 			continue
 		}
 		folder := parts[0]
@@ -869,40 +761,6 @@ func isIgnorableMoldPackagePath(path string) bool {
 	return false
 }
 
-func markMoldAssetScope(path string, directory bool, known map[string]bool, inputs map[string]Input, scopes map[string]bool) {
-	if scopes == nil {
-		return
-	}
-	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
-	if len(parts) == 0 || parts[0] == "" {
-		return
-	}
-	// This helper is deliberately limited to the legacy trees.  Flat
-	// relationship paths are resolved by model below; accepting a MoldNumber
-	// here would make a model/number collision silently select the wrong row.
-	if parts[0] != "images" && parts[0] != "drawings" {
-		return
-	}
-	folder := parts[0]
-	if len(parts) < 2 {
-		return
-	}
-	folder = parts[1]
-	if known[folder] {
-		if _, ambiguous := validSharedMembers(folder, inputs); ambiguous {
-			return
-		}
-		scopes[folder] = true
-		return
-	}
-	if members, ok := validSharedMembers(folder, inputs); ok {
-		for _, member := range members {
-			scopes[member] = true
-		}
-	}
-	_ = directory
-}
-
 // markMoldModelAssetScope records replacement scopes for the current flat
 // relationship archive.  Its folder and group keys are Models, but the scope
 // map remains keyed by MoldNumber for the database replacement transaction.
@@ -911,7 +769,7 @@ func markMoldModelAssetScope(path string, directory bool, inputs map[string]Inpu
 		return
 	}
 	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
-	if len(parts) == 0 || parts[0] == "" || parts[0] == "images" || parts[0] == "drawings" {
+	if len(parts) == 0 || parts[0] == "" {
 		return
 	}
 	folder := parts[0]
@@ -1104,177 +962,6 @@ func hasPalletLocation(locations []model.MoldLocation) bool {
 	return false
 }
 
-func parseImageAsset(item *zip.File, parts []string, known map[string]bool) (packageAsset, bool) {
-	if !validImageEntry(item) {
-		return packageAsset{}, false
-	}
-	if len(parts) >= 4 {
-		code, category := parts[1], normalizeCategory(parts[2])
-		if known[code] && category != "" {
-			return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{code}, AllowedCodes: []string{code}, Category: category, Name: parts[len(parts)-1]}, true
-		}
-	}
-	name := parts[len(parts)-1]
-	category := inferCategory(name)
-	if len(parts) >= 3 && known[parts[1]] {
-		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, AllowedCodes: []string{parts[1]}, Category: category, Name: name, Kind: "image"}, true
-	}
-	knownCodes := make([]string, 0, len(known))
-	for code := range known {
-		knownCodes = append(knownCodes, code)
-	}
-	codes := moldNumbersInName(name, knownCodes)
-	if len(codes) == 0 {
-		sort.Strings(knownCodes)
-		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), AllowedCodes: knownCodes, Name: name, Kind: "image"}, true
-	}
-	// 旧格式平铺文件同样遵守当前命名规则：-序号和产品刷墨图是产品图，
-	// 其余合法图片统一作为模具图，不再因为缺少关键词而伪装成产品图。
-	sort.Strings(codes)
-	return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: codes, AllowedCodes: append([]string(nil), codes...), Category: category, Name: name, Kind: "image"}, true
-}
-
-func isCanonicalImagePath(parts []string, known map[string]bool) bool {
-	return len(parts) >= 4 && known[parts[1]] && normalizeCategory(parts[2]) != ""
-}
-
-// parseGroupedImageAsset 解析共模组外层目录，具体编号目录只归属该编号，平铺文件按文件名匹配组内编号。
-func parseGroupedImageAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool) {
-	if len(parts) < 3 || !validImageEntry(item) {
-		return packageAsset{}, false
-	}
-	members, ok := validSharedMembers(parts[1], known)
-	if !ok {
-		return packageAsset{}, false
-	}
-	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: parts[len(parts)-1]}
-	switch len(parts) {
-	case 3: // images/<group>/<file>
-		asset.Codes = moldNumbersInName(asset.Name, members)
-		asset.AllowedCodes = append([]string(nil), members...)
-		asset.Category = inferCategory(asset.Name)
-	case 4:
-		if parts[2] == "共用" {
-			asset.Codes = members
-			asset.AllowedCodes = append([]string(nil), members...)
-			asset.Category = inferCategory(asset.Name)
-		} else if category := normalizeCategory(parts[2]); category != "" {
-			asset.Codes = moldNumbersInName(asset.Name, members)
-			asset.AllowedCodes = append([]string(nil), members...)
-			asset.Category = category
-		} else {
-			return packageAsset{}, false
-		}
-	case 5: // images/<group>/<共用|具体编号>/<category>/<file>
-		asset.Category = normalizeCategory(parts[3])
-		if asset.Category == "" {
-			return packageAsset{}, false
-		}
-		switch parts[2] {
-		case "共用":
-			asset.Codes = members
-			asset.AllowedCodes = append([]string(nil), members...)
-		default:
-			if !containsString(members, parts[2]) {
-				return packageAsset{}, false
-			}
-			asset.Codes = []string{parts[2]}
-			asset.AllowedCodes = []string{parts[2]}
-		}
-	default:
-		return packageAsset{}, false
-	}
-	if asset.Category == "" && len(asset.Codes) > 0 {
-		// 共模平铺文件遵守文件名分类规则；inferCategory 已将其余图片归为模具图。
-		asset.Category = inferCategory(asset.Name)
-	}
-	return asset, true
-}
-
-func parseDrawingAsset(item *zip.File, parts []string, known map[string]bool) (packageAsset, bool) {
-	if len(parts) >= 3 && known[parts[1]] && allowedDrawingExt(filepath.Ext(parts[len(parts)-1])) {
-		return packageAsset{Entry: item, Path: strings.Join(parts, "/"), Codes: []string{parts[1]}, AllowedCodes: []string{parts[1]}, Name: parts[len(parts)-1]}, true
-	}
-	return packageAsset{}, false
-}
-
-func isCanonicalDrawingPath(parts []string, known map[string]bool) bool {
-	return len(parts) == 3 && known[parts[1]] && allowedDrawingExt(filepath.Ext(parts[len(parts)-1]))
-}
-
-// parseGroupedDrawingAsset 解析共模组图纸目录和平铺图纸。
-func parseGroupedDrawingAsset(item *zip.File, parts []string, known map[string]Input) (packageAsset, bool) {
-	if len(parts) < 3 || item == nil || item.UncompressedSize64 == 0 || !allowedDrawingExt(filepath.Ext(parts[len(parts)-1])) {
-		return packageAsset{}, false
-	}
-	members, ok := validSharedMembers(parts[1], known)
-	if !ok {
-		return packageAsset{}, false
-	}
-	asset := packageAsset{Entry: item, Path: strings.Join(parts, "/"), Name: parts[len(parts)-1]}
-	switch len(parts) {
-	case 3: // drawings/<group>/<file>
-		asset.Codes = moldNumbersInName(asset.Name, members)
-		asset.AllowedCodes = append([]string(nil), members...)
-	case 4: // drawings/<group>/<共用|具体编号>/<file>
-		switch parts[2] {
-		case "共用":
-			asset.Codes = members
-			asset.AllowedCodes = append([]string(nil), members...)
-		default:
-			if !containsString(members, parts[2]) {
-				return packageAsset{}, false
-			}
-			asset.Codes = []string{parts[2]}
-			asset.AllowedCodes = []string{parts[2]}
-		}
-	default:
-		return packageAsset{}, false
-	}
-	return asset, len(asset.Codes) > 0
-}
-
-func validSharedMembers(value string, known map[string]Input) ([]string, bool) {
-	parts := strings.Split(value, "+")
-	if len(parts) < 2 {
-		return nil, false
-	}
-	seen := make(map[string]bool, len(parts))
-	var group string
-	for _, code := range parts {
-		if code == "" || seen[code] {
-			return nil, false
-		}
-		input, ok := known[code]
-		if !ok || input.MoldType != model.MoldTypeCommon || strings.TrimSpace(input.CommonGroupNo) == "" {
-			return nil, false
-		}
-		if group == "" {
-			group = strings.TrimSpace(input.CommonGroupNo)
-		} else if group != strings.TrimSpace(input.CommonGroupNo) {
-			return nil, false
-		}
-		seen[code] = true
-	}
-	expected := make([]string, 0, len(parts))
-	for code, input := range known {
-		if input.MoldType == model.MoldTypeCommon && strings.TrimSpace(input.CommonGroupNo) == group {
-			expected = append(expected, code)
-		}
-	}
-	sort.SliceStable(expected, func(i, j int) bool { return naturalAssetLess(expected[i], expected[j]) })
-	if len(parts) != len(expected) {
-		return nil, false
-	}
-	for _, code := range expected {
-		if !seen[code] {
-			return nil, false
-		}
-	}
-	// 导出使用稳定自然序，导入则按集合校验，兼容人工整理目录时的任意成员顺序。
-	return expected, true
-}
-
 // validSharedModelMembers validates a flat relationship folder whose members
 // are Models and returns the corresponding MoldNumbers.  Keeping the result
 // in number space is important: packageAsset is consumed by the replacement
@@ -1324,24 +1011,8 @@ func validSharedModelMembers(value string, known map[string]Input) ([]string, bo
 	return numbers, true
 }
 
-func legacySharedOuterAllowed(value string, known map[string]bool, inputs map[string]Input) bool {
-	parts := strings.Split(value, "+")
-	if len(parts) < 2 {
-		return false
-	}
-	for _, code := range parts {
-		if !known[code] {
-			return false
-		}
-		if input, ok := inputs[code]; ok && input.MoldType == model.MoldTypeCommon {
-			return false
-		}
-	}
-	return true
-}
-
 func moldNumbersInName(name string, members []string) []string {
-	// Match longer known numbers first so AB cannot consume part of AB-CD.
+	// Match longer known identifiers first so AB cannot consume part of AB-CD.
 	ordered := append([]string(nil), members...)
 	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
 	lower := strings.ToLower(name)
@@ -1381,9 +1052,9 @@ func moldNumbersInName(name string, members []string) []string {
 }
 
 // moldNumbersInModelName matches a flat archive file name against Models and
-// translates every matched model back to its MoldNumber.  This boundary is
-// deliberately kept separate from moldNumbersInName so legacy archives keep
-// their MoldNumber matching semantics unchanged.
+// translates every matched model back to its MoldNumber. This keeps the
+// relationship archive's model-directory contract separate from the stable
+// MoldNumber identity used by storage and replacement.
 func moldNumbersInModelName(name string, members []string, known map[string]Input) []string {
 	// validSharedModelMembers returns MoldNumbers for the package contract.
 	// Translate those numbers back to model keys before matching the file name.
@@ -2026,10 +1697,10 @@ func moldArchiveGroups(molds []model.Mold) ([]moldArchiveGroup, map[string]struc
 		if len(members) < 2 {
 			continue
 		}
-		// A '+' in a model has the same ambiguity as a '+' in a historical mold
-		// number: it could be a single-model directory or a joined group path.
-		// Keep such groups out of the flat layout and let the legacy number tree
-		// remain the compatibility escape hatch.
+		// A '+' in a model has the same ambiguity as a '+' in a mold number: it
+		// could be a single-model directory or a joined group path. Keep such
+		// groups out of the flat layout so export never creates an ambiguous
+		// directory; the records remain exportable through their own model paths.
 		ambiguous := false
 		for _, member := range members {
 			if strings.Contains(moldArchiveKey(member), "+") {
