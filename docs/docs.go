@@ -2594,7 +2594,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。",
+                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含单模与共模示例、默认位置字典和扁平模具资料目录。",
                 "produces": [
                     "application/zip"
                 ],
@@ -2646,7 +2646,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "JSON 格式的图片人工修正",
+                        "description": "JSON 格式的图片或图纸人工修正",
                         "name": "corrections",
                         "in": "formData"
                     }
@@ -6931,6 +6931,15 @@ const docTemplate = `{
         "mold.MoldImportFile": {
             "type": "object",
             "properties": {
+                "allowed_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kind": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },

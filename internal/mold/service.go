@@ -191,6 +191,8 @@ func (s *gormService) withCounts(molds []model.Mold) ([]MoldResponse, error) {
 }
 
 func (s *gormService) Create(input Input) (model.Mold, error) {
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
 	input = normalizeInput(input)
 	if err := validateInput(input); err != nil {
 		return model.Mold{}, err
@@ -206,6 +208,8 @@ func (s *gormService) Create(input Input) (model.Mold, error) {
 }
 
 func (s *gormService) Update(id uint, input Input) (model.Mold, error) {
+	unlock := filemodule.LockMoldAssetMutation()
+	defer unlock()
 	input = normalizeInput(input)
 	if err := validateInput(input); err != nil {
 		return model.Mold{}, err

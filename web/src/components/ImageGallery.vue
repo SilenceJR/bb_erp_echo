@@ -5,7 +5,7 @@
       'image-gallery--mold-detail': variant === 'mold-detail',
       'image-gallery--supplement': isMoldSupplementGallery,
     }"
-    :aria-label="`${title}图片`"
+    :aria-label="title"
   >
     <div class="image-gallery-heading">
       <div>
@@ -105,7 +105,7 @@
               </el-image>
               <span v-else class="image-gallery-error">图片加载失败</span>
             </div>
-            <div v-if="thumbnailImages.length" class="image-gallery-product-thumbnails" aria-label="其他产品图片">
+            <div v-if="thumbnailImages.length" class="image-gallery-product-thumbnails" aria-label="其他产品图">
               <button
                 v-for="item in thumbnailImages"
                 :key="item.id"
@@ -136,7 +136,7 @@
               <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(featuredItem)">删除</el-button>
             </div>
           </div>
-          <p v-else-if="!loading && !errorMessage" class="image-gallery-empty">暂无产品图片</p>
+          <p v-else-if="!loading && !errorMessage" class="image-gallery-empty">暂无产品图</p>
         </template>
         <template v-else>
           <article v-for="item in images" :key="item.id" class="image-gallery-item">
@@ -168,7 +168,7 @@
               <el-button link type="danger" :disabled="loading || saving" @click="deleteImage(item)">删除</el-button>
             </div>
           </article>
-          <p v-if="!loading && !images.length && !errorMessage" class="image-gallery-empty">暂无图片资料</p>
+          <p v-if="!loading && !images.length && !errorMessage" class="image-gallery-empty">{{ isMoldSupplementGallery ? '暂无模具图' : '暂无图片资料' }}</p>
         </template>
       </div>
       <button

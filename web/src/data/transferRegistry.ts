@@ -124,12 +124,8 @@ export const transferRegistry: Readonly<Record<TransferModule, TransferModuleDef
     archiveLayout: Object.freeze({
       rootFiles: Object.freeze(['molds.xlsx', 'locations.json']),
       directories: Object.freeze([
-        'images/',
-        'images/MOLD-001/',
-        'images/MOLD-001/product_material/',
-        'images/MOLD-001/supplement/',
-        'drawings/',
-        'drawings/MOLD-001/',
+        'MOLD-001/',
+        'MOLD-002+MOLD-003/',
       ]),
     }),
   }),

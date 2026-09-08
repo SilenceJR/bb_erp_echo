@@ -1146,6 +1146,12 @@ definitions:
     type: object
   mold.MoldImportFile:
     properties:
+      allowed_codes:
+        items:
+          type: string
+        type: array
+      kind:
+        type: string
       name:
         type: string
       path:
@@ -3647,7 +3653,7 @@ paths:
       - mold
   /api/v1/molds/import-template:
     get:
-      description: 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和 images/drawings 标准目录。
+      description: 返回 `博邦模具导入模板.zip`，包含单模与共模示例、默认位置字典和扁平模具资料目录。
       produces:
       - application/zip
       responses:
@@ -3675,7 +3681,7 @@ paths:
         name: token
         required: true
         type: string
-      - description: JSON 格式的图片人工修正
+      - description: JSON 格式的图片或图纸人工修正
         in: formData
         name: corrections
         type: string
