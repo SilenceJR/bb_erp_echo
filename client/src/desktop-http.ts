@@ -135,7 +135,9 @@ const desktopHttpBridge: DesktopHttpBridge = {
   },
   async uploadFiles(paths, endpoint, fields, token) {
     return await invoke<DesktopFileUploadResult>('upload_dropped_files', {
-      request: {serverUrl: currentServerUrl, endpoint, paths, fields, token},
+      // Nested command payloads are deserialized by Serde as-is. Unlike
+      // top-level Tauri arguments, serverUrl is not converted automatically.
+      request: {server_url: currentServerUrl, endpoint, paths, fields, token},
     })
   },
   async onWindowCloseRequested(handler) {

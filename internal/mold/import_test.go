@@ -76,6 +76,43 @@ func TestNormalizeMoldZipEntryNameAcceptsLegacyGBK(t *testing.T) {
 	}
 }
 
+func TestNormalizeMoldZipEntryNamePreservesValidUTF8WithoutFlag(t *testing.T) {
+	entry := &zip.File{FileHeader: zip.FileHeader{Name: "模具/前模局部图.jpg", NonUTF8: true}}
+	if err := normalizeMoldZipEntryName(entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry.Name != "模具/前模局部图.jpg" || entry.NonUTF8 {
+		t.Fatalf("valid UTF-8 name was changed: name=%q non_utf8=%v", entry.Name, entry.NonUTF8)
+	}
+}
+
+func TestParseMoldRowsRestoresOmittedBlankSerialCell(t *testing.T) {
+	raw := [][]string{
+		{"序号", "模具编号", "模具型号", "模具类型", "模具位置", "共模组号", "图片总数", "备注"},
+		{"BB3611", "010", "单模", "A1-1", "", "", ""},
+		{"XR5129", "011", "共模", "A1-1", "001", "", ""},
+	}
+	rows, errs := parseMoldRows(raw)
+	if len(errs) != 0 || len(rows) != 2 {
+		t.Fatalf("rows=%+v errors=%+v", rows, errs)
+	}
+	if rows[0].MoldNumber != "BB3611" || rows[0].Model != "010" || rows[1].MoldNumber != "XR5129" || rows[1].CommonGroupNo != "001" {
+		t.Fatalf("shifted workbook row was not restored: %+v", rows)
+	}
+}
+
+func TestParseMoldRowsRejectsDuplicateModelsForFlatDirectoryMatching(t *testing.T) {
+	raw := [][]string{
+		{"序号", "模具编号", "模具型号", "模具类型", "模具位置", "共模组号", "图片总数", "备注"},
+		{"", "010", "BB3611", "单模", "A1-1", "", "", ""},
+		{"", "011", "BB3611", "单模", "A1-1", "", "", ""},
+	}
+	rows, errs := parseMoldRows(raw)
+	if len(rows) != 1 || len(errs) != 1 || errs[0].Column != "模具型号" || !strings.Contains(errs[0].Reason, "无法唯一匹配") {
+		t.Fatalf("rows=%+v errors=%+v", rows, errs)
+	}
+}
+
 func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
 	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Columns: moldColumns,
@@ -91,22 +128,22 @@ func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
 	var archive bytes.Buffer
 	zw := zip.NewWriter(&archive)
 	entries := map[string][]byte{
-		"001/molds.xlsx":             xlsx,
-		"001/SINGLE/SINGLE-1.png":    tinyPNG,
-		"001/SINGLE/SINGLE-2.png":    tinyPNG,
-		"001/SINGLE/SINGLE产品刷墨图.png": tinyPNG,
-		"001/SINGLE/关系图.png":         tinyPNG,
-		"001/C1+C2/C1-1.png":         tinyPNG,
-		"001/C1+C2/C2前模局部图.png":      tinyPNG,
-		"001/C1+C2/C1+C2后模图.png":     tinyPNG,
-		"001/C1+C2/无法识别成员.png":       tinyPNG,
-		"001/C1+C2/C1+C2-结构.dwg":     []byte("dwg"),
-		"001/C1+C2/别名共模结构图.dwg":      []byte("shared dwg"),
-		"001/SINGLE/忽略.txt":          []byte("unknown"),
-		"001/C1+C2/desktop.ini":      []byte("system metadata"),
-		"001/__MACOSX/._molds.xlsx":  []byte("system metadata"),
-		"001/.DS_Store":              []byte("system metadata"),
-		"001/locations.json":         []byte(`[{"code":"A1-1","status":"active"}]`),
+		"001/molds.xlsx":                     xlsx,
+		"001/单模产品/单模产品-1.png":                tinyPNG,
+		"001/单模产品/单模产品-2.png":                tinyPNG,
+		"001/单模产品/单模产品产品刷墨图.png":             tinyPNG,
+		"001/单模产品/关系图.png":                   tinyPNG,
+		"001/共模产品1+共模产品2/共模产品1-1.png":        tinyPNG,
+		"001/共模产品1+共模产品2/共模产品2前模局部图.png":     tinyPNG,
+		"001/共模产品1+共模产品2/共模产品1+共模产品2后模图.png": tinyPNG,
+		"001/共模产品1+共模产品2/无法识别成员.png":         tinyPNG,
+		"001/共模产品1+共模产品2/共模产品1+共模产品2-结构.dwg": []byte("dwg"),
+		"001/共模产品1+共模产品2/别名共模结构图.dwg":        []byte("shared dwg"),
+		"001/单模产品/忽略.txt":                    []byte("unknown"),
+		"001/共模产品1+共模产品2/desktop.ini":        []byte("system metadata"),
+		"001/__MACOSX/._molds.xlsx":          []byte("system metadata"),
+		"001/.DS_Store":                      []byte("system metadata"),
+		"001/locations.json":                 []byte(`[{"code":"A1-1","status":"active"}]`),
 	}
 	for name, content := range entries {
 		w, createErr := zw.Create(name)
@@ -139,7 +176,7 @@ func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
 	}
 	for _, image := range data.Images {
 		switch image.Name {
-		case "SINGLE-1.png", "SINGLE-2.png", "SINGLE产品刷墨图.png":
+		case "单模产品-1.png", "单模产品-2.png", "单模产品产品刷墨图.png":
 			if image.Category != "product_material" || len(image.Codes) != 1 || image.Codes[0] != "SINGLE" {
 				t.Fatalf("unexpected product image: %+v", image)
 			}
@@ -150,8 +187,8 @@ func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
 		}
 	}
 	corrections := map[string]ImportCorrection{
-		"C1+C2/无法识别成员.png":  {Codes: []string{"C1", "C2"}, Category: "模具图"},
-		"C1+C2/别名共模结构图.dwg": {Codes: []string{"C1", "C2"}},
+		"共模产品1+共模产品2/无法识别成员.png":  {Codes: []string{"C1", "C2"}, Category: "模具图"},
+		"共模产品1+共模产品2/别名共模结构图.dwg": {Codes: []string{"C1", "C2"}},
 	}
 	corrected, err := readTestPackage(t, path, int64(archive.Len()), corrections)
 	if err != nil {
@@ -162,11 +199,36 @@ func TestReadPackageFlatRelationshipArchiveWithWrapper(t *testing.T) {
 	}
 }
 
+func TestFlatRelationshipMatchesModelsAndReturnsMoldNumbers(t *testing.T) {
+	known := map[string]Input{
+		"P-010": {MoldNumber: "BB3611", Model: "P-010", MoldType: model.MoldTypeSingle},
+		"P-011": {MoldNumber: "XR5129", Model: "P-011", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+		"P-012": {MoldNumber: "XR4245", Model: "P-012", MoldType: model.MoldTypeCommon, CommonGroupNo: "G"},
+	}
+	imageEntry := &zip.File{Name: "P-011+P-012后模图.PNG", UncompressedSize64: 1}
+	asset, ok, ambiguous := parseFlatImageAsset(imageEntry, []string{"P-011+P-012", "P-011+P-012后模图.PNG"}, known)
+	if !ok || ambiguous || asset.Category != "supplement" || strings.Join(asset.Codes, ",") != "XR4245,XR5129" || strings.Join(asset.AllowedCodes, ",") != "XR4245,XR5129" {
+		t.Fatalf("model group matching did not return mold numbers: asset=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
+	}
+	asset, ok, ambiguous = parseFlatImageAsset(imageEntry, []string{"P-010", "P-010-1.PNG"}, known)
+	if !ok || ambiguous || asset.Category != "product_material" || strings.Join(asset.Codes, ",") != "BB3611" || strings.Join(asset.AllowedCodes, ",") != "BB3611" {
+		t.Fatalf("model single matching did not return mold number: asset=%+v ok=%v ambiguous=%v", asset, ok, ambiguous)
+	}
+	if _, ok, _ = parseFlatImageAsset(imageEntry, []string{"BB3611", "BB3611-1.PNG"}, known); ok {
+		t.Fatal("flat relationship directory must not be resolved by mold number")
+	}
+	drawingEntry := &zip.File{Name: "P-011+P-012-结构.FDWG", UncompressedSize64: 1}
+	drawing, ok, ambiguous := parseFlatDrawingAsset(drawingEntry, []string{"P-011+P-012", "P-011+P-012-结构.FDWG"}, known)
+	if !ok || ambiguous || strings.Join(drawing.Codes, ",") != "XR4245,XR5129" || strings.Join(drawing.AllowedCodes, ",") != "XR4245,XR5129" {
+		t.Fatalf("model drawing matching did not return mold numbers: asset=%+v ok=%v ambiguous=%v", drawing, ok, ambiguous)
+	}
+}
+
 func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *testing.T) {
 	xlsx, err := spreadsheet.XLSXWriter{}.Write(t.Context(), spreadsheet.SpreadsheetDocument{
 		SheetName: "模具", Columns: moldColumns,
 		Rows: [][]string{
-			{"", "A+B", "历史单模", "单模", "A1-1", "", "0", ""},
+			{"", "A+B", "共模 A+共模 B", "单模", "A1-1", "", "0", ""},
 			{"", "A", "共模 A", "共模", "A1-1", "GROUP", "0", ""},
 			{"", "B", "共模 B", "共模", "A1-1", "GROUP", "0", ""},
 		}, TotalRows: 3,
@@ -177,9 +239,9 @@ func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *t
 	var archive bytes.Buffer
 	zw := zip.NewWriter(&archive)
 	for name, content := range map[string][]byte{
-		"molds.xlsx":        xlsx,
-		"A+B/ambiguous.png": tinyPNG,
-		"A+B/ambiguous.dwg": []byte("dwg"),
+		"molds.xlsx":              xlsx,
+		"共模 A+共模 B/ambiguous.png": tinyPNG,
+		"共模 A+共模 B/ambiguous.dwg": []byte("dwg"),
 	} {
 		w, createErr := zw.Create(name)
 		if createErr != nil {
@@ -204,8 +266,8 @@ func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *t
 		t.Fatalf("ambiguous folder must require correction: errors=%+v unresolved=%+v", data.Errors, data.Unresolved)
 	}
 	corrected, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
-		"A+B/ambiguous.png": {Codes: []string{"A", "B"}, Category: "模具图"},
-		"A+B/ambiguous.dwg": {Codes: []string{"A", "B"}},
+		"共模 A+共模 B/ambiguous.png": {Codes: []string{"A", "B"}, Category: "模具图"},
+		"共模 A+共模 B/ambiguous.dwg": {Codes: []string{"A", "B"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -217,22 +279,22 @@ func TestFlatRelationshipArchiveRequiresCorrectionForAmbiguousPlusDirectory(t *t
 		t.Fatalf("group interpretation must replace only group members: %v", corrected.AssetMolds)
 	}
 	single, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
-		"A+B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
-		"A+B/ambiguous.dwg": {Codes: []string{"A+B"}},
+		"共模 A+共模 B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
+		"共模 A+共模 B/ambiguous.dwg": {Codes: []string{"A+B"}},
 	})
 	if err != nil || len(single.Errors) != 0 || !single.AssetMolds["A+B"] || single.AssetMolds["A"] || single.AssetMolds["B"] {
 		t.Fatalf("single interpretation scope failed: data=%+v err=%v", single, err)
 	}
 	mixed, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
-		"A+B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
-		"A+B/ambiguous.dwg": {Codes: []string{"A", "B"}},
+		"共模 A+共模 B/ambiguous.png": {Codes: []string{"A+B"}, Category: "模具图"},
+		"共模 A+共模 B/ambiguous.dwg": {Codes: []string{"A", "B"}},
 	})
 	if err != nil || len(mixed.Errors) == 0 || !strings.Contains(mixed.Errors[0].Reason, "不能混合") {
 		t.Fatalf("mixed interpretation must be rejected: data=%+v err=%v", mixed, err)
 	}
 	withinAssetMixed, err := readTestPackage(t, path, int64(archive.Len()), map[string]ImportCorrection{
-		"A+B/ambiguous.png": {Codes: []string{"A+B", "A"}, Category: "模具图"},
-		"A+B/ambiguous.dwg": {Codes: []string{"A+B"}},
+		"共模 A+共模 B/ambiguous.png": {Codes: []string{"A+B", "A"}, Category: "模具图"},
+		"共模 A+共模 B/ambiguous.dwg": {Codes: []string{"A+B"}},
 	})
 	if err != nil || len(withinAssetMixed.Errors) == 0 || !strings.Contains(withinAssetMixed.Errors[0].Reason, "人工修正无效") {
 		t.Fatalf("one asset cannot mix single and group choices: data=%+v err=%v", withinAssetMixed, err)
@@ -311,10 +373,10 @@ func TestMoldImportTemplateIsZipAndCanBeReadBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"molds.xlsx":         true,
-		"locations.json":     true,
-		"MOLD-001/":          true,
-		"MOLD-002+MOLD-003/": true,
+		"molds.xlsx":     true,
+		"locations.json": true,
+		"示例产品/":          true,
+		"示例共模 A+示例共模 B/": true,
 	}
 	seen := make(map[string]bool, len(reader.File))
 	for _, item := range reader.File {
@@ -412,7 +474,7 @@ func TestMoldExportCanBeReadBackAsImportPackage(t *testing.T) {
 	for _, item := range archiveReader.File {
 		archiveEntries[item.Name] = true
 	}
-	for _, name := range []string{"MOLD-010/"} {
+	for _, name := range []string{"产品 A/"} {
 		if !archiveEntries[name] {
 			t.Fatalf("formal export missing directory entry %q", name)
 		}
@@ -536,7 +598,7 @@ func TestMoldExportAndImportSharedCommonAssets(t *testing.T) {
 	for _, item := range archiveReader.File {
 		entries[item.Name] = true
 	}
-	if !entries["BB56442+BB56443/BB56442+BB56443-1.png"] || !entries["BB56442+BB56443/BB56443-only.png"] || !entries["BB56442+BB56443/BB56442+BB56443-shared.dwg"] {
+	if !entries["型号 1+型号 2/型号 1+型号 2-1.png"] || !entries["型号 1+型号 2/型号 2-only.png"] || !entries["型号 1+型号 2/型号 1+型号 2-shared.dwg"] {
 		t.Fatalf("shared archive entries missing: %v", entries)
 	}
 	archivePath := filepath.Join(t.TempDir(), "shared.zip")
