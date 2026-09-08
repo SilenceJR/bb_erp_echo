@@ -12,7 +12,7 @@
 
 ## Windows 发布与客户端版本
 
-Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及签名 `client-update.json` 的版本独立取自 `src-tauri/tauri.conf.json`。`package.json`/lock、Cargo manifest/lock 和 Tauri 配置必须保持同一客户端版本；CI 会检查更新清单与该源码版本一致。当前客户端版本为 `0.2.5`。
+Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及签名 `client-update.json` 的版本独立取自 `src-tauri/tauri.conf.json`。`package.json`/lock、Cargo manifest/lock 和 Tauri 配置必须保持同一客户端版本；CI 会检查更新清单与该源码版本一致。当前客户端版本为 `0.2.6`。
 
 ## 2026-09-05 Astra 整改验证边界
 
