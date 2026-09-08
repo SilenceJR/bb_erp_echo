@@ -5,7 +5,7 @@
         <el-table-column v-for="column in visibleColumns" :key="column" :label="columnLabel(column)" :min-width="column === 'name' || column === 'description' ? 200 : 130">
           <template #default="{row}"><StatusTag v-if="isGenericStatusColumn(column)" :label="genericStatusLabel(row[column])" :tone="genericStatusTone(row[column])" /><span v-else>{{ formatGenericCell(column, row[column]) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" :width="actionColumnWidth" fixed="right">
+        <el-table-column :label="actionColumnLabel" :width="actionColumnWidth" fixed="right">
           <template #default="{row}">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
             <span v-if="hasAssignmentAction" :title="assignmentTargetHint(row)">
@@ -37,16 +37,28 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, ref, watch} from 'vue'
+import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {ElMessage} from 'element-plus'
 import {useWorkspaceContext} from '../../../composables/workspaceContext'
+import {normalizeModuleKey, notificationOpenEvent, notificationRefreshEvent, type NotificationOpenEventDetail, type NotificationRefreshEventDetail} from '../../../platform/notifications'
 import DataTableShell from '../../ui/DataTableShell.vue'
 import StatusTag from '../../ui/StatusTag.vue'
 import GenericRecordDetail, {type GenericRecordDetailField} from './GenericRecordDetail.vue'
 
-const {rows, columns, loading, listError, pageTotal, page, pageSize, filteredEmptyTitle, filteredEmptyDescription, activeModule, loadActiveModule, handlePageChange, handlePageSizeChange, columnLabel, isGenericStatusColumn, genericStatusLabel, genericStatusTone, formatGenericCell, hasAssignmentAction, activeKey, canWriteActive, assignmentConfigs, openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint, showCreateForm, toggleCreateForm, setPageDetailPanelVisible, genericRowTitle, genericRowSubtitle} = useWorkspaceContext()
+const {rows, columns, loading, listError, pageTotal, page, pageSize, filteredEmptyTitle, filteredEmptyDescription, activeModule, loadActiveModule, handlePageChange, handlePageSizeChange, columnLabel, isGenericStatusColumn, genericStatusLabel, genericStatusTone, formatGenericCell, hasAssignmentAction, activeKey, canWriteActive, assignmentConfigs, openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint, showCreateForm, toggleCreateForm, setPageDetailPanelVisible, genericRowTitle, genericRowSubtitle, assignmentTarget, affiliationTarget} = useWorkspaceContext()
 const tableState = computed(() => ({loading: loading.value, error: listError.value, rowsCount: rows.value.length, total: pageTotal.value, page: page.value, pageSize: pageSize.value, emptyTitle: filteredEmptyTitle.value, emptyDescription: filteredEmptyDescription.value}))
 // Internal timestamps and transport-only fields are not user-facing columns.
-const visibleColumns = computed(() => columns.value)
+const visibleColumns = computed(() => {
+  const source = [...columns.value]
+  if (activeKey.value !== 'audits' || !source.includes('action')) return source
+  // Keep the audit action next to the operator identity so the table reads as
+  // one event record instead of splitting the business action from its actor.
+  const actionIndex = source.indexOf('action')
+  source.splice(actionIndex, 1)
+  const operatorIndex = source.findIndex((column) => column === 'operator_employee_name' || column === 'operator_department_name')
+  source.splice(operatorIndex >= 0 ? operatorIndex + 1 : Math.min(actionIndex, source.length), 0, 'action')
+  return source
+})
 const detailVisible = ref(false)
 const detailRow = ref<Record<string, unknown> | null>(null)
 const detailPrimary = computed(() => detailRow.value ? genericRowTitle(detailRow.value as never) : '')
@@ -62,11 +74,59 @@ const detailFields = computed<GenericRecordDetailField[]>(() => {
   }))
 })
 const actionColumnWidth = computed(() => hasAssignmentAction.value || (activeKey.value === 'users' && canWriteActive.value) ? 250 : 100)
+const actionColumnLabel = computed(() => hasAssignmentAction.value || (activeKey.value === 'users' && canWriteActive.value) ? '操作' : '查看')
 let detailCloseResolver: (() => void) | null = null
 
 watch(detailVisible, (visible) => setPageDetailPanelVisible(visible), {immediate: true, flush: 'sync'})
 watch(activeKey, () => { detailVisible.value = false; detailRow.value = null })
-onBeforeUnmount(() => setPageDetailPanelVisible(false))
+
+async function handleNotificationOpen(event: Event) {
+  const detail = (event as CustomEvent<NotificationOpenEventDetail>).detail
+  if (!detail || normalizeModuleKey(detail.module.module) !== normalizeModuleKey(activeKey.value) || detail.module.action.type !== 'open_entity') return
+  const entityID = detail.module.action.entity_id ?? detail.module.items[0]?.entity_id
+  if (entityID === undefined || entityID === null) return
+  const findRow = () => rows.value.find((row) => String(row.id) === String(entityID))
+  let row = findRow()
+  if (!row) {
+    await loadActiveModule()
+    row = findRow()
+  }
+  if (row) await openDetail(row)
+  else ElMessage.info('该记录已不存在或当前账号无权查看')
+}
+
+function handleNotificationRefresh(event: Event) {
+  const detail = (event as CustomEvent<NotificationRefreshEventDetail>).detail
+  if (!detail || normalizeModuleKey(detail.module.module) !== normalizeModuleKey(activeKey.value)) return
+  detail.handled = true
+  if (detail.deferred || showCreateForm.value || assignmentTarget.value || affiliationTarget.value) {
+    detail.deferred = true
+    setPageDetailPanelVisible(detailVisible.value)
+    ElMessage.warning('数据已由其他用户更新，请保存或关闭当前修改后刷新')
+    return
+  }
+  const selectedID = detailRow.value?.id
+  void loadActiveModule().then(() => {
+    if (!detailVisible.value || selectedID === undefined || selectedID === null) return
+    const refreshed = rows.value.find((row) => String(row.id) === String(selectedID))
+    if (refreshed) detailRow.value = refreshed
+    else {
+      detailVisible.value = false
+      detailRow.value = null
+      ElMessage.info('该记录已删除或当前账号无权查看')
+    }
+  }).catch(() => ElMessage.warning('外部更新同步失败，请手动刷新'))
+}
+
+onMounted(() => {
+  window.addEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.addEventListener(notificationRefreshEvent, handleNotificationRefresh)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.removeEventListener(notificationRefreshEvent, handleNotificationRefresh)
+  setPageDetailPanelVisible(false)
+})
 
 async function openDetail(row: Record<string, unknown>) {
   if (showCreateForm.value) {

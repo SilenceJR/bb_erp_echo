@@ -1,5 +1,5 @@
 import type { ApiErrorBody } from '../types'
-import {activeTransport, desktopBridge} from './transport'
+import {activeTransport, desktopBridge, fetchStream} from './transport'
 import type {DesktopFileUploadResult} from './transport'
 import type {FileSaveResult} from '../platform/types'
 import {normalizeApiErrorBody} from '../platform/apiError'
@@ -114,6 +114,28 @@ export async function request<T>(
   return data as T
 }
 
+/**
+ * Open an authenticated long-lived response. Unlike `request`, the body is
+ * intentionally left unread so callers can consume a streaming response. It
+ * still uses the shared Bearer header and the existing single 401 refresh/retry
+ * boundary.
+ */
+export async function streamRequest(
+  path: string,
+  options: Omit<RequestInit, 'body'> = {},
+  token = '',
+): Promise<Response> {
+  const headers = new Headers(options.headers)
+  headers.set('Accept', 'text/event-stream')
+  headers.set('Cache-Control', 'no-cache')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  try {
+    return await fetchWithAuthRetry(path, {...options, headers}, token, true)
+  } catch (error) {
+    throw new RequestTransportError(errorMessage(error, '实时通知连接失败'), true)
+  }
+}
+
 // uploadNativeFiles 让 Tauri 直接从本地路径流式上传文件，避免大资料包进入 WebView 内存。
 export async function uploadNativeFiles<T>(
   path: string,
@@ -175,15 +197,17 @@ function notifyModuleUnavailable(path: string, error: ApiError): void {
   window.dispatchEvent(new CustomEvent(moduleUnavailableEvent, {detail: {path, message: error.message}}))
 }
 
-async function fetchWithAuthRetry(path: string, init: RequestInit, token: string): Promise<Response> {
-	let response = await activeTransport().fetch(path, init)
-	if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
+async function fetchWithAuthRetry(path: string, init: RequestInit, token: string, streaming = false): Promise<Response> {
+  let response = streaming ? await fetchStream(path, init) : await activeTransport().fetch(path, init)
+  if (!shouldRefreshAfterUnauthorized(path, token, response)) return response
 
-	const refreshedToken = await refreshedAuthToken(token)
-	if (!refreshedToken) return response
-	const retryHeaders = new Headers(init.headers)
-	retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
-	return await activeTransport().fetch(path, {...init, headers: retryHeaders})
+  const refreshedToken = await refreshedAuthToken(token)
+  if (!refreshedToken) return response
+  const retryHeaders = new Headers(init.headers)
+  retryHeaders.set('Authorization', `Bearer ${refreshedToken}`)
+  return streaming
+    ? await fetchStream(path, {...init, headers: retryHeaders})
+    : await activeTransport().fetch(path, {...init, headers: retryHeaders})
 }
 
 async function refreshedAuthToken(token: string): Promise<string | null> {

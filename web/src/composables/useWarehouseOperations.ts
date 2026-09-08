@@ -46,6 +46,45 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
     movementMode.value = ''; showAllItemMovements.value = false; itemMovements.value = []; itemMovementsError.value = ''; deps.panelMessage.value = ''
     await Promise.allSettled([loadWarehouseItemDetail(), loadItemMovements()])
   }
+
+  /**
+   * Resolve a notification target without relying on the currently visible
+   * (paged/filtered) table rows. Warehouse detail is keyed by item type and
+   * ID; the notification registry may only know the generic warehouse item
+   * type, so try the two supported catalog types in a fixed order.
+   */
+  async function loadWarehouseItemByID(entityType: unknown, rawID: unknown): Promise<BasicItem | null> {
+    const itemID = Number(rawID)
+    if (!Number.isSafeInteger(itemID) || itemID <= 0) return null
+    const normalizedType = String(entityType || '').trim().toLowerCase()
+    const candidates = normalizedType === 'material'
+      ? ['material']
+      : normalizedType === 'product'
+        ? ['product']
+        : normalizedType === 'warehouse_item' || normalizedType === 'record'
+          ? ['product', 'material']
+          : []
+    for (const itemType of candidates) {
+      try {
+        const data = await request<Record<string, unknown>>(`/api/v1/warehouse/items/${itemType}/${itemID}`, {}, deps.token.value)
+        const source = data.item && typeof data.item === 'object' && !Array.isArray(data.item)
+          ? data.item as Record<string, unknown>
+          : data
+        if (!source || typeof source !== 'object') continue
+        return {
+          ...(source as BasicItem),
+          id: itemID,
+          item_type: itemType,
+          quantity: data.quantity ?? source.quantity,
+        }
+      } catch {
+        // A valid ID belongs to only one catalog type. A 404/permission
+        // failure for the first candidate is therefore safe to fall through;
+        // a final null lets the notification layer downgrade to the list.
+      }
+    }
+    return null
+  }
   async function closeWarehouseItem() { if (await requestWarehouseClose()) performWarehouseClose() }
   function performWarehouseClose() { invalidateRequests(); closeBypass = true; warehouseDrawerVisible.value = false; window.setTimeout(() => { closeBypass = false }, 0) }
   async function requestWarehouseClose() {
@@ -136,5 +175,5 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
   function businessTypeLabel(value: unknown) { return movementDefinitions.find((item) => item.key === value)?.title || (value === 'inbound' ? '入库' : '出库') }
   function movementQuantity(document: BasicItem) { const lines = Array.isArray(document.lines) ? document.lines as Array<Record<string, unknown>> : []; return `${document.type === 'outbound' ? '−' : '+'}${formatQuantity(lines[0]?.quantity)} ${selectedWarehouseItem.value?.unit || ''}` }
 
-  return {invalidateWarehouseRequests: invalidateRequests, openWarehouseItem, closeWarehouseItem, performWarehouseClose, requestWarehouseClose, handleWarehouseBeforeClose, resetWarehouseItem, loadWarehouseItemDetail, loadItemMovements, loadAllItemMovements, startMovement, cancelMovement, resetMovementSource, clearMovementForm, submitMovement, createQuickSupplier, decimalToScaled, moneyToCents, formatQuantity, formatMoney, formatDate, businessTypeLabel, movementQuantity}
+  return {invalidateWarehouseRequests: invalidateRequests, openWarehouseItem, loadWarehouseItemByID, closeWarehouseItem, performWarehouseClose, requestWarehouseClose, handleWarehouseBeforeClose, resetWarehouseItem, loadWarehouseItemDetail, loadItemMovements, loadAllItemMovements, startMovement, cancelMovement, resetMovementSource, clearMovementForm, submitMovement, createQuickSupplier, decimalToScaled, moneyToCents, formatQuantity, formatMoney, formatDate, businessTypeLabel, movementQuantity}
 }

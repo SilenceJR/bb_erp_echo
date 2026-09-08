@@ -607,6 +607,12 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8080/api/v1/statistics
 Authorization: Bearer {{token}}
 
+### 建立实时数据变更通知流（持续响应，不在 URL 传递 token）
+GET http://127.0.0.1:8080/api/v1/notifications/stream
+Accept: text/event-stream
+Cache-Control: no-cache
+Authorization: Bearer {{token}}
+
 ### 验证暂缓模块统一错误
 # 全新数据库预期 503，code=module_not_initialized；已有相关表的升级数据库继续返回正常业务响应。
 GET http://127.0.0.1:8080/api/v1/warehouses

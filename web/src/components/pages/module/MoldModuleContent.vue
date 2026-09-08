@@ -36,7 +36,7 @@
           <el-table-column label="位置" width="120"><template #default="{row}">{{ row.location?.code || '—' }}</template></el-table-column>
           <el-table-column prop="common_group_no" label="共模组号" width="130" />
           <el-table-column label="图片" width="80"><template #default="{row}">{{ row.image_count || 0 }}</template></el-table-column>
-          <el-table-column label="操作" width="120" fixed="right"><template #default="{row}"><span class="mold-detail-trigger" :data-mold-id="row.id"><el-button link type="primary" @click="openDetail(row.id, $event)">详情</el-button></span></template></el-table-column>
+          <el-table-column label="查看" width="120" fixed="right"><template #default="{row}"><span class="mold-detail-trigger" :data-mold-id="row.id"><el-button link type="primary" @click="openDetail(row.id, $event)">详情</el-button></span></template></el-table-column>
         </el-table>
       </DataTableShell>
     </template>
@@ -162,6 +162,7 @@ import {getTransferDefinition, getTransferImportDefinition} from '../../../data/
 import {useTransferDownload} from '../../../composables/useTransferDownload'
 import {downloadApiFile, request, uploadNativeFiles} from '../../../api/http'
 import {dirtyGuardRegistry} from '../../../platform/dirtyGuard'
+import {notificationOpenEvent, notificationRefreshEvent, type NotificationOpenEventDetail, type NotificationRefreshEventDetail} from '../../../platform/notifications'
 import type {NativeFileDragDetail} from '../../../types'
 import DataTableShell from '../../ui/DataTableShell.vue'
 import PageHeader from '../../ui/PageHeader.vue'
@@ -437,15 +438,56 @@ async function restoreImportTriggerFocus() {
 function formatSize(size: number) { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`; return `${(size / 1024 / 1024).toFixed(1)} MB` }
 function handleDetailEscape(event: KeyboardEvent) {
   if (event.key !== 'Escape' || event.defaultPrevented || !detailVisible.value) return
-  if ([...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper')].some((element) => {
+  if ([...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper, .el-image-viewer__wrapper, .el-image-viewer__mask')].some((element) => {
     const style = window.getComputedStyle(element)
     return style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none'
   })) return
   event.preventDefault()
   void requestDetailClose()
 }
-onMounted(() => { void Promise.all([load(), loadLocations()]); document.addEventListener('keydown', handleDetailEscape) })
-onBeforeUnmount(() => { document.removeEventListener('keydown', handleDetailEscape); setPageDetailPanelVisible(false) })
+async function handleNotificationOpen(event: Event) {
+  const detail = (event as CustomEvent<NotificationOpenEventDetail>).detail
+  if (!detail || detail.module.module !== 'molds' || detail.module.action.type !== 'open_entity') return
+  const id = Number(detail.module.action.entity_id ?? detail.module.items[0]?.entity_id)
+  if (!Number.isSafeInteger(id) || id <= 0) return
+  if (!rows.value.some((row) => row.id === id)) await load()
+  if (!rows.value.some((row) => row.id === id)) {
+    ElMessage.info('该模具已不存在或当前账号无权查看')
+    return
+  }
+  await openDetail(id)
+}
+
+function handleNotificationRefresh(event: Event) {
+  const detail = (event as CustomEvent<NotificationRefreshEventDetail>).detail
+  if (!detail || detail.module.module !== 'molds') return
+  detail.handled = true
+  if (detail.deferred || moldDirty.value) {
+    detail.deferred = true
+    detailError.value = '其他用户已更新模具资料，当前修改未覆盖；请保存或关闭后重新加载'
+    ElMessage.warning('数据已由其他用户更新，请保存或关闭当前修改后刷新')
+    return
+  }
+  void (async () => {
+    await Promise.all([load(), loadLocations()])
+    if (!detailVisible.value || editing.value || !detailID.value) return
+    const targetID = detail.module.refresh.entity_id
+    if (detail.module.refresh.invalidate_all || targetID === undefined || String(targetID) === String(detailID.value)) await openDetail(detailID.value)
+  })().catch(() => { detailError.value = '外部更新同步失败，请手动刷新' })
+}
+
+onMounted(() => {
+  void Promise.all([load(), loadLocations()])
+  document.addEventListener('keydown', handleDetailEscape)
+  window.addEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.addEventListener(notificationRefreshEvent, handleNotificationRefresh)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleDetailEscape)
+  window.removeEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.removeEventListener(notificationRefreshEvent, handleNotificationRefresh)
+  setPageDetailPanelVisible(false)
+})
 </script>
 
 <style scoped>

@@ -31,6 +31,7 @@ import (
 	erpmiddleware "bb_erp_echo/internal/middleware"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/mold"
+	"bb_erp_echo/internal/notification"
 	"bb_erp_echo/internal/product"
 	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
@@ -76,7 +77,9 @@ type App struct {
 	DiscoveryService *discovery.Service
 	// DiscoveryIdentity 是匿名身份接口使用的稳定服务身份。
 	DiscoveryIdentity *discovery.Identity
-	LogSystem         *erplogger.System
+	// NotificationService 负责在线账号的临时实时变更通知；消息不持久化。
+	NotificationService *notification.Service
+	LogSystem           *erplogger.System
 }
 
 // Validator 是 Echo 请求校验适配器。
@@ -132,6 +135,7 @@ func (v *Validator) Validate(i any) error {
 func New() (created *App, resultErr error) {
 	var logSystem *erplogger.System
 	var db *gorm.DB
+	var notificationService *notification.Service
 	defer func() {
 		if resultErr == nil {
 			return
@@ -143,6 +147,9 @@ func New() (created *App, resultErr error) {
 			} else if err := sqlDB.Close(); err != nil {
 				cleanupErrors = append(cleanupErrors, fmt.Errorf("close database after initialization failure: %w", err))
 			}
+		}
+		if notificationService != nil {
+			notificationService.Close()
 		}
 		if logSystem != nil {
 			if err := logSystem.Close(); err != nil {
@@ -203,21 +210,23 @@ func New() (created *App, resultErr error) {
 		HTTPTimeout:      cfg.Discovery.HTTPTimeout,
 		Logger:           logSystem.App,
 	}, *identity)
+	notificationService = notification.NewService(db, notification.Config{}, logSystem.App)
 
 	app := &App{
-		Config:            cfg,
-		Logger:            logSystem.App,
-		AccessLogger:      logSystem.Access,
-		ErrorLogger:       logSystem.Error,
-		DB:                db,
-		Echo:              echo.New(),
-		Authorizer:        authorizer,
-		AuthService:       authService,
-		RoleService:       roleService,
-		UpdateService:     updateService,
-		DiscoveryService:  discoveryService,
-		DiscoveryIdentity: identity,
-		LogSystem:         logSystem,
+		Config:              cfg,
+		Logger:              logSystem.App,
+		AccessLogger:        logSystem.Access,
+		ErrorLogger:         logSystem.Error,
+		DB:                  db,
+		Echo:                echo.New(),
+		Authorizer:          authorizer,
+		AuthService:         authService,
+		RoleService:         roleService,
+		UpdateService:       updateService,
+		DiscoveryService:    discoveryService,
+		DiscoveryIdentity:   identity,
+		NotificationService: notificationService,
+		LogSystem:           logSystem,
 	}
 
 	app.configureEcho()
@@ -304,6 +313,10 @@ func (a *App) registerRoutes() error {
 	updateHandler.RegisterPublicRoutes(v1)
 
 	protected := v1.Group("", jwtMiddleware)
+	// 受保护路由统一观察成功的业务写请求；通知服务本身只在返回 2xx 且
+	// 事务已经结束后发布安全摘要，失败和回滚请求不会广播。
+	protected.Use(notification.MutationMiddleware(a.NotificationService))
+	notification.NewHandler(a.NotificationService).RegisterRoutes(protected)
 
 	system := protected.Group("/system", auditMiddleware)
 	department.NewHandler(a.DB).RegisterRoutes(system, require)
@@ -500,6 +513,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 		if err := a.DiscoveryService.Shutdown(ctx); err != nil {
 			shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown discovery service: %w", err))
 		}
+	}
+	if a.NotificationService != nil {
+		// 先关闭长连接，让 SSE handler 从队列退出，再等待 HTTP server
+		// 优雅关闭；否则长期通知流会占用 Shutdown 的整个超时窗口。
+		a.NotificationService.Close()
 	}
 
 	if a.Server != nil {

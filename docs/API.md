@@ -1,6 +1,6 @@
 # 博邦 ERP API 文档
 
-更新时间：2026-09-08
+更新时间：2026-09-09
 
 ## 文档入口
 
@@ -27,6 +27,27 @@ GET /swagger/doc.json
 ```http
 Authorization: Bearer <token>
 ```
+
+## 实时数据变更通知
+
+```text
+GET /api/v1/notifications/stream
+Accept: text/event-stream
+Authorization: Bearer <token>
+```
+
+该接口使用带 Bearer 头的 fetch-SSE 长连接，不接受 URL 中的令牌。
+通知只保存在服务端与客户端当前进程内，不写数据库、不支持断线回放；
+断线重连后客户端应重新加载当前可安全刷新的模块。
+
+服务端在成功写请求返回后发送 `data_changed` 事件，按当前数据库中的
+组织、账号状态和对应模块读权限过滤，并排除操作账号的所有在线会话。
+事件为版本化安全摘要，包含 `v/id/kind/priority/occurred_at/display_for_ms`、
+`module/title/summary/count/items/action/refresh/truncated`；不包含密码、令牌、
+成本、本机路径或完整业务模型。
+
+操作审计仍持久化到原有审计表，但不作为实时通知模块。`Action`
+使用稳定的 `模块:动作` 编码；读取、OPTIONS 和导入预览不写审计。
 
 ## 公共接口
 

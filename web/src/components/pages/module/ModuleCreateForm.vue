@@ -3,6 +3,9 @@
   <section v-if="savedItem" class="module-saved-detail" :aria-label="`${savedDetailTitle}内容`">
     <div class="module-saved-detail__heading"><span>{{ createEntityTitle }}</span><h3>{{ savedDetailPrimary }}</h3><p v-if="savedDetailSubtitle">{{ savedDetailSubtitle }}</p></div>
     <PropertyList>
+      <PropertyItem v-if="activeKey === 'users' && accountAssignmentDetail(savedItem)" :label="accountAssignmentDetail(savedItem)?.label">
+        <span class="module-saved-detail__assignment">{{ accountAssignmentDetail(savedItem)?.value }}</span>
+      </PropertyItem>
       <PropertyItem v-for="field in savedDetailFields" :key="field.key" :label="field.label"><span :class="{'module-saved-detail__mono': field.mono}">{{ field.value }}</span></PropertyItem>
     </PropertyList>
   </section>
@@ -98,6 +101,7 @@ const {
   formState, operatorDirectory, toggleCreateForm, loading, moduleUnavailable,
   columnLabel, formatGenericCell, genericStatusLabel, hasAssignmentAction, assignmentConfigs,
   openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint,
+  accountAssignmentDetail,
 } = useWorkspaceContext()
 const {workorderProductStock, temporaryProductDialogVisible, temporaryProductSubmitting, temporaryProductForm, closeTemporaryProductWithGuard} = useWorkorderContext().product
 const savedItem = ref<BasicItem | null>(null)
@@ -271,4 +275,5 @@ async function requestClose(open: boolean) { if (!open && showCreateForm.value) 
 .module-saved-detail__heading h3 { margin: var(--bb-space-1) 0 0; color: var(--bb-text-primary); font-size: var(--bb-font-size-20); line-height: var(--bb-line-height-tight); overflow-wrap: anywhere; }
 .module-saved-detail__heading p { margin: var(--bb-space-2) 0 0; color: var(--bb-text-secondary); line-height: var(--bb-line-height-relaxed); overflow-wrap: anywhere; }
 .module-saved-detail__mono { font-family: var(--bb-font-mono); overflow-wrap: anywhere; }
+.module-saved-detail__assignment { overflow-wrap: anywhere; line-height: var(--bb-line-height-base); }
 </style>

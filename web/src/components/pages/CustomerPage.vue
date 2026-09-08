@@ -60,7 +60,7 @@
           <el-table-column label="联系人" min-width="140"><template #default="{row}">{{ row.default_profile?.contact_name || '—' }}</template></el-table-column>
           <el-table-column label="联系电话" min-width="150"><template #default="{row}"><span class="text-cell">{{ row.default_profile?.contact_phone || '—' }}</span></template></el-table-column>
           <el-table-column v-if="!drawerVisible" label="业务员" min-width="120"><template #default="{row}">{{ row.default_profile?.salesperson || '—' }}</template></el-table-column>
-          <el-table-column label="操作" width="100" align="center" fixed="right"><template #default="{row}"><el-button v-if="row.default_profile" link type="primary" :data-customer-profile-trigger="row.default_profile.id" @click="openProfile(row.default_profile, asCustomerCode(row), $event)">详情</el-button><span v-else>—</span></template></el-table-column>
+          <el-table-column label="查看" width="100" align="center" fixed="right"><template #default="{row}"><el-button v-if="row.default_profile" link type="primary" :data-customer-profile-trigger="row.default_profile.id" @click="openProfile(row.default_profile, asCustomerCode(row), $event)">详情</el-button><span v-else>—</span></template></el-table-column>
         </el-table>
       </section>
 
@@ -142,6 +142,7 @@
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
 import {request} from '../../api/http'
+import {notificationOpenEvent, notificationRefreshEvent, type NotificationOpenEventDetail, type NotificationRefreshEventDetail} from '../../platform/notifications'
 import {appMessageBox} from '../../composables/useAppMessageBox'
 import {useResponsiveDetailPanel} from '../../composables/useResponsiveDetailPanel'
 import {useWorkspaceContext} from '../../composables/workspaceContext'
@@ -153,7 +154,7 @@ import CustomerProfileDrawer, {type CustomerProfileFormValue} from './CustomerPr
 import CustomerImportDialog from './CustomerImportDialog.vue'
 import CustomerExportDialog from './CustomerExportDialog.vue'
 
-const {token, hasPermission, switchModule, registerModuleLeaveGuard, cache, setPageDetailPanelVisible} = useWorkspaceContext()
+const {token, hasPermission, switchModule, registerModuleLeaveGuard, cache, setPageDetailPanelVisible, setCustomerNotificationState} = useWorkspaceContext()
 const canWrite = computed(() => hasPermission('customers:write'))
 const canImport = computed(() => hasPermission('customers:import'))
 const activeTab = ref<'profiles' | 'codes'>('profiles')
@@ -229,6 +230,29 @@ const deletingCodeID = ref<number | null>(null)
 const deleteError = ref('')
 const replacementOptions = computed(() => (pendingDeleteCode.value?.profiles || []).filter((item) => item.id !== pendingDeleteProfile.value?.id))
 
+// A visible customer detail is not necessarily an edit conflict. Keep the
+// shell informed about the owning surfaces so read-only detail can refresh
+// silently while create/edit/import preserves its local state.
+const customerEditing = computed(() => Boolean(
+  (drawerVisible.value && drawerMode.value !== 'view')
+  || codeDialogVisible.value
+  || importVisible.value,
+))
+const customerDirty = computed(() => Boolean(
+  (drawerVisible.value && drawerMode.value !== 'view' && profileDrawerIsDirty())
+  || (codeDialogVisible.value && codeDirty.value),
+))
+
+function profileDrawerIsDirty(): boolean {
+  const exposed = profileDrawer.value?.dirty as unknown
+  if (exposed && typeof exposed === 'object' && 'value' in exposed) return Boolean((exposed as {value?: unknown}).value)
+  return Boolean(exposed)
+}
+
+watch([customerEditing, customerDirty], ([editing, dirty]) => {
+  setCustomerNotificationState(editing, dirty)
+}, {immediate: true, flush: 'sync'})
+
 watch([drawerVisible, codeDialogVisible], ([profileOpen, codeOpen]) => setPageDetailPanelVisible(profileOpen || codeOpen), {immediate: true, flush: 'sync'})
 
 function normalizeCodeRecord(item: CustomerCodeItem): CustomerCodeItem {
@@ -248,18 +272,20 @@ async function loadCodes() {
     let remoteTotal = 0
     do {
       const result = await request<PaginatedResponse<CustomerCodeItem>>(`/api/v1/customer-codes?page=${remotePage}&page_size=200`, {}, token.value)
-      if (generation !== listGeneration.value) return
+      if (generation !== listGeneration.value) return false
       nextCodes.push(...result.items.map(normalizeCodeRecord))
       remoteTotal = result.total
       remotePage += 1
       if (!result.items.length) break
     } while (nextCodes.length < remoteTotal)
-    if (generation !== listGeneration.value) return
+    if (generation !== listGeneration.value) return false
     sourceCodes.value = nextCodes
     syncMessage.value = '已刷新'
     await loadCodeOptions(generation)
+    return true
   } catch (cause) {
     if (generation === listGeneration.value) { listError.value = cause instanceof Error ? cause.message : '加载失败'; syncMessage.value = listError.value }
+    return false
   } finally { if (generation === listGeneration.value) loading.value = false }
 }
 async function loadCodeOptions(generation: number) {
@@ -434,6 +460,60 @@ async function confirmCodeClose() { if (!codeDirty.value) return true; try { awa
 async function beforeCloseCodeDialog(done: () => void) { if (!codeSaving.value && await confirmCodeClose()) done() }
 async function handleImportCompleted() { page.value = 1; await loadCodes() }
 
+function notificationProfileID(detail: NotificationOpenEventDetail): number | null {
+  const value = detail.module.action.entity_id ?? detail.module.items[0]?.entity_id
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+async function handleNotificationOpen(event: Event) {
+  const detail = (event as CustomEvent<NotificationOpenEventDetail>).detail
+  if (!detail || detail.module.module !== 'customers' || detail.module.action.type !== 'open_entity') return
+  const profileID = notificationProfileID(detail)
+  if (!profileID) return
+  const known = sourceCodes.value.flatMap((code) => code.profiles.map((profile) => ({profile, code}))).find(({profile}) => profile.id === profileID)
+  if (known) { await openProfile(known.profile, known.code); return }
+  await loadCodes()
+  const refreshed = sourceCodes.value.flatMap((code) => code.profiles.map((profile) => ({profile, code}))).find(({profile}) => profile.id === profileID)
+  if (refreshed) await openProfile(refreshed.profile, refreshed.code)
+  else ElMessage.info('该客户资料已不存在或当前账号无权查看')
+}
+
+function handleNotificationRefresh(event: Event) {
+  const detail = (event as CustomEvent<NotificationRefreshEventDetail>).detail
+  if (!detail || detail.module.module !== 'customers') return
+  const editing = customerEditing.value || customerDirty.value
+  if (detail.deferred || editing) {
+    detail.handled = true
+    syncMessage.value = '其他用户已更新客户资料，请保存或关闭当前编辑后刷新'
+    return
+  }
+  detail.handled = true
+  detail.completion = loadCodes().then((loaded) => {
+    if (!loaded) return false
+    if (!drawerVisible.value || drawerMode.value !== 'view' || !selectedProfile.value) return true
+    const refreshID = Number(detail.module.refresh.entity_id || 0)
+    const currentProfileID = selectedProfile.value.id
+    const currentCodeID = selectedCode.value?.id
+    const targetsCurrentDetail = detail.module.refresh.invalidate_all
+      || !refreshID
+      || refreshID === currentProfileID
+      || refreshID === currentCodeID
+    if (!targetsCurrentDetail) return true
+    const refreshed = sourceCodes.value.flatMap((code) => code.profiles.map((profile) => ({profile, code}))).find(({profile}) => profile.id === currentProfileID)
+    if (!refreshed) {
+      drawerVisible.value = false
+      selectedProfile.value = null
+      selectedCode.value = null
+      ElMessage.info('该客户资料已不存在或当前账号无权查看')
+      return true
+    }
+    selectedProfile.value = refreshed.profile
+    selectedCode.value = refreshed.code
+    return true
+  })
+}
+
 async function leaveGuard() {
   if (drawerSaving.value || codeSaving.value || deleting.value || deletingCodeID.value !== null) {
     ElMessage.warning('客户资料正在提交，请等待完成后再离开')
@@ -452,8 +532,22 @@ watch([() => filteredCodes.value.length, pageSize], () => {
   const lastPage = Math.max(1, Math.ceil(filteredCodes.value.length / pageSize.value))
   if (page.value > lastPage) page.value = lastPage
 })
-onMounted(() => { registerModuleLeaveGuard(leaveGuard); window.addEventListener('beforeunload', beforeUnload); void loadCodes() })
-onBeforeUnmount(() => { profileDetailGeneration.value += 1; setPageDetailPanelVisible(false); registerModuleLeaveGuard(null); window.removeEventListener('beforeunload', beforeUnload) })
+onMounted(() => {
+  registerModuleLeaveGuard(leaveGuard)
+  window.addEventListener('beforeunload', beforeUnload)
+  window.addEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.addEventListener(notificationRefreshEvent, handleNotificationRefresh)
+  void loadCodes()
+})
+onBeforeUnmount(() => {
+  profileDetailGeneration.value += 1
+  setCustomerNotificationState(false, false)
+  setPageDetailPanelVisible(false)
+  registerModuleLeaveGuard(null)
+  window.removeEventListener('beforeunload', beforeUnload)
+  window.removeEventListener(notificationOpenEvent, handleNotificationOpen)
+  window.removeEventListener(notificationRefreshEvent, handleNotificationRefresh)
+})
 </script>
 
 <style scoped>

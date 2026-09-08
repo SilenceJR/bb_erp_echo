@@ -69,7 +69,31 @@ export function useDirectoryOperations(d: Dependencies) {
       {key: 'materials', permission: 'material:read'}, {key: 'products', permission: 'product:read'},
       {key: 'customers', permission: 'customers:read'}, {key: 'suppliers', permission: 'suppliers:read'},
     ]
-    await Promise.allSettled(candidates.filter((item) => d.hasPermission(item.permission)).map((item) => loadList(item.key, false)))
+    const requests: Array<Promise<unknown>> = candidates.filter((item) => d.hasPermission(item.permission)).map((item) => loadList(item.key, false))
+    // User details use the same permission-gated reference data as the
+    // assignment drawer. Loading it once keeps account summaries meaningful
+    // without exposing a second role/permission presentation.
+    requests.push(refreshPermissionCaches())
+    await Promise.allSettled(requests)
+  }
+
+  async function loadPermissionOptions() {
+    const result = await request<BasicItem[] | PaginatedResponse<BasicItem>>('/api/v1/system/permissions?page=1&page_size=200', {}, d.token.value)
+    d.cache.permissions = Array.isArray(result) ? result : result.items
+  }
+
+  /** Refresh role/permission labels after an assignment notification. */
+  async function refreshPermissionCaches() {
+    const requests: Array<Promise<unknown>> = []
+    if (d.hasPermission('system:roles:read') || d.hasPermission('system:users:write')) {
+      delete d.cache.roles
+      requests.push(loadList('roles', false))
+    }
+    if (d.hasPermission('system:permissions:read') || d.hasPermission('system:roles:write')) {
+      delete d.cache.permissions
+      requests.push(loadPermissionOptions())
+    }
+    await Promise.allSettled(requests)
   }
 
   async function loadActiveModule() {
@@ -248,5 +272,5 @@ export function useDirectoryOperations(d: Dependencies) {
     } finally { d.loading.value = false }
   }
 
-  return {resetFilters, switchWarehouseTab, resetListQuery, applySearch, handlePageChange, handlePageSizeChange, preloadBaseData, loadActiveModule, loadList, createItem, clearForm, toggleCreateForm, editSupplier, createFormDirty}
+  return {resetFilters, switchWarehouseTab, resetListQuery, applySearch, handlePageChange, handlePageSizeChange, preloadBaseData, refreshPermissionCaches, loadActiveModule, loadList, createItem, clearForm, toggleCreateForm, editSupplier, createFormDirty}
 }

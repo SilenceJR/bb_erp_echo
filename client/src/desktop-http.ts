@@ -82,16 +82,16 @@ function isFileTransferPath(path: string): boolean {
     || path.startsWith('/api/v1/customers/export')
 }
 
-async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl): Promise<Response> {
+async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = currentServerUrl, timeoutOverride?: number): Promise<Response> {
   const controller = new AbortController()
-  const requestTimeoutMs = isFileTransferPath(path) ? fileRequestTimeoutMs : defaultRequestTimeoutMs
+  const requestTimeoutMs = timeoutOverride ?? (isFileTransferPath(path) ? fileRequestTimeoutMs : defaultRequestTimeoutMs)
   // 合并调用方取消信号与桌面端请求超时，避免上传下载请求过早中断。
   const abortFromCaller = () => controller.abort()
   if (init.signal) {
     if (init.signal.aborted) controller.abort()
     else init.signal.addEventListener('abort', abortFromCaller, {once: true})
   }
-  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+  const timeout = requestTimeoutMs > 0 ? window.setTimeout(() => controller.abort(), requestTimeoutMs) : undefined
   try {
     return await tauriFetch(apiUrl(path, serverUrl), {
       ...init,
@@ -100,7 +100,7 @@ async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = cu
   } catch (error) {
     throw connectionError(error, serverUrl)
   } finally {
-    window.clearTimeout(timeout)
+    if (timeout !== undefined) window.clearTimeout(timeout)
     init.signal?.removeEventListener('abort', abortFromCaller)
   }
 }
@@ -108,6 +108,11 @@ async function desktopFetch(path: string, init: RequestInit = {}, serverUrl = cu
 const desktopHttpBridge: DesktopHttpBridge = {
   fetch(path, init) {
     return desktopFetch(path, init)
+  },
+  fetchStream(path, init) {
+    // An SSE response has no finite completion deadline. Caller cancellation
+    // still propagates through the same AbortController as ordinary requests.
+    return desktopFetch(path, init, currentServerUrl, 0)
   },
   baseUrl() {
     return currentServerUrl

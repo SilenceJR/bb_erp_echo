@@ -2949,6 +2949,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/notifications/stream": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "建立当前登录账号的临时 Server-Sent Events 通知流；消息不持久化且断线不回放。",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "通知"
+                ],
+                "summary": "实时数据变更通知",
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/operator-employees": {
             "get": {
                 "security": [

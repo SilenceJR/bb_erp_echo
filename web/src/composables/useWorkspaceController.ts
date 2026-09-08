@@ -30,6 +30,7 @@ import {
 } from './useModuleConfiguration'
 import {
   columnLabel,
+  auditActionLabel,
   departmentCompletionRate,
   departmentProgressMetrics,
   departmentProgressSummary,
@@ -209,6 +210,7 @@ const {
   closeTemporaryProductWithGuard,
   createTemporaryProduct,
   loadWorkorderDrawerProductStock,
+  loadWorkOrderByID,
   openWorkOrder,
   closeWorkOrder,
   handleWorkOrderBeforeClose,
@@ -240,6 +242,11 @@ const {
 
 const statisticsData = ref<StatisticsDashboard | null>(null)
 const pageDetailPanelVisible = ref(false)
+// CustomerPage owns the profile/code drawers, so it reports their real edit
+// state to the shell.  Realtime notifications must distinguish a read-only
+// detail (safe to refresh) from an active create/edit/import flow.
+const customerEditing = ref(false)
+const customerDirty = ref(false)
 const affiliationTarget = ref<BasicItem | null>(null)
 const affiliationDepartmentID = ref<number | undefined>()
 const affiliationTerminalID = ref<number | undefined>()
@@ -537,6 +544,7 @@ const eligibleOriginalDocuments = computed(() => itemMovements.value.filter((ite
 const {
   invalidateWarehouseRequests,
   openWarehouseItem,
+  loadWarehouseItemByID,
   closeWarehouseItem,
   performWarehouseClose,
   requestWarehouseClose,
@@ -701,7 +709,7 @@ directoryOperations = useDirectoryOperations({
 })
 const {
   resetFilters, switchWarehouseTab, resetListQuery, applySearch, handlePageChange,
-  handlePageSizeChange, createItem, clearForm, toggleCreateForm, editSupplier, createFormDirty,
+  handlePageSizeChange, createItem, clearForm, toggleCreateForm, editSupplier, createFormDirty, refreshPermissionCaches,
 } = directoryOperations
 
 function preloadBaseData() { return directoryOperations.preloadBaseData() }
@@ -732,7 +740,7 @@ async function switchModule(key: string) {
   editingSupplier.value = null
   resetListQuery()
   clearForm()
-  void loadActiveModule()
+  await loadActiveModule()
 }
 
 function registerModuleLeaveGuard(guard: (() => Promise<boolean>) | null) {
@@ -1130,6 +1138,11 @@ function setPageDetailPanelVisible(visible: boolean) {
   pageDetailPanelVisible.value = visible
 }
 
+function setCustomerNotificationState(editing: boolean, dirty: boolean) {
+  customerEditing.value = editing
+  customerDirty.value = dirty
+}
+
 function handleModuleUnavailableEvent(event: Event) {
   const detail = (event as CustomEvent<{path?: string; message?: string}>).detail
   const moduleKey = deferredModuleForPath(detail?.path || '')
@@ -1154,6 +1167,7 @@ async function loadStatistics() {
 
 function formatGenericCell(column: string, value: unknown): string {
   if (column === 'operator_employee_name' && !value) return '历史记录未记录员工'
+  if (column === 'action') return auditActionLabel(value)
   if (column === 'account_type') {
     if (value === 'personal') return '个人账号'
     if (value === 'department_terminal') return '部门终端账号'
@@ -1185,6 +1199,41 @@ function genericRowSubtitle(row: BasicItem): string {
   if (!column) return `编号 ${row.id}`
   const value = formatGenericCell(column, row[column])
   return value === '-' ? `编号 ${row.id}` : `${columnLabel(column)}：${value}`
+}
+
+function accountAssignmentDetail(row: Record<string, unknown>): {label: string; value: string} | null {
+  if (row.account_type !== 'personal' && row.account_type !== 'department_terminal') return null
+  const roleIDs = Array.isArray(row.role_ids) ? row.role_ids.map(Number).filter(Number.isSafeInteger) : []
+  // Read the reactive keys directly so an async cache refresh updates an
+  // already-open account detail. `hasOwnProperty` alone does not collect the
+  // missing-key dependency in Vue's reactive proxy.
+  const roleOptions = cache.roles || []
+  const rolesLoaded = Array.isArray(cache.roles)
+  const roleNames = roleIDs.map((id) => {
+    const role = roleOptions.find((item) => Number(item.id) === id)
+    return role ? String(role.name || role.code || `角色 #${id}`) : ''
+  })
+  if (row.account_type === 'personal') {
+    if (!rolesLoaded) return {label: '当前角色', value: hasPermission('system:roles:read') || hasPermission('system:users:write') ? '角色信息暂不可用' : '当前账号无权查看角色详情'}
+    if (roleIDs.length && roleNames.some((name) => !name)) return {label: '当前角色', value: '角色信息暂不可用'}
+    return {label: '当前角色', value: roleNames.length ? roleNames.join('、') : '未配置角色'}
+  }
+  if (!rolesLoaded) return {label: '当前权限', value: hasPermission('system:roles:read') || hasPermission('system:users:write') ? '权限信息暂不可用' : '当前账号无权查看权限详情'}
+  if (roleIDs.length && roleNames.some((name) => !name)) return {label: '当前权限', value: '权限信息暂不可用'}
+  const permissionOptions = cache.permissions || []
+  const permissionsLoaded = Array.isArray(cache.permissions)
+  const permissionIDs = roleIDs.flatMap((id) => {
+    const role = roleOptions.find((item) => Number(item.id) === id)
+    return Array.isArray(role?.permission_ids) ? role.permission_ids.map(Number).filter(Number.isSafeInteger) : []
+  })
+  if (!permissionsLoaded) return {label: '当前权限', value: hasPermission('system:permissions:read') || hasPermission('system:roles:write') ? '权限信息暂不可用' : '当前账号无权查看权限详情'}
+  const permissionNames = [...new Set(permissionIDs)].map((id) => {
+    const permission = permissionOptions.find((item) => Number(item.id) === id)
+    return permission ? String(permission.name || permission.code || `权限 #${id}`) : ''
+  })
+  if (permissionNames.some((name) => !name)) return {label: '当前权限', value: '权限信息暂不可用'}
+  if (permissionNames.length) return {label: '当前权限', value: permissionNames.join('、')}
+  return {label: '当前权限', value: '未配置权限'}
 }
 
 function departmentName(id: unknown): string {
@@ -1309,7 +1358,7 @@ const workorderContext = {
     workorderStatusOptions, workorderTypeOptions, workorderPriorityOptions,
     workorderTypeLabel, workorderStatusLabel,
     workorderStatusTone, formatQuantity, departmentProgressSummary, departmentProgressMetrics,
-    formatDate, workorderDueState, openWorkOrder,
+    formatDate, workorderDueState, loadWorkOrderByID, openWorkOrder,
   },
   product: {
     operatorDirectory, formState, formError, loading, temporaryProductForm,
@@ -1399,6 +1448,8 @@ const workorderContext = {
     activeWarehouseTab,
     statisticsData,
     pageDetailPanelVisible,
+    customerEditing,
+    customerDirty,
     statisticsSourcesUnavailable,
     statisticsSourceUnavailable,
     affiliationTarget,
@@ -1489,6 +1540,7 @@ const workorderContext = {
     assignmentTargetDisabled,
     assignmentTargetHint,
     setPageDetailPanelVisible,
+    setCustomerNotificationState,
     saveAssignment,
     openUserAffiliation,
     closeUserAffiliation,
@@ -1505,6 +1557,7 @@ const workorderContext = {
     loadHealth,
     loadMe,
     preloadBaseData,
+    refreshPermissionCaches,
     loadActiveModule,
     loadStatistics,
     loadList,
@@ -1521,10 +1574,12 @@ const workorderContext = {
     permissionDomainLabel,
     genericRowTitle,
     genericRowSubtitle,
+    accountAssignmentDetail,
     stockState,
     columnLabel,
     invalidateWarehouseRequests,
     openWarehouseItem,
+    loadWarehouseItemByID,
     closeWarehouseItem,
     requestWarehouseClose,
     performWarehouseClose,

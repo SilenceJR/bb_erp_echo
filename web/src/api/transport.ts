@@ -19,6 +19,8 @@ export interface DesktopUpdateCapabilities {
 // Web 使用浏览器同源 fetch；Tauri 在启动时注入 Rust HTTP 插件实现。
 export interface HttpTransport {
   fetch(path: string, init?: RequestInit): Promise<Response>
+  /** Long-lived response transport used by authenticated SSE streams. */
+  fetchStream?(path: string, init?: RequestInit): Promise<Response>
   baseUrl(): string
 }
 
@@ -50,9 +52,22 @@ const browserTransport: HttpTransport = {
   fetch(path, init) {
     return window.fetch(`${browserBaseUrl}${path}`, init)
   },
+  fetchStream(path, init) {
+    return window.fetch(`${browserBaseUrl}${path}`, init)
+  },
   baseUrl() {
     return browserBaseUrl
   },
+}
+
+/**
+ * Use a platform-specific long-lived response when available. Older embedded
+ * clients may not expose it yet, so the browser-compatible fallback keeps the
+ * shared shell loadable while those clients are upgraded.
+ */
+export function fetchStream(path: string, init?: RequestInit): Promise<Response> {
+  const transport = activeTransport()
+  return transport.fetchStream ? transport.fetchStream(path, init) : transport.fetch(path, init)
 }
 
 export function activeTransport(): HttpTransport {

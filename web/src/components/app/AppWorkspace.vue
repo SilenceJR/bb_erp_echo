@@ -62,18 +62,22 @@
         {{ healthStatusLabel }}
       </button>
 
-      <div class="user-chip" :inert="mobileNavOpen">
-        <div class="user-copy"><span>{{ currentUser?.name || currentUser?.username }}</span><small>{{ accountTypeText }}</small></div>
-        <el-dropdown trigger="click" @command="handleUserCommand">
-          <el-button class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="settings">设置</el-dropdown-item>
-              <el-dropdown-item command="change-password">修改密码</el-dropdown-item>
-              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+      <div class="topbar-actions">
+        <NotificationCenter />
+
+        <div class="user-chip" :inert="mobileNavOpen">
+          <div class="user-copy"><span>{{ currentUser?.name || currentUser?.username }}</span><small>{{ accountTypeText }}</small></div>
+          <el-dropdown trigger="click" @command="handleUserCommand">
+            <el-button class="user-avatar" :aria-label="`${currentUser?.name || currentUser?.username || '用户'}菜单`">{{ userInitial }}</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="settings">设置</el-dropdown-item>
+                <el-dropdown-item command="change-password">修改密码</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </header>
 
@@ -91,22 +95,55 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch} from 'vue'
 import {ElMessage} from 'element-plus'
-import {useWorkspaceContext} from '../../composables/workspaceContext'
+import {notificationCenterKey, useWorkspaceContext} from '../../composables/workspaceContext'
+import {useRealtimeNotifications} from '../../composables/useRealtimeNotifications'
 import {nextSidebarMode, normalizeSidebarMode, sidebarStorageKey, type SidebarMode} from '../../platform/appearance'
 import {resolveFocusLoopTarget} from '../../platform/focusLoop'
 import AppNavigation from '../ui/AppNavigation.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import SettingsPanel from './SettingsPanel.vue'
+import NotificationCenter from '../ui/NotificationCenter.vue'
 import {Menu} from '@element-plus/icons-vue'
 import {clientSidebarMode, clientViewport, activeDetailWidth, activeDetailDocked, requestActiveDetailClose} from '../../composables/detailLayout'
 
+const workspaceContext = useWorkspaceContext()
 const {
   token, currentUser, activeKey, activeModule, businessItems, systemItems, userInitial,
   accountTypeText, healthStatus, healthStatusLabel, switchModule, logout, loginForm,
   warehouseDrawerVisible, workorderDrawerVisible, pageDetailPanelVisible,
-} = useWorkspaceContext()
+  customerEditing, customerDirty,
+  showCreateForm, editingSupplier, movementFormDirty, selectedWarehouseItem, showQuickSupplier,
+  rows, panelMessage, assignmentTarget, affiliationTarget, loadActiveModule,
+} = workspaceContext
+const notificationCenter = useRealtimeNotifications({
+  token,
+  currentUser,
+  activeKey,
+  panelMessage,
+  showCreateForm,
+  editingSupplier,
+  movementFormDirty,
+  warehouseDrawerVisible,
+  selectedWarehouseItem,
+  showQuickSupplier,
+  rows,
+  pageDetailPanelVisible,
+  customerEditing,
+  customerDirty,
+  assignmentTarget,
+  affiliationTarget,
+  loadActiveModule,
+  switchModule,
+  openWarehouseItem: workspaceContext.openWarehouseItem,
+  loadWarehouseItemByID: workspaceContext.loadWarehouseItemByID,
+  loadWarehouseItemDetail: workspaceContext.loadWarehouseItemDetail,
+  loadItemMovements: workspaceContext.loadItemMovements,
+  loadPermissionCaches: workspaceContext.refreshPermissionCaches,
+  workorderContext: workspaceContext.workorderContext,
+})
+provide(notificationCenterKey, notificationCenter)
 const passwordDialogVisible = ref(false)
 const settingsVisible = ref(false)
 const mobileNavOpen = ref(false)
@@ -224,7 +261,7 @@ function navigationFocusableElements() {
 
 function eventBelongsToElementLayer(event: KeyboardEvent) {
   return event.target instanceof Element
-    && Boolean(event.target.closest('.el-overlay:not([inert]), .el-popper:not([inert])'))
+    && Boolean(event.target.closest('.el-overlay:not([inert]), .el-popper:not([inert]), .el-image-viewer__wrapper:not([inert]), .el-image-viewer__mask:not([inert])'))
 }
 
 watch(mobileNavOpen, async (open, wasOpen) => {

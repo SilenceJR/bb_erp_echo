@@ -16,6 +16,9 @@
         <p v-if="subtitle">{{ subtitle }}</p>
       </div>
       <PropertyList>
+        <PropertyItem v-if="activeKey === 'users' && accountAssignmentDetail(item)" :label="accountAssignmentDetail(item)?.label">
+          <span class="generic-record-detail__assignment">{{ accountAssignmentDetail(item)?.value }}</span>
+        </PropertyItem>
         <PropertyItem v-for="field in fields" :key="field.key" :label="field.label">
           <span :class="{'generic-record-detail__mono': field.mono}">{{ field.value }}</span>
         </PropertyItem>
@@ -34,6 +37,7 @@
 <script setup lang="ts">
 import {computed} from 'vue'
 import {useResponsiveDetailPanel} from '../../../composables/useResponsiveDetailPanel'
+import {useWorkspaceContext} from '../../../composables/workspaceContext'
 import PropertyItem from '../../ui/PropertyItem.vue'
 import PropertyList from '../../ui/PropertyList.vue'
 import ResponsiveDetailCarrier from '../../ui/ResponsiveDetailCarrier.vue'
@@ -55,6 +59,7 @@ const emit = defineEmits<{
 }>()
 const visible = computed({get: () => props.modelValue, set: (value) => emit('update:modelValue', value)})
 const {docked, size} = useResponsiveDetailPanel(visible, false)
+const {activeKey, accountAssignmentDetail} = useWorkspaceContext()
 </script>
 
 <style scoped>
@@ -64,5 +69,6 @@ const {docked, size} = useResponsiveDetailPanel(visible, false)
 .generic-record-detail__heading h3 { margin: var(--bb-space-1) 0 0; color: var(--bb-text-primary); font-size: var(--bb-font-size-20); line-height: var(--bb-line-height-tight); overflow-wrap: anywhere; }
 .generic-record-detail__heading p { margin: var(--bb-space-2) 0 0; color: var(--bb-text-secondary); line-height: var(--bb-line-height-relaxed); overflow-wrap: anywhere; }
 .generic-record-detail__mono { font-family: var(--bb-font-mono); overflow-wrap: anywhere; }
+.generic-record-detail__assignment { overflow-wrap: anywhere; line-height: var(--bb-line-height-base); }
 .generic-record-detail__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--bb-space-2); }
 </style>

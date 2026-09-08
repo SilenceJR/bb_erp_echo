@@ -242,6 +242,44 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     return requestToken === logsToken && workorderDrawerVisible.value && Number(selectedWorkOrder.value?.id) === workorderID
   }
 
+  function workOrderContainsID(item: BasicItem, targetID: number): boolean {
+    if (Number(item.id) === targetID) return true
+    const children = item.department_tasks ?? item.departmentTasks ?? item.tasks
+    return Array.isArray(children) && children.some((child) => {
+      const value = child && typeof child === 'object' ? (child as Record<string, unknown>).id : child
+      return Number(value) === targetID
+    })
+  }
+
+  /**
+   * Work orders currently expose a paginated list rather than a standalone
+   * detail endpoint. Walk that list with a large, unfiltered page size so a
+   * notification target outside the current page/filter can still be opened
+   * by ID. Department-task IDs are also matched because their action routes
+   * use the task ID while the drawer is keyed by its parent work order.
+   */
+  async function loadWorkOrderByID(rawID: unknown): Promise<BasicItem | null> {
+    const targetID = Number(rawID)
+    if (!Number.isSafeInteger(targetID) || targetID <= 0) return null
+    const pageSize = 200
+    let currentPage = 1
+    let total = Number.POSITIVE_INFINITY
+    while (currentPage <= 100 && (currentPage - 1) * pageSize < total) {
+      const path = appendQuery('/api/v1/workorder', {page: currentPage, page_size: pageSize})
+      const data = await request<PaginatedResponse<BasicItem> | BasicItem[]>(path, {}, token.value)
+      if (Array.isArray(data)) {
+        return data.find((item) => workOrderContainsID(item, targetID)) || null
+      }
+      const items = data.items || []
+      const found = items.find((item) => workOrderContainsID(item, targetID))
+      if (found) return found
+      total = Number.isFinite(Number(data.total)) ? Number(data.total) : currentPage * pageSize
+      if (!items.length) break
+      currentPage += 1
+    }
+    return null
+  }
+
   async function openWorkOrder(value: unknown) {
     const item = value as BasicItem
     if (workorderDrawerVisible.value && Number(selectedWorkOrder.value?.id) === Number(item.id) && !actionDialogVisible.value) return
@@ -403,7 +441,7 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
   return {
     invalidateWorkorderProductSearch, searchWorkorderProducts, handleWorkorderProductSelect, resetWorkorderProductSelection, loadWorkorderProductStock,
     openTemporaryProductDialog, closeTemporaryProductDialog, closeTemporaryProductWithGuard, createTemporaryProduct,
-    loadWorkorderDrawerProductStock, openWorkOrder, closeWorkOrder, handleWorkOrderBeforeClose, resetWorkOrder,
+    loadWorkorderDrawerProductStock, loadWorkOrderByID, openWorkOrder, closeWorkOrder, handleWorkOrderBeforeClose, resetWorkOrder,
     loadWorkOrderLogs, dispatchWorkOrder, pauseWorkOrder, resumeWorkOrder, toggleWorkOrderUrgent,
     completeWorkOrder, startDepartmentTask, partialCompleteDepartmentTask, completeDepartmentTask,
     openWorkOrderAction, closeWorkOrderAction, submitWorkOrderAction, dispose,

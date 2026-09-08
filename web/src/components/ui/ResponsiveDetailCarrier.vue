@@ -232,7 +232,7 @@ function focusEntry(panel: HTMLElement) {
 }
 
 function hasVisibleFloatingLayer() {
-  return [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper, .sidebar.is-mobile-open, .mobile-nav-backdrop')].some((element) => {
+  return [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-popper, .el-image-viewer__wrapper, .el-image-viewer__mask, .sidebar.is-mobile-open, .mobile-nav-backdrop')].some((element) => {
     const style = window.getComputedStyle(element)
     return style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none'
   })

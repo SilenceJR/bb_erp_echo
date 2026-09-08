@@ -56,6 +56,30 @@ export function genericStatusTone(value: unknown): StatusTone {
   return 'info'
 }
 
+const auditModuleLabels: Record<string, string> = {
+  departments: '部门', employees: '员工档案', terminals: '终端', users: '用户账号', roles: '角色',
+  customers: '客户资料', suppliers: '供应商', warehouses: '仓库', molds: '模具', workorder: '任务单', files: '文件', api: '系统',
+}
+const auditActionLabels: Record<string, string> = {
+  create: '新增', update: '修改', delete: '删除', import: '导入', bulk_create: '批量新增',
+  bulk_move: '批量移动', reset_password: '重置密码', assign_permissions: '配置权限', assign_roles: '分配角色',
+  replace_employees: '更新成员', set_default: '切换默认资料', movement: '办理出入库', drawing_upload: '上传图纸',
+  replace_content: '替换图纸内容', status: '变更状态', post: '提交', reverse: '撤回', dispatch: '派发',
+  pause: '暂停', resume: '恢复', urgent: '加急', start: '开始处理', complete: '完成', partial_complete: '部分完成',
+}
+
+/** Map the backend's stable module:action audit code to operator-facing text. */
+export function auditActionLabel(value: unknown): string {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+  const separator = raw.indexOf(':')
+  const module = separator > 0 ? raw.slice(0, separator) : ''
+  const action = separator > 0 ? raw.slice(separator + 1) : raw
+  const moduleLabel = auditModuleLabels[module] || module
+  const actionLabel = auditActionLabels[action] || action
+  return module ? `${moduleLabel} · ${actionLabel}` : actionLabel
+}
+
 export function isGenericStatusColumn(column: string): boolean {
   return column === 'status' || column === 'result'
 }

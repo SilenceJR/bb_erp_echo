@@ -64,7 +64,8 @@
 .service-notice.is-error { background: var(--bb-danger-bg); color: var(--bb-danger); }
 .service-notice.is-checking span { animation: service-pulse 1.2s ease-in-out infinite; }
 @keyframes service-pulse { 50% { opacity: .32; } }
-.user-chip { display: flex; align-items: center; gap: var(--bb-space-2); margin-left: auto; }
+.topbar-actions { display: flex; min-width: 0; align-items: center; gap: var(--bb-space-2); margin-left: auto; }
+.user-chip { display: flex; align-items: center; gap: var(--bb-space-2); }
 .user-chip span, .user-chip small { display: block; }
 .user-chip small { color: var(--bb-text-secondary); font-size: 11px; }
 .user-avatar { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border: 1px solid var(--bb-border-default); border-radius: 6px; background: var(--bb-bg-surface); color: var(--bb-text-primary); font-weight: var(--bb-font-weight-semibold); }
