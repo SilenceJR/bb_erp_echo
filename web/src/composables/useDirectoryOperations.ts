@@ -106,7 +106,7 @@ export function useDirectoryOperations(d: Dependencies) {
     d.moduleUnavailable.value = null
     d.skeletonResult.value = null
     try {
-      if (item.key === 'customers') {
+      if (['customers', 'products', 'warehouses'].includes(item.key)) {
         d.rows.value = []; d.columns.value = []; d.pageTotal.value = 0
       } else if (item.key === 'statistics') await d.loadStatistics()
       else await loadList(item.key, true)
@@ -171,7 +171,7 @@ export function useDirectoryOperations(d: Dependencies) {
   }
 
   function validateActiveForm(): string {
-    if (d.activeKey.value === 'workorder' && d.formState.type === 'production' && !d.hasPermission('warehouse:read')) return '当前账号缺少仓库查看权限，无法选择产品或创建生产单；请联系管理员授权或改为通用任务。'
+    if (d.activeKey.value === 'workorder' && d.formState.type === 'production' && !d.hasPermission('product:read')) return '当前账号缺少产品查看权限，无法选择产品或创建生产单；请联系管理员授权或改为通用任务。'
     const missing = d.formSchema.value.filter((field: any) => field.required && (d.formState[field.key] === undefined || d.formState[field.key] === null || (typeof d.formState[field.key] === 'string' && !d.formState[field.key].trim())))
     if (missing.length) return `请填写必填项：${missing.map((field: any) => field.label).join('、')}`
     if (d.activeKey.value === 'users') {

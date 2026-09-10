@@ -54,7 +54,7 @@ func (h *Handler) permission(action string) echo.MiddlewareFunc {
 			if current == nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "未登录")
 			}
-			if h.enforce(current, "/api/v1/warehouse", action) || h.enforce(current, "/api/v1/molds", action) || h.enforce(current, "/api/v1/workorder", action) {
+			if h.enforce(current, "/api/v1/products", action) || h.enforce(current, "/api/v1/molds", action) || h.enforce(current, "/api/v1/workorder", action) {
 				return next(c)
 			}
 			return echo.NewHTTPError(http.StatusForbidden, "没有操作权限")
@@ -72,7 +72,7 @@ func (h *Handler) enforce(u *auth.CurrentUser, object, action string) bool {
 func (h *Handler) canAccess(u *auth.CurrentUser, ownerType, action string) bool {
 	switch ownerType {
 	case OwnerProduct:
-		return h.enforce(u, "/api/v1/warehouse", action)
+		return h.enforce(u, "/api/v1/products", action)
 	case OwnerMold:
 		return h.enforce(u, "/api/v1/molds", action)
 	case OwnerWorkOrder, OwnerDepartmentTask:

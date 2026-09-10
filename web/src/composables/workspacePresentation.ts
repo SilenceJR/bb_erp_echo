@@ -58,7 +58,7 @@ export function genericStatusTone(value: unknown): StatusTone {
 
 const auditModuleLabels: Record<string, string> = {
   departments: '部门', employees: '员工档案', terminals: '终端', users: '用户账号', roles: '角色',
-  customers: '客户资料', suppliers: '供应商', warehouses: '仓库', molds: '模具', workorder: '任务单', files: '文件', api: '系统',
+  customers: '客户资料', products: '产品资料', suppliers: '供应商', warehouses: '仓库', molds: '模具', workorder: '任务单', files: '文件', api: '系统',
 }
 const auditActionLabels: Record<string, string> = {
   create: '新增', update: '修改', delete: '删除', import: '导入', bulk_create: '批量新增',
@@ -89,7 +89,7 @@ export function permissionDomainKey(option: BasicItem): string {
   const objectPath = String(option.object || '').toLowerCase()
   const aliases: Record<string, string> = {
     system: 'system', users: 'system', roles: 'system', audits: 'system', departments: 'system', employees: 'system', terminals: 'system',
-    warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'warehouse', products: 'warehouse',
+    warehouse: 'warehouse', inventory: 'warehouse', material: 'warehouse', materials: 'warehouse', product: 'products', products: 'products',
     workorder: 'workorder', mold: 'mold', molds: 'mold', customer: 'customers', customers: 'customers', supplier: 'suppliers', suppliers: 'suppliers', statistics: 'statistics', cost: 'cost',
   }
   for (const candidate of [codePrefix, objectPath.replace(/^\/api\/v1\//, '').split('/')[0]]) {
@@ -118,7 +118,7 @@ const columnLabels: Record<string, string> = {
   id: '编号', username: '账号', account_type: '账号类型', name: '名称', organization_id: '组织', department_id: '部门', terminal_id: '终端', status: '状态', code: '编码', description: '说明',
   phone: '电话', contact: '联系人', address: '地址', location: '位置', item_type: '对象类型', category: '分类', unit: '单位', spec: '规格', safety_stock: '安全库存', type: '业务类型', warehouse_id: '仓库',
   to_warehouse_id: '目标仓库', reason: '原因', location_id: '库位', item_id: '物品', quantity: '数量', avg_cost: '平均成本', amount: '金额', document_id: '单据', balance_qty: '结存数量',
-  mold_number: '模具编号', model: '模具型号', mold_type: '模具类型', common_group_no: '共模组号', image_count: '图片总数', drawing_count: '图纸总数',
+  product_model: '产品型号', customer_model: '客户型号', material: '产品材料', ink_required: '是否刷墨', mold_type: '模具类型', cavity_count: '模穴数', common_group_no: '共模组号', image_count: '图片总数', drawing_count: '图纸总数',
   object: '对象', action: '操作', actor_username: '操作账号', actor_account_type: '账号类型', person_name: '操作人', result: '结果', created_at: '操作时间', operator_employee_name: '操作员工', operator_department_name: '操作部门',
 }
 

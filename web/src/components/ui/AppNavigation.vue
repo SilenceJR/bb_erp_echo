@@ -29,7 +29,7 @@
 
 <script setup lang="ts">
 import {computed, toRefs, type Component} from 'vue'
-import {Avatar, Box, Coin, Document, House, Key, Monitor, OfficeBuilding, Setting, Tickets, TrendCharts, UserFilled, Van} from '@element-plus/icons-vue'
+import {Avatar, Box, Coin, Document, Goods, House, Key, Monitor, OfficeBuilding, Setting, Tickets, TrendCharts, UserFilled, Van} from '@element-plus/icons-vue'
 import type {SidebarMode} from '../../platform/appearance'
 import NavButton, {type NavigationDisplayItem} from './NavButton.vue'
 
@@ -50,14 +50,14 @@ const emit = defineEmits<{select: [key: string]; settings: []}>()
 const collapsed = computed(() => mode.value === 'icon')
 
 const icons: Record<string, Component> = {
-  dashboard: House, workorder: Tickets, warehouses: Box, molds: Coin, customers: UserFilled, suppliers: Van, statistics: TrendCharts,
+  dashboard: House, workorder: Tickets, warehouses: Box, molds: Coin, products: Goods, customers: UserFilled, suppliers: Van, statistics: TrendCharts,
   departments: OfficeBuilding, employees: Avatar, users: UserFilled, terminals: Monitor, roles: Key, audits: Document,
 }
 const withIcon = (item: NavigationItem): NavigationDisplayItem => ({...item, icon: icons[item.key] || Document})
 const dashboardItem = withIcon({key: 'dashboard', title: '首页'})
 const keys = {
   operation: ['workorder', 'warehouses', 'molds'],
-  master: ['customers', 'suppliers'],
+  master: ['products', 'customers', 'suppliers'],
   report: ['statistics'],
 }
 const navigationGroups = computed(() => [

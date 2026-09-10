@@ -19,10 +19,6 @@ export function useWorkorder() {
   const workorderDrawerProductStockLoading = ref(false)
   const workorderDrawerProductStockError = ref('')
   const workorderDrawerProductStockUpdatedAt = ref('')
-  const temporaryProductDialogVisible = ref(false)
-  const temporaryProductSubmitting = ref(false)
-  const temporaryProductError = ref('')
-  const temporaryProductForm = reactive({name: '', code: '', unit: '个', spec: '', operator_employee_id: undefined as number | undefined})
   const actionDialogVisible = ref(false)
   const actionKind = ref('')
   const actionTarget = ref<BasicItem | null>(null)
@@ -47,10 +43,6 @@ export function useWorkorder() {
     workorderDrawerProductStockLoading,
     workorderDrawerProductStockError,
     workorderDrawerProductStockUpdatedAt,
-    temporaryProductDialogVisible,
-    temporaryProductSubmitting,
-    temporaryProductError,
-    temporaryProductForm,
     actionDialogVisible,
     actionKind,
     actionTarget,

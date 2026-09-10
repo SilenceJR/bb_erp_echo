@@ -1554,463 +1554,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/inventory-balances": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询库存余额",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "仓库 ID",
-                        "name": "warehouse_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.InventoryBalance"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/inventory-documents": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "返回库存单据及其明细；成本字段会按当前账号权限脱敏。",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询库存单据",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": true
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建库存草稿单据；必须选择当前账号部门下的在职员工作为本次操作人。相同 Idempotency-Key 重试会返回首次创建结果。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "创建库存草稿单据",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "幂等键；相同键重试返回首次创建结果",
-                        "name": "Idempotency-Key",
-                        "in": "header"
-                    },
-                    {
-                        "description": "库存单据参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/inventory.documentRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/inventory-documents/{id}/post": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "将草稿单据过账并写入库存余额和流水；必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "审核过账库存单据",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "库存单据 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "操作人参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/inventory.operatorActionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/inventory-documents/{id}/reverse": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "冲销已过账单据并回滚库存余额和流水；必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "冲销已过账库存单据",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "库存单据 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "冲销参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/inventory.reverseDocumentRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/inventory-ledgers": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询库存流水",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.InventoryLedger"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/locations": {
             "get": {
                 "security": [
@@ -2025,14 +1568,6 @@ const docTemplate = `{
                     "warehouse"
                 ],
                 "summary": "查询仓库库位",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "仓库 ID",
-                        "name": "warehouse_id",
-                        "in": "query"
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -2041,42 +1576,6 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/model.Location"
                             }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -2087,7 +1586,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建系统默认仓库下的库位；必须选择当前账号部门下的在职员工。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2105,7 +1603,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.createLocationRequest"
+                            "$ref": "#/definitions/warehouse.locationInput"
                         }
                     }
                 ],
@@ -2114,42 +1612,6 @@ const docTemplate = `{
                         "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/model.Location"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -2369,7 +1831,7 @@ const docTemplate = `{
                 "summary": "批量新增模具位置",
                 "parameters": [
                     {
-                        "description": "区名及行列上限",
+                        "description": "批量位置参数",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -2379,8 +1841,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/mold.BulkLocationResult"
                         }
@@ -2396,9 +1858,6 @@ const docTemplate = `{
                     }
                 ],
                 "consumes": [
-                    "application/json"
-                ],
-                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -2462,8 +1921,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "编号、型号或备注",
+                        "description": "产品型号、共模组号或备注",
                         "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "产品型号",
+                        "name": "product_model",
                         "in": "query"
                     },
                     {
@@ -2594,7 +2059,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回 ` + "`" + `博邦模具导入模板.zip` + "`" + `，包含单模与共模示例、默认位置字典和扁平模具资料目录。",
                 "produces": [
                     "application/zip"
                 ],
@@ -2632,7 +2096,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "ZIP 资料包",
+                        "description": "模具 ZIP",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -2643,12 +2107,6 @@ const docTemplate = `{
                         "name": "token",
                         "in": "formData",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "JSON 格式的图片或图纸人工修正",
-                        "name": "corrections",
-                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -2681,7 +2139,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "ZIP 资料包",
+                        "description": "模具 ZIP",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -3041,45 +2499,50 @@ const docTemplate = `{
                 "tags": [
                     "product"
                 ],
-                "summary": "查询产品",
+                "summary": "查询产品资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "产品型号、客户型号或材料",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "产品材料",
+                        "name": "material",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否刷墨",
+                        "name": "ink_required",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/model.Product"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/product.ProductPageResponse"
                         }
                     }
                 }
@@ -3090,7 +2553,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建产品主数据；必须选择当前账号部门下的在职员工。",
                 "consumes": [
                     "application/json"
                 ],
@@ -3100,15 +2562,15 @@ const docTemplate = `{
                 "tags": [
                     "product"
                 ],
-                "summary": "创建产品",
+                "summary": "创建产品资料",
                 "parameters": [
                     {
-                        "description": "产品参数",
+                        "description": "产品资料",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/product.createProductRequest"
+                            "$ref": "#/definitions/product.productInput"
                         }
                     }
                 ],
@@ -3118,35 +2580,275 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Product"
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
+                    }
+                }
+            }
+        },
+        "/api/v1/products/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/zip"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "导出产品资料包",
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "type": "file"
                         }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
+                    }
+                }
+            }
+        },
+        "/api/v1/products/import-template": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/zip"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "下载产品资料模板",
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "type": "file"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/import/commit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "提交产品资料包",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "产品资料 ZIP",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
                     },
-                    "403": {
-                        "description": "Forbidden",
+                    {
+                        "type": "string",
+                        "description": "预览令牌",
+                        "name": "token",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/product.ProductImportResult"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/import/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "预览产品资料包",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "产品资料 ZIP",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/product.ProductImportPreview"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "查询产品详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/product.ProductResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "删除产品资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/product.ErrorResponse"
                         }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "更新产品资料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    {
+                        "description": "产品资料",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
                         "schema": {
-                            "$ref": "#/definitions/product.ErrorResponse"
+                            "$ref": "#/definitions/product.productInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Product"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/{id}/molds": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "product"
+                ],
+                "summary": "查询产品关联模具",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.Mold"
+                            }
                         }
                     }
                 }
@@ -3767,7 +3469,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/warehouse/items": {
+        "/api/v1/warehouse/products": {
             "get": {
                 "security": [
                     {
@@ -3780,20 +3482,8 @@ const docTemplate = `{
                 "tags": [
                     "warehouse"
                 ],
-                "summary": "查询仓库标签物品",
+                "summary": "查询产品库存",
                 "parameters": [
-                    {
-                        "enum": [
-                            "product",
-                            "production_material",
-                            "regular_product",
-                            "daily_supply"
-                        ],
-                        "type": "string",
-                        "description": "仓库标签",
-                        "name": "tab",
-                        "in": "query"
-                    },
                     {
                         "type": "integer",
                         "description": "页码",
@@ -3808,409 +3498,22 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "模糊关键字",
+                        "description": "产品型号",
                         "name": "q",
                         "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "兼容关键词参数",
-                        "name": "keyword",
-                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.CatalogItemsResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "在指定仓库标签下创建物料或产品；必须选择当前账号部门下的在职员工。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "warehouse"
-                ],
-                "summary": "创建仓库物品",
-                "parameters": [
-                    {
-                        "description": "仓库物品参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.createWarehouseItemRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.CatalogItem"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/warehouse.ProductStockPage"
                         }
                     }
                 }
             }
         },
-        "/api/v1/warehouse/items/{itemType}/{itemID}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询仓库物品详情",
-                "parameters": [
-                    {
-                        "enum": [
-                            "material",
-                            "product"
-                        ],
-                        "type": "string",
-                        "description": "物品类型",
-                        "name": "itemType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "物品 ID",
-                        "name": "itemID",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/warehouse/items/{itemType}/{itemID}/movements": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "查询仓库物品出入库记录",
-                "parameters": [
-                    {
-                        "enum": [
-                            "material",
-                            "product"
-                        ],
-                        "type": "string",
-                        "description": "物品类型",
-                        "name": "itemType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "物品 ID",
-                        "name": "itemID",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "每页条数",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建即时出入库记录并立即过账；必须选择当前账号部门下的在职员工。相同 Idempotency-Key 重试会返回首次创建结果。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "创建即时出入库记录",
-                "parameters": [
-                    {
-                        "enum": [
-                            "material",
-                            "product"
-                        ],
-                        "type": "string",
-                        "description": "物品类型",
-                        "name": "itemType",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "物品 ID",
-                        "name": "itemID",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "幂等键；相同键重试返回首次创建结果",
-                        "name": "Idempotency-Key",
-                        "in": "header"
-                    },
-                    {
-                        "description": "即时出入库参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/inventory.itemMovementRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/inventory.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/warehouse/tabs": {
+        "/api/v1/warehouse/products/{id}": {
             "get": {
                 "security": [
                     {
@@ -4223,51 +3526,101 @@ const docTemplate = `{
                 "tags": [
                     "warehouse"
                 ],
-                "summary": "查询仓库分类标签",
+                "summary": "查询产品库存详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/warehouse/products/{id}/movements": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "warehouse"
+                ],
+                "summary": "查询产品库存流水",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/warehouse.CatalogTabSpec"
+                                "$ref": "#/definitions/warehouse.StockMovement"
                             }
                         }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "warehouse"
+                ],
+                "summary": "创建产品数量操作",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "产品 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    {
+                        "description": "数量操作",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/warehouse.movementInput"
                         }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
+                            "$ref": "#/definitions/model.InventoryDocument"
                         }
                     }
                 }
@@ -4296,42 +3649,6 @@ const docTemplate = `{
                                 "$ref": "#/definitions/model.Warehouse"
                             }
                         }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
                     }
                 }
             },
@@ -4341,7 +3658,6 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "更新系统默认仓库名称；仓库编码固定为 MAIN，必须选择当前账号部门下的在职员工。",
                 "consumes": [
                     "application/json"
                 ],
@@ -4351,7 +3667,7 @@ const docTemplate = `{
                 "tags": [
                     "warehouse"
                 ],
-                "summary": "更新系统默认仓库",
+                "summary": "更新仓库",
                 "parameters": [
                     {
                         "description": "仓库参数",
@@ -4359,7 +3675,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/warehouse.createWarehouseRequest"
+                            "$ref": "#/definitions/warehouse.warehouseInput"
                         }
                     }
                 ],
@@ -4368,42 +3684,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/model.Warehouse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/warehouse.ErrorResponse"
                         }
                     }
                 }
@@ -4497,7 +3777,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。",
+                "description": "创建生产单时必须提供启用产品资料的 product_id；服务端会保存产品型号快照。通用任务不会关联产品。",
                 "tags": [
                     "workorder"
                 ],
@@ -4741,81 +4021,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/workorder/products": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建启用状态的正式产品档案；初始安全库存和当前库存均为 0，不创建库存流水。接口同时需要 workorder:write 和 workorder:temporary-product:write 权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "workorder"
-                ],
-                "summary": "临时建立仓库产品档案",
-                "parameters": [
-                    {
-                        "description": "产品建档参数",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/workorder.temporaryProductRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/model.Product"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/workorder.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/workorder.ErrorResponse"
                         }
@@ -5969,176 +5174,6 @@ const docTemplate = `{
                 }
             }
         },
-        "inventory.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "inventory.documentRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "lines",
-                "operator_employee_id",
-                "type",
-                "warehouse_id"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "lines": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/inventory.lineRequest"
-                    }
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "to_warehouse_id": {
-                    "type": "integer"
-                },
-                "type": {
-                    "type": "string",
-                    "enum": [
-                        "inbound",
-                        "outbound",
-                        "transfer"
-                    ]
-                },
-                "warehouse_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.itemMovementRequest": {
-            "type": "object",
-            "required": [
-                "business_type",
-                "operator_employee_id",
-                "quantity"
-            ],
-            "properties": {
-                "business_type": {
-                    "type": "string",
-                    "enum": [
-                        "purchase_inbound",
-                        "return_rework_inbound",
-                        "customer_outbound",
-                        "department_outbound"
-                    ]
-                },
-                "customer_id": {
-                    "type": "integer"
-                },
-                "department_id": {
-                    "type": "integer"
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "original_document_id": {
-                    "type": "integer"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "supplier_id": {
-                    "type": "integer"
-                },
-                "unit_cost": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.lineRequest": {
-            "type": "object",
-            "required": [
-                "item_id",
-                "item_type",
-                "quantity"
-            ],
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "item_id": {
-                    "type": "integer"
-                },
-                "item_type": {
-                    "type": "string",
-                    "enum": [
-                        "material",
-                        "product"
-                    ]
-                },
-                "location_id": {
-                    "type": "integer"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "unit_cost": {
-                    "type": "integer"
-                }
-            }
-        },
-        "inventory.operatorActionRequest": {
-            "type": "object",
-            "required": [
-                "operator_employee_id"
-            ],
-            "properties": {
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                }
-            }
-        },
-        "inventory.reverseDocumentRequest": {
-            "type": "object",
-            "required": [
-                "operator_employee_id",
-                "reason"
-            ],
-            "properties": {
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "reason": {
-                    "type": "string"
-                }
-            }
-        },
         "material.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -6318,52 +5353,126 @@ const docTemplate = `{
                 }
             }
         },
-        "model.InventoryBalance": {
+        "model.InventoryDocument": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "integer"
+                "business_type": {
+                    "type": "string"
                 },
-                "avg_cost": {
-                    "type": "integer"
+                "code": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
                 },
+                "created_by": {
+                    "type": "integer"
+                },
+                "created_by_department_id": {
+                    "type": "integer"
+                },
+                "created_by_department_name": {
+                    "type": "string"
+                },
+                "created_by_employee_id": {
+                    "type": "integer"
+                },
+                "created_by_employee_name": {
+                    "type": "string"
+                },
+                "created_by_terminal_id": {
+                    "type": "integer"
+                },
+                "customer_id": {
+                    "type": "integer"
+                },
+                "department_id": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
                 },
-                "item_id": {
-                    "type": "integer"
-                },
-                "item_type": {
+                "idempotency_key": {
                     "type": "string"
                 },
-                "location_id": {
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.InventoryDocumentLine"
+                    }
+                },
+                "original_document_id": {
                     "type": "integer"
                 },
-                "quantity": {
+                "posted_at": {
+                    "type": "string"
+                },
+                "posted_by": {
                     "type": "integer"
+                },
+                "posted_by_department_id": {
+                    "type": "integer"
+                },
+                "posted_by_department_name": {
+                    "type": "string"
+                },
+                "posted_by_employee_id": {
+                    "type": "integer"
+                },
+                "posted_by_employee_name": {
+                    "type": "string"
+                },
+                "posted_by_terminal_id": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reversed_at": {
+                    "type": "string"
+                },
+                "reversed_by": {
+                    "type": "integer"
+                },
+                "reversed_by_department_id": {
+                    "type": "integer"
+                },
+                "reversed_by_department_name": {
+                    "type": "string"
+                },
+                "reversed_by_employee_id": {
+                    "type": "integer"
+                },
+                "reversed_by_employee_name": {
+                    "type": "string"
+                },
+                "reversed_by_terminal_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "to_warehouse_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
                 },
                 "warehouse_id": {
-                    "description": "SQLite 的 UNIQUE 复合索引会把多个 NULL 视为不同值，因此按库位是否为\nNULL 分成两个部分唯一索引，确保默认库位和明确库位都只能有一条余额。",
                     "type": "integer"
                 }
             }
         },
-        "model.InventoryLedger": {
+        "model.InventoryDocumentLine": {
             "type": "object",
             "properties": {
                 "amount": {
-                    "type": "integer"
-                },
-                "balance_amount": {
-                    "type": "integer"
-                },
-                "balance_qty": {
                     "type": "integer"
                 },
                 "created_at": {
@@ -6381,16 +5490,13 @@ const docTemplate = `{
                 "item_type": {
                     "type": "string"
                 },
-                "line_id": {
-                    "type": "integer"
-                },
                 "location_id": {
                     "type": "integer"
                 },
                 "quantity": {
                     "type": "integer"
                 },
-                "type": {
+                "remark": {
                     "type": "string"
                 },
                 "unit_cost": {
@@ -6398,9 +5504,6 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
-                },
-                "warehouse_id": {
-                    "type": "integer"
                 }
             }
         },
@@ -6513,6 +5616,9 @@ const docTemplate = `{
         "model.Mold": {
             "type": "object",
             "properties": {
+                "cavity_count": {
+                    "type": "string"
+                },
                 "common_group_no": {
                     "type": "string"
                 },
@@ -6528,14 +5634,11 @@ const docTemplate = `{
                 "location_id": {
                     "type": "integer"
                 },
-                "model": {
-                    "type": "string"
-                },
-                "mold_number": {
-                    "type": "string"
-                },
                 "mold_type": {
                     "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
                 },
                 "remark": {
                     "type": "string"
@@ -6600,52 +5703,25 @@ const docTemplate = `{
         "model.Product": {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "string"
-                },
                 "created_at": {
                     "type": "string"
                 },
-                "default_cost": {
-                    "type": "integer"
+                "customer_model": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "name": {
+                "ink_required": {
+                    "type": "boolean"
+                },
+                "material": {
                     "type": "string"
                 },
-                "operator_department_id": {
-                    "type": "integer"
-                },
-                "operator_department_name": {
-                    "type": "string"
-                },
-                "operator_employee_id": {
-                    "type": "integer"
-                },
-                "operator_employee_name": {
-                    "type": "string"
-                },
-                "operator_terminal_id": {
-                    "type": "integer"
-                },
-                "operator_user_id": {
-                    "type": "integer"
-                },
-                "operator_username": {
-                    "type": "string"
-                },
-                "safety_stock": {
-                    "type": "integer"
-                },
-                "spec": {
+                "product_model": {
                     "type": "string"
                 },
                 "status": {
-                    "type": "string"
-                },
-                "unit": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -6783,7 +5859,7 @@ const docTemplate = `{
                 "product_id": {
                     "type": "integer"
                 },
-                "product_name": {
+                "product_model": {
                     "type": "string"
                 },
                 "status": {
@@ -6793,9 +5869,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
-                    "type": "string"
-                },
-                "unit": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -6915,23 +5988,21 @@ const docTemplate = `{
         "mold.Input": {
             "type": "object",
             "required": [
+                "cavity_count",
                 "location_id",
-                "model",
-                "mold_number",
-                "mold_type"
+                "mold_type",
+                "product_id"
             ],
             "properties": {
+                "cavity_count": {
+                    "type": "string",
+                    "maxLength": 60
+                },
                 "common_group_no": {
                     "type": "string"
                 },
                 "location_id": {
                     "type": "integer"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "mold_number": {
-                    "type": "string"
                 },
                 "mold_type": {
                     "type": "string",
@@ -6939,6 +6010,9 @@ const docTemplate = `{
                         "single",
                         "common"
                     ]
+                },
+                "product_id": {
+                    "type": "integer"
                 },
                 "remark": {
                     "type": "string"
@@ -6971,43 +6045,6 @@ const docTemplate = `{
                 }
             }
         },
-        "mold.MoldImportAllowedMold": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                }
-            }
-        },
-        "mold.MoldImportFile": {
-            "type": "object",
-            "properties": {
-                "allowed_codes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "allowed_molds": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/mold.MoldImportAllowedMold"
-                    }
-                },
-                "kind": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
         "mold.MoldImportPreviewResult": {
             "type": "object",
             "properties": {
@@ -7025,12 +6062,6 @@ const docTemplate = `{
                 },
                 "token": {
                     "type": "string"
-                },
-                "unresolved": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/mold.MoldImportFile"
-                    }
                 }
             }
         },
@@ -7047,6 +6078,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "molds": {
+                    "type": "integer"
+                },
+                "products_created": {
                     "type": "integer"
                 }
             }
@@ -7066,10 +6100,7 @@ const docTemplate = `{
                 "molds": {
                     "type": "integer"
                 },
-                "replaced": {
-                    "type": "boolean"
-                },
-                "unresolved": {
+                "products_created": {
                     "type": "integer"
                 }
             }
@@ -7100,6 +6131,9 @@ const docTemplate = `{
         "mold.MoldResponse": {
             "type": "object",
             "properties": {
+                "cavity_count": {
+                    "type": "string"
+                },
                 "common_group_no": {
                     "type": "string"
                 },
@@ -7121,13 +6155,13 @@ const docTemplate = `{
                 "location_id": {
                     "type": "integer"
                 },
-                "model": {
-                    "type": "string"
-                },
-                "mold_number": {
-                    "type": "string"
-                },
                 "mold_type": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "product_model": {
                     "type": "string"
                 },
                 "remark": {
@@ -7155,41 +6189,142 @@ const docTemplate = `{
                 }
             }
         },
-        "product.createProductRequest": {
+        "product.ProductImportPreview": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/spreadsheet.CellError"
+                    }
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/product.ProductImportSummary"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "product.ProductImportResult": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "integer"
+                },
+                "images": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "product.ProductImportSummary": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "images": {
+                    "type": "integer"
+                },
+                "products": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "product.ProductPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/product.ProductResponse"
+                    }
+                },
+                "keyword": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "product.ProductResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "customer_model": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ink_required": {
+                    "type": "boolean"
+                },
+                "material": {
+                    "type": "string"
+                },
+                "mold_count": {
+                    "type": "integer"
+                },
+                "product_model": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "product.productInput": {
             "type": "object",
             "required": [
-                "code",
-                "name",
-                "operator_employee_id"
+                "product_model"
             ],
             "properties": {
-                "code": {
+                "customer_model": {
                     "type": "string",
-                    "example": "P-001"
+                    "maxLength": 160
                 },
-                "default_cost": {
-                    "type": "integer",
-                    "example": 10000
+                "ink_required": {
+                    "type": "boolean"
                 },
-                "name": {
+                "material": {
                     "type": "string",
-                    "example": "白色外壳"
+                    "maxLength": 120
                 },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "safety_stock": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "spec": {
+                "product_model": {
                     "type": "string",
-                    "example": "标准"
+                    "maxLength": 160
                 },
-                "unit": {
+                "status": {
                     "type": "string",
-                    "example": "个"
+                    "enum": [
+                        "active",
+                        "disabled"
+                    ]
                 }
             }
         },
@@ -7308,9 +6443,6 @@ const docTemplate = `{
                 "business": {
                     "$ref": "#/definitions/statistics.BusinessStatistics"
                 },
-                "can_view_cost": {
-                    "type": "boolean"
-                },
                 "data_status": {
                     "type": "string",
                     "example": "ready"
@@ -7399,16 +6531,16 @@ const docTemplate = `{
                         "$ref": "#/definitions/statistics.NameValue"
                     }
                 },
-                "by_material_type": {
+                "by_location": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/statistics.NameValue"
                     }
                 },
-                "low_stock": {
+                "by_material_type": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/statistics.StockItem"
+                        "$ref": "#/definitions/statistics.NameValue"
                     }
                 },
                 "trend": {
@@ -7439,42 +6571,10 @@ const docTemplate = `{
         "statistics.NameValue": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "integer"
-                },
                 "name": {
                     "type": "string"
                 },
                 "value": {
-                    "type": "integer"
-                }
-            }
-        },
-        "statistics.StockItem": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "category": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "item_id": {
-                    "type": "integer"
-                },
-                "item_type": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "quantity": {
-                    "type": "integer"
-                },
-                "safety_stock": {
                     "type": "integer"
                 }
             }
@@ -7485,13 +6585,7 @@ const docTemplate = `{
                 "customers": {
                     "type": "integer"
                 },
-                "inventory_amount": {
-                    "type": "integer"
-                },
                 "inventory_quantity": {
-                    "type": "integer"
-                },
-                "low_stock_items": {
                     "type": "integer"
                 },
                 "molds": {
@@ -7517,9 +6611,6 @@ const docTemplate = `{
         "statistics.TrendItem": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "integer"
-                },
                 "date": {
                     "type": "string"
                 },
@@ -7643,202 +6734,159 @@ const docTemplate = `{
                 }
             }
         },
-        "warehouse.CatalogItem": {
+        "warehouse.ProductStockItem": {
             "type": "object",
             "properties": {
-                "amount": {
+                "location_count": {
                     "type": "integer"
                 },
-                "avg_cost": {
+                "product_id": {
                     "type": "integer"
                 },
-                "category": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "default_cost": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "item_type": {
-                    "type": "string"
-                },
-                "name": {
+                "product_model": {
                     "type": "string"
                 },
                 "quantity": {
                     "type": "integer"
                 },
-                "safety_stock": {
-                    "type": "integer"
-                },
-                "spec": {
-                    "type": "string"
-                },
                 "status": {
                     "type": "string"
                 },
-                "tab": {
-                    "type": "string"
-                },
-                "unit": {
+                "updated_at": {
                     "type": "string"
                 }
             }
         },
-        "warehouse.CatalogItemsResponse": {
+        "warehouse.ProductStockPage": {
             "type": "object",
             "properties": {
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/warehouse.CatalogItem"
+                        "$ref": "#/definitions/warehouse.ProductStockItem"
                     }
                 },
                 "keyword": {
-                    "type": "string",
-                    "example": "外壳"
+                    "type": "string"
                 },
                 "page": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "integer"
                 },
                 "page_size": {
-                    "type": "integer",
-                    "example": 20
+                    "type": "integer"
                 },
                 "total": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "integer"
                 }
             }
         },
-        "warehouse.CatalogTabSpec": {
+        "warehouse.StockMovement": {
             "type": "object",
             "properties": {
-                "category": {
+                "action": {
                     "type": "string"
                 },
-                "item_type": {
+                "balance_quantity": {
+                    "type": "integer"
+                },
+                "created_at": {
                     "type": "string"
                 },
-                "key": {
+                "document_code": {
                     "type": "string"
                 },
-                "title": {
+                "id": {
+                    "type": "integer"
+                },
+                "location_code": {
+                    "type": "string"
+                },
+                "location_id": {
+                    "type": "integer"
+                },
+                "operator_name": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "reason": {
                     "type": "string"
                 }
             }
         },
-        "warehouse.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Code 是错误码。",
-                    "type": "string"
-                },
-                "message": {
-                    "description": "Message 是前端可展示错误信息。",
-                    "type": "string"
-                },
-                "request_id": {
-                    "description": "RequestID 是请求 ID，用于关联日志。",
-                    "type": "string"
-                }
-            }
-        },
-        "warehouse.createLocationRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "name",
-                "operator_employee_id",
-                "warehouse_id"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "A-01"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "一号库位"
-                },
-                "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "warehouse_id": {
-                    "type": "integer",
-                    "example": 1
-                }
-            }
-        },
-        "warehouse.createWarehouseItemRequest": {
+        "warehouse.locationInput": {
             "type": "object",
             "required": [
                 "code",
                 "name",
-                "operator_employee_id",
-                "tab"
+                "operator_employee_id"
             ],
             "properties": {
                 "code": {
-                    "type": "string",
-                    "example": "P-001"
-                },
-                "default_cost": {
-                    "type": "integer",
-                    "example": 10000
+                    "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "example": "白色外壳"
+                    "type": "string"
                 },
                 "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "safety_stock": {
-                    "type": "integer",
-                    "example": 10
-                },
-                "spec": {
-                    "type": "string",
-                    "example": "标准"
-                },
-                "tab": {
-                    "type": "string",
-                    "example": "product"
-                },
-                "unit": {
-                    "type": "string",
-                    "example": "个"
+                    "type": "integer"
                 }
             }
         },
-        "warehouse.createWarehouseRequest": {
+        "warehouse.movementInput": {
+            "type": "object",
+            "required": [
+                "action",
+                "operator_employee_id",
+                "reason"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "inbound",
+                        "outbound",
+                        "transfer",
+                        "adjustment"
+                    ]
+                },
+                "from_location_id": {
+                    "type": "integer"
+                },
+                "location_id": {
+                    "type": "integer"
+                },
+                "operator_employee_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "target_quantity": {
+                    "type": "integer"
+                },
+                "to_location_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "warehouse.warehouseInput": {
             "type": "object",
             "required": [
                 "name",
                 "operator_employee_id"
             ],
             "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "MAIN"
-                },
                 "name": {
-                    "type": "string",
-                    "example": "主仓库"
+                    "type": "string"
                 },
                 "operator_employee_id": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "integer"
                 }
             }
         },
@@ -8000,35 +7048,6 @@ const docTemplate = `{
                 },
                 "remark": {
                     "type": "string"
-                }
-            }
-        },
-        "workorder.temporaryProductRequest": {
-            "type": "object",
-            "required": [
-                "code",
-                "name",
-                "operator_employee_id"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "P-001"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "白色外壳"
-                },
-                "operator_employee_id": {
-                    "type": "integer"
-                },
-                "spec": {
-                    "type": "string",
-                    "example": "标准"
-                },
-                "unit": {
-                    "type": "string",
-                    "example": "个"
                 }
             }
         },

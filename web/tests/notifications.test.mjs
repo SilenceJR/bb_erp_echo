@@ -97,14 +97,15 @@ test('图片大图预览存在时，Escape 不会穿透关闭底层详情', () =
   assert.match(mold, /\.el-image-viewer__mask/)
 })
 
-test('通知打开实体前等待列表，并对分页外 warehouse/workorder 目标按 ID 兜底', () => {
+test('产品与仓库通知由专用页面刷新，生产任务仍按 ID 兜底', () => {
   const realtime = readFileSync(new URL('../src/composables/useRealtimeNotifications.ts', import.meta.url), 'utf8')
   const warehouse = readFileSync(new URL('../src/composables/useWarehouseOperations.ts', import.meta.url), 'utf8')
   const workorder = readFileSync(new URL('../src/composables/useWorkorderOperations.ts', import.meta.url), 'utf8')
   assert.match(realtime, /await host\.loadActiveModule\(\)/)
-  assert.match(realtime, /loadWarehouseItemByID/)
+  assert.match(realtime, /bb-product-refresh/)
+  assert.match(realtime, /bb-warehouse-refresh/)
   assert.match(realtime, /loadWorkOrderByID/)
-  assert.match(warehouse, /\/api\/v1\/warehouse\/items\/\$\{itemType\}\/\$\{itemID\}/)
+  assert.match(warehouse, /\/api\/v1\/warehouse\/products\/\$\{itemID\}/)
   assert.match(workorder, /while \(currentPage <= 100/)
   assert.match(workorder, /workOrderContainsID/)
 })

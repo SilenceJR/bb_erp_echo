@@ -66,7 +66,7 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
           : []
     for (const itemType of candidates) {
       try {
-        const data = await request<Record<string, unknown>>(`/api/v1/warehouse/items/${itemType}/${itemID}`, {}, deps.token.value)
+        const data = await request<Record<string, unknown>>(`/api/v1/warehouse/products/${itemID}`, {}, deps.token.value)
         const source = data.item && typeof data.item === 'object' && !Array.isArray(data.item)
           ? data.item as Record<string, unknown>
           : data
@@ -100,7 +100,7 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
     const itemType = String(item.item_type || ''); const itemID = Number(item.id)
     detailController?.abort(); const controller = new AbortController(); detailController = controller; const token = ++detailToken
     warehouseDetailLoading.value = true; warehouseDetailError.value = ''; warehouseDetail.value = null
-    try { const data = await request<Record<string, unknown>>(`/api/v1/warehouse/items/${itemType}/${itemID}`, {signal: controller.signal}, deps.token.value); if (isCurrent(token, itemType, itemID, 'detail')) warehouseDetail.value = data }
+    try { const data = await request<Record<string, unknown>>(`/api/v1/warehouse/products/${itemID}`, {signal: controller.signal}, deps.token.value); if (isCurrent(token, itemType, itemID, 'detail')) warehouseDetail.value = data }
     catch (error) { if (isCurrent(token, itemType, itemID, 'detail')) warehouseDetailError.value = error instanceof Error ? error.message : '库存详情加载失败' }
     finally { if (detailController === controller) detailController = null; if (isCurrent(token, itemType, itemID, 'detail')) warehouseDetailLoading.value = false }
   }
@@ -109,7 +109,7 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
     const itemType = String(item.item_type || ''); const itemID = Number(item.id)
     movementsController?.abort(); const controller = new AbortController(); movementsController = controller; const token = ++movementsToken
     itemMovementsLoading.value = true; itemMovementsError.value = ''
-    try { const data = await request<{items: BasicItem[]}>(`/api/v1/warehouse/items/${itemType}/${itemID}/movements?page_size=100`, {signal: controller.signal}, deps.token.value); if (isCurrent(token, itemType, itemID, 'movements')) itemMovements.value = data.items }
+    try { const data = await request<{items: BasicItem[]}>(`/api/v1/warehouse/products/${itemID}/movements?page_size=100`, {signal: controller.signal}, deps.token.value); if (isCurrent(token, itemType, itemID, 'movements')) itemMovements.value = data.items }
     catch (error) { if (isCurrent(token, itemType, itemID, 'movements')) { itemMovements.value = []; itemMovementsError.value = error instanceof Error ? error.message : '出入库记录加载失败' } }
     finally { if (movementsController === controller) movementsController = null; if (isCurrent(token, itemType, itemID, 'movements')) itemMovementsLoading.value = false }
   }
@@ -141,13 +141,12 @@ export function useWarehouseOperations(state: WarehouseState, deps: Dependencies
     if (quantity <= 0) { movementFormError.value = '数量必须大于 0。'; return }
     if (deps.movementIsOutbound.value && deps.expectedStockQuantity.value < 0) { movementFormError.value = `当前可用库存为 ${formatQuantity(warehouseDetail.value?.quantity)} ${item.unit}，本次出库数量不能超过可用库存。`; return }
     if (!deps.movementCanSubmit.value) { movementFormError.value = '请补全办理对象、数量和必填业务说明后再提交。'; return }
-    const body: Record<string, unknown> = {business_type: movementMode.value, quantity, operator_employee_id: Number(movementForm.operator_employee_id), reason: movementForm.reason || '', remark: movementForm.reason || ''}
-    for (const key of ['supplier_id', 'customer_id', 'department_id', 'original_document_id']) if (movementForm[key] !== '' && movementForm[key] !== undefined) body[key] = Number(movementForm[key])
-    if (movementMode.value === 'purchase_inbound' && movementForm.unit_cost) body.unit_cost = moneyToCents(movementForm.unit_cost)
+    const action = movementMode.value.includes('inbound') ? 'inbound' : 'outbound'
+    const body: Record<string, unknown> = {action, quantity, operator_employee_id: Number(movementForm.operator_employee_id), reason: movementForm.reason || ''}
     const snapshot = JSON.stringify(body); if (!idempotencyKey || requestSnapshot !== snapshot) { requestSnapshot = snapshot; idempotencyKey = createIdempotencyKey() }
     movementSubmitting.value = true; movementFormError.value = ''
     try {
-      await request(`/api/v1/warehouse/items/${item.item_type}/${item.id}/movements`, {method: 'POST', headers: {'Idempotency-Key': idempotencyKey}, body}, deps.token.value)
+      await request(`/api/v1/warehouse/products/${item.id}/movements`, {method: 'POST', headers: {'Idempotency-Key': idempotencyKey}, body}, deps.token.value)
       movementMode.value = ''; showQuickSupplier.value = false; clearMovementForm(); deps.operatorDirectory.invalidate()
       await Promise.all([deps.reloadActiveModule(), loadWarehouseItemDetail(), loadItemMovements()])
       const refreshed = deps.rows.value.find((row) => row.id === item.id && row.item_type === item.item_type); if (refreshed) selectedWarehouseItem.value = refreshed

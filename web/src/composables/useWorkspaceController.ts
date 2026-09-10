@@ -9,7 +9,7 @@ import {useWarehouseOperations} from './useWarehouseOperations'
 import {useWorkorder} from './useWorkorder'
 import {useWorkorderOperations} from './useWorkorderOperations'
 import {ElMessage} from 'element-plus'
-import {Box, Coin, TrendCharts, Tickets, UserFilled, Van} from '@element-plus/icons-vue'
+import {Box, Coin, Goods, TrendCharts, Tickets, UserFilled, Van} from '@element-plus/icons-vue'
 import {ApiError, apiBaseUrl, configureAuthSession, request} from '../api/http'
 import type {MetricTone} from '../components/ui/MetricCard.vue'
 import type {StatusTone} from '../components/ui/StatusTag.vue'
@@ -68,19 +68,17 @@ type AuthResponse = {
  * after destructuring, while each API workflow still keeps its cancellation state local.
  */
 export function useWorkspaceController() {
-type StatisticNameValue = { name: string; value: number; amount?: number }
+type StatisticNameValue = { name: string; value: number }
 type MetricCardItem = {label: string; value: string; caption: string; tone: MetricTone; statusLabel?: string; statusTone?: StatusTone}
-type StatisticTrendItem = { date: string; name?: string; value: number; quantity?: number; amount?: number }
+type StatisticTrendItem = { date: string; name?: string; value: number; quantity?: number }
 type DepartmentStatistic = { department_id: number; name: string; total: number; completed: number; processing: number; partial: number; received: number }
-type StockStatisticItem = { item_type: string; item_id: number; name: string; code: string; category: string; quantity: number; safety_stock: number; amount?: number }
 type StatisticsDashboard = {
   data_status?: 'ready' | 'sources_unavailable'
   unavailable_sources?: string[]
   message?: string
   generated_at: string
-  can_view_cost: boolean
   summary: Record<string, number>
-  inventory: { by_item_type: StatisticNameValue[]; by_material_type: StatisticNameValue[]; low_stock: StockStatisticItem[]; trend: StatisticTrendItem[] }
+  inventory: { by_item_type: StatisticNameValue[]; by_material_type: StatisticNameValue[]; by_location: StatisticNameValue[]; trend: StatisticTrendItem[] }
   workorders: { by_status: StatisticNameValue[]; by_type: StatisticNameValue[]; by_department: DepartmentStatistic[]; trend: StatisticTrendItem[] }
   molds: { by_type: StatisticNameValue[]; by_location: StatisticNameValue[] }
   business: { by_master_data: StatisticNameValue[] }
@@ -186,10 +184,6 @@ const {
   workorderDrawerProductStockLoading,
   workorderDrawerProductStockError,
   workorderDrawerProductStockUpdatedAt,
-  temporaryProductDialogVisible,
-  temporaryProductSubmitting,
-  temporaryProductError,
-  temporaryProductForm,
   actionDialogVisible,
   actionKind,
   actionTarget,
@@ -205,10 +199,6 @@ const {
   handleWorkorderProductSelect,
   resetWorkorderProductSelection,
   loadWorkorderProductStock,
-  openTemporaryProductDialog,
-  closeTemporaryProductDialog,
-  closeTemporaryProductWithGuard,
-  createTemporaryProduct,
   loadWorkorderDrawerProductStock,
   loadWorkOrderByID,
   openWorkOrder,
@@ -272,7 +262,6 @@ watch(activeKey, (key) => {
   if (key !== 'workorder') {
     invalidateWorkorderProductSearch()
     resetWorkorderProductSelection()
-    closeTemporaryProductDialog()
   }
 })
 let confirmedWarehouseTab = 'product'
@@ -391,7 +380,8 @@ const greeting = computed(() => {
 })
 const quickActionDefinitions = [
   {key: 'workorder', title: '任务单', description: '查看当前任务与部门处理进度', icon: Tickets},
-  {key: 'warehouses', title: '仓库', description: '查询库存并办理物品出入库', icon: Box},
+  {key: 'warehouses', title: '仓库', description: '查询产品数量与库位', icon: Box},
+  {key: 'products', title: '产品资料', description: '维护产品型号与图片资料', icon: Goods},
   {key: 'customers', title: '客户档案', description: '查找或新增客户资料', icon: UserFilled},
   {key: 'suppliers', title: '供应商', description: '维护采购供应商资料', icon: Van},
   {key: 'molds', title: '模具', description: '查询模具位置与图片资料', icon: Coin},
@@ -402,8 +392,8 @@ const quickActions = computed(() => quickActionDefinitions.filter((item) => {
 }).sort((left, right) => {
   const departmentTerminal = currentUser.value?.account_type === 'department_terminal'
   const order = departmentTerminal
-    ? ['workorder', 'warehouses', 'molds', 'customers', 'suppliers']
-    : ['warehouses', 'workorder', 'customers', 'suppliers', 'molds']
+    ? ['workorder', 'warehouses', 'molds', 'products', 'customers', 'suppliers']
+    : ['warehouses', 'workorder', 'products', 'customers', 'suppliers', 'molds']
   return order.indexOf(left.key) - order.indexOf(right.key)
 }))
 
@@ -418,7 +408,7 @@ const businessGroups = computed(() => [
     title: '客户与生产',
     caption: '客户资料与生产档案',
     icon: UserFilled,
-    items: businessItems.value.filter((item) => ['customers', 'suppliers', 'molds', 'workorder'].includes(item.key)),
+    items: businessItems.value.filter((item) => ['products', 'customers', 'suppliers', 'molds', 'workorder'].includes(item.key)),
   },
   {
     title: '数据与报表',
@@ -619,16 +609,15 @@ const operationalSummaryCards = computed<MetricCardItem[]>(() => {
 const statisticsCards = computed<MetricCardItem[]>(() => {
   if (!statisticsData.value) return []
   const summary = statisticsData.value?.summary || {}
-  const lowStock = Number(summary.low_stock_items || 0)
   const urgent = Number(summary.urgent_workorders || 0)
   const pendingClose = Number(summary.pending_close_orders || 0)
   return [
-    {label: '库存总量', value: statisticsSourceUnavailable('inventory') ? '—' : formatQuantity(summary.inventory_quantity), caption: statisticsSourceUnavailable('inventory') ? '库存数据源尚未初始化' : statisticsData.value?.can_view_cost ? `金额 ${formatMoney(summary.inventory_amount)}` : '金额按权限隐藏', tone: 'info'},
-    {label: '低库存', value: statisticsSourceUnavailable('inventory') ? '—' : String(lowStock), caption: statisticsSourceUnavailable('inventory') ? '库存数据源尚未初始化' : '低于或等于安全库存', tone: statisticsSourceUnavailable('inventory') ? 'neutral' : lowStock ? 'danger' : 'success', statusLabel: statisticsSourceUnavailable('inventory') ? '不可用' : lowStock ? '需处理' : '正常', statusTone: statisticsSourceUnavailable('inventory') ? 'info' : lowStock ? 'danger' : 'success'},
+    {label: '产品资料', value: String(summary.warehouse_items || 0), caption: '产品型号总数', tone: 'info'},
+    {label: '库存总量', value: statisticsSourceUnavailable('inventory') ? '—' : formatQuantity(summary.inventory_quantity), caption: '所有产品与库位合计', tone: 'info'},
     {label: '进行中任务', value: statisticsSourceUnavailable('workorders') ? '—' : String(summary.open_workorders || 0), caption: statisticsSourceUnavailable('workorders') ? '任务数据源尚未初始化' : `加急 ${urgent} · 待确认 ${pendingClose}`, tone: statisticsSourceUnavailable('workorders') ? 'neutral' : urgent ? 'danger' : pendingClose ? 'warning' : 'info'},
-    {label: '模具档案', value: String(summary.molds || 0), caption: '模具产品记录总数', tone: 'info'},
+    {label: '模具档案', value: String(summary.molds || 0), caption: '模具记录总数', tone: 'info'},
     {label: '客户编码', value: String(summary.customers || 0), caption: '客户编码总数', tone: 'neutral'},
-    {label: '仓库物品', value: statisticsSourceUnavailable('inventory') ? '—' : String(summary.warehouse_items || 0), caption: '产品与物资档案', tone: 'neutral'},
+    {label: '库位数量', value: statisticsSourceUnavailable('inventory') ? '—' : String(statisticsData.value?.inventory?.by_location?.length || 0), caption: '当前有数量的库位', tone: 'neutral'},
   ].filter((card) => card.value !== '—') as MetricCardItem[]
 })
 const statisticsSourcesUnavailable = computed(() => statisticsData.value?.data_status === 'sources_unavailable')
@@ -705,7 +694,6 @@ directoryOperations = useDirectoryOperations({
   assignmentOptionsCache, operatorDirectory, hasPermission, canReadModule, canWriteModule,
   rowsFor, appendQuery, isPaginatedResponse, loadStatistics, decimalToScaled, moneyToCents,
   resetWorkorderProductSelection, searchWorkorderProducts, invalidateWorkorderProductSearch,
-  closeTemporaryProductDialog,
 })
 const {
   resetFilters, switchWarehouseTab, resetListQuery, applySearch, handlePageChange,
@@ -1281,7 +1269,6 @@ function workspaceSubmitInProgress(): boolean {
     || affiliationSaving.value
     || movementSubmitting.value
     || quickSupplierSubmitting.value
-    || temporaryProductSubmitting.value
     || actionSubmitting.value,
   )
 }
@@ -1291,11 +1278,6 @@ function affiliationDirty(): boolean {
     affiliationDepartmentID.value !== affiliationInitial.value.departmentID
     || affiliationTerminalID.value !== affiliationInitial.value.terminalID
   )
-}
-
-function temporaryProductDirty(): boolean {
-  if (!temporaryProductDialogVisible.value) return false
-  return Object.values(temporaryProductForm).some((value) => String(value ?? '').trim() !== '')
 }
 
 function actionFormDirty(): boolean {
@@ -1313,7 +1295,6 @@ function workspaceHasUnsavedChanges(): boolean {
     || (warehouseDrawerVisible.value && movementFormDirty.value)
     || quickSupplierDirty()
     || affiliationDirty()
-    || temporaryProductDirty()
     || actionFormDirty(),
   )
 }
@@ -1361,13 +1342,11 @@ const workorderContext = {
     formatDate, workorderDueState, loadWorkOrderByID, openWorkOrder,
   },
   product: {
-    operatorDirectory, formState, formError, loading, temporaryProductForm,
-    temporaryProductDialogVisible, temporaryProductSubmitting, temporaryProductError,
+    operatorDirectory, formState, formError, loading,
     workorderProductOptions, workorderProductSearchLoading, workorderProductSearchError,
     workorderProductStock, workorderProductStockLoading, workorderProductStockError,
     workorderProductStockUpdatedAt, hasPermission, stockState, formatQuantity,
     searchWorkorderProducts, handleWorkorderProductSelect, loadWorkorderProductStock,
-    openTemporaryProductDialog, closeTemporaryProductWithGuard, createTemporaryProduct,
   },
   detail: {
     token, selectedWorkOrder, workorderDrawerVisible, workorderLogs, workorderLogsLoading,

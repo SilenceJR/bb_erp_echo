@@ -26,8 +26,6 @@ const (
 	SilenceUsername = "Silence"
 	// CostViewCode 是成本字段查看权限编码。
 	CostViewCode = "cost:view"
-	// TemporaryProductWriteCode 是生产单内临时建立仓库产品档案的权限编码。
-	TemporaryProductWriteCode = "workorder:temporary-product:write"
 )
 
 var (
@@ -1030,12 +1028,12 @@ func DefaultPermissions() []model.Permission {
 		{"物料维护", "material:write", "/api/v1/materials", "write"},
 		{"产品查看", "product:read", "/api/v1/products", "read"},
 		{"产品维护", "product:write", "/api/v1/products", "write"},
+		{"产品导入", "product:import", "/api/v1/products/import", "import"},
 		{"模具查看", "mold:read", "/api/v1/molds", "read"},
 		{"模具维护", "mold:write", "/api/v1/molds", "write"},
 		{"模具资料导入", "mold:import", "/api/v1/molds/import", "import"},
 		{"任务查看", "workorder:read", "/api/v1/workorder", "read"},
 		{"任务维护", "workorder:write", "/api/v1/workorder", "write"},
-		{"生产单临时产品建档", TemporaryProductWriteCode, "/api/v1/workorder/products", "write"},
 		{"报表查看", "statistics:read", "/api/v1/statistics", "read"},
 		{"报表维护", "statistics:write", "/api/v1/statistics", "write"},
 		{"成本查看", CostViewCode, "/api/v1/cost", "read"},

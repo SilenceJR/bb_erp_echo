@@ -14,7 +14,7 @@
 - 模具查看、新建、编辑使用中央全宽页面；列表保持每个模具一行，返回保留查询、分页与选择。Web 与 Tauri 继续共用页面，不复制平台业务 UI。
 - 原生拖放保留 Rust 流式上传和内网服务地址限制。Tauri 物理坐标换算为 DOM CSS 坐标；SVG 子元素、跨区域离开和监听失败都有处理。原生上传收到 401 时复用会话续期并最多重试一次；无响应/结果不明时不自动重传。
 - Windows 原生拖放上传的嵌套 Rust 参数固定使用 `request.server_url`；ZIP、图片和 DWG/FDWG 共用该桥接，禁止改回仅适用于顶层命令参数的 `serverUrl`。
-- 模具导入导出统一使用根部扁平目录：单模目录为完整模具型号，共模目录为同组全部成员型号以 `+` 连接，图片与 DWG 直接混放；旧 `images/`、`drawings/` 目录和图片分类子目录不再接受。导入可剔除一层统一包装目录；文件名先保留合法 UTF-8，仅对无效 UTF-8 字节尝试 Windows GBK 解码。共模文件优先按完整型号识别，也允许唯一地忽略 `-` 及字母前缀与数字之间的单个 `S` 工艺变体；发生多个型号候选时不自动猜测。文件名含“产品刷墨图”或以 `-正整数` 结尾归产品图，其他图片默认归模具图；内部分类值仍为 `product_material` / `supplement`。未匹配及歧义资料通过预览项的 `allowed_molds` 按型号展示和选择，同时保留 `allowed_codes`；提交仍使用内部模具编号 `corrections.codes`，端点不变。
+- 产品与模具使用两个独立 ZIP。产品 ZIP 为 `products.xlsx` 加 `<产品型号>/` 产品图片目录；模具 ZIP 为 `molds.xlsx`、`locations.json` 加 `<产品型号>/<三位序号>/` 模具图片与 DWG/FDWG 目录。内部序号仅用于资料包映射，不作为业务字段展示。
 - 验证层级分别记录在 `docs/BACKEND_STATUS.md`；本机 Rust HTTP 上传检查和浏览器检查不代表 Windows 资源管理器/WebView2 拖放通过。
 
 
@@ -51,7 +51,7 @@ Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及
 - Tauri HTTP 插件 scope 使用 URL Pattern 正则匹配 `127/8`、`10/8`、`172.16/12` 和 `192.168/16`；它与服务身份验证共同约束桌面端请求，不授权 HTTPS、公网地址或任意域名。
 - 模块导航和接口路径仍在 `web/src/data/modules.ts` 中维护。
 - Go 后端新增或调整接口时，优先更新 `web/src/api/*` 和 `web/src/data/modules.ts`，桌面端会自动复用。
-- 业务 API 只使用当前 canonical 路径：任务单 `/api/v1/workorder`、物料 `/api/v1/materials`、产品 `/api/v1/products`、模具 `/api/v1/molds`、仓库管理 `/api/v1/warehouses`，库存单据/余额/流水使用各自复数路径，库存浏览/操作使用 `/api/v1/warehouse/items` 和 `/tabs`；客户端不回退旧任务、单数资料、`/api/v1/inventory` 或 `/api/v1/warehouse` 根路径。
+- 业务 API 使用 `/api/v1/workorder`、`/api/v1/products`、`/api/v1/molds`、`/api/v1/warehouses`、`/api/v1/warehouse/products`、`/api/v1/locations`。仓库只管理产品数量与库位，不维护产品、物料或成本资料。
 - 图片创建接口 `POST /api/v1/files/images` 支持重复 `file` 字段一次上传多张图片，单图和多图均返回图片数组；单批最多 100 张，替换接口仍使用单图 `PUT /api/v1/files/:id/content`。图片元数据同时保留原图 `content_url` 和静态预览 `preview_url`，图库优先读取预览；新记录预览失败时不自动加载高清原图，而是显示文件名、原因、刷新入口和请求编号。共用客户端按文件扩展名预检查 JPG/JPEG/JFIF、PNG、GIF、WebP、HEIC/HEIF、AVIF、BMP、TIF/TIFF、SVG，不依赖 WebView 提供的 `File.type`，也不执行原 20 MiB 客户端拦截；真实内容、格式、全局请求上限、像素和解码资源边界由 Go 服务端最终校验，GIF 和动态照片只显示静态封面。失败界面展示文件名、具体或大概原因、处理建议和可用的请求编号；Tauri 点击选择和原生拖入均为图片传输保留最长两小时，降低服务端已完成但客户端先超时的误报概率。
 - 模具使用 `/api/v1/molds`；位置字典使用 `/api/v1/mold-locations`，批量移位使用 `/api/v1/molds/bulk-location`。模具模板通过 `/api/v1/molds/import-template` 下载 ZIP，资料包通过 `/api/v1/molds/import/preview`、`/api/v1/molds/import/commit` 预览确认导入，通过 `/api/v1/molds/export` 导出 ZIP；客户模板与导出分别使用 `/api/v1/customers/import-template`、`/api/v1/customers/export`。这些固定文件传输契约在 `web/src/data/transferRegistry.ts` 维护，模型字段、目录或接口变更必须同步更新注册项与回归测试。模具图片沿用受保护图片接口，DWG 使用 `/api/v1/molds/:id/drawings` 上传、下载和删除。Web 与 Tauri 共用同一套页面和 DTO，ZIP、图片、DWG 和客户 Excel 支持 HTML5 拖入及点击选择；Tauri Windows 原生拖放直接由 Rust 按文件流上传，避免大文件进入 WebView 内存。
 - 登录响应同时返回 `access_token`、`refresh_token`、`expires_at` 和 `refresh_expires_at`；共用请求层会在 access token 临近/已经过期时调用 `/api/v1/auth/refresh`，轮换令牌后重试一次原请求。Web 与 Tauri 均持久化当前会话，连续 30 天未成功续期后回到登录页。
@@ -61,8 +61,8 @@ Windows 发布标签用于服务端版本和 Artifact 名称；客户端 EXE 及
 - 员工是独立档案，可属于多个部门；登录账号仍只绑定一个当前部门。部门与员工使用专用页面维护，Web 和 Tauri 共用同一套页面、权限和 API 契约。
 - 任务单及仓库/库存全部写操作先调用 `GET /api/v1/operator-employees` 加载当前账号部门的在职员工，只使用返回的 `id/name`。每次确认都必须显式提交 `operator_employee_id`，不自动选择、不跨操作记忆，成功后清空。即时库存写入把幂等键绑定到完整规范化请求快照；网络或服务端 5xx 导致结果不确定时重试复用原键，业务字段或操作人变化时才生成新键。
 - 候选接口失败、账号无部门、部门停用或无候选时禁用提交；服务端返回 `409` 表示员工停用或成员关系已变化，客户端清空原选择并重新加载。其他校验错误保留当前表单，便于修正后重试。
-- 新建生产单先通过 `GET /api/v1/warehouse/items?tab=product&q=<关键词>` 远程搜索仓库产品，选择后调用 `GET /api/v1/warehouse/items/product/:id` 获取默认仓库聚合库存；提交任务单时发送 `product_id`，`product_name` 与 `unit` 由服务端写入快照。通用任务不发送产品关联。
-- 拥有 `workorder:write` 和 `workorder:temporary-product:write` 的账号可调用 `POST /api/v1/workorder/products` 临时建立正式产品档案；请求包含必填 `name`、手填唯一 `code`、默认“个”的可改 `unit` 与可选 `spec`。新产品库存为 0，建档不会生成入库流水。
+- 新建生产单通过 `GET /api/v1/products?status=active&q=<关键词>` 搜索产品型号，选择后调用 `GET /api/v1/warehouse/products/:id` 获取各库位数量；提交任务单时发送 `product_id`，服务端保存 `product_model` 快照。通用任务不发送产品关联。
+- 临时产品建档接口已删除；生产任务只能使用产品资料中的启用产品。
 - 产品选择和任务详情的库存采用“选择即查/打开即查 + 手动刷新”，不轮询；Web 与 Tauri 共用取消请求和请求序号保护，快速切换时旧响应不得覆盖当前产品。
 - 操作日志、任务流转和库存历史以“员工｜动作”为主要信息，同时保留登录账号与终端责任信息；所选员工是登录账号对现场责任人的申报，不等同于员工本人完成二次认证。旧记录没有员工快照时显示“历史记录未记录员工”。
 - 桌面端不维护另一套业务 API；Rust 仅实现平台能力。

@@ -19,10 +19,11 @@ export const modules: ModuleItem[] = [
   { key: 'terminals', title: '终端', group: 'system', path: '/api/v1/system/terminals', readPermission: 'system:terminals:read', writePermission: 'system:terminals:write', status: 'available', description: '公共电脑和部门终端。' },
   { key: 'roles', title: '角色', group: 'system', path: '/api/v1/system/roles', readPermission: 'system:roles:read', writePermission: 'system:roles:write', status: 'available', description: '按岗位配置功能权限。' },
   { key: 'audits', title: '操作审计', group: 'system', path: '/api/v1/system/audits', readPermission: 'system:audits:read', status: 'available', description: '最近 200 条组织内操作审计。' },
+  { key: 'products', title: '产品资料', group: 'business', path: '/api/v1/products', readPermission: 'product:read', writePermission: 'product:write', status: 'available', description: '维护产品型号、客户型号、材料、刷墨状态和产品图片。' },
   { key: 'customers', title: '客户资料', group: 'business', path: '/api/v1/customer-codes', readPermission: 'customers:read', writePermission: 'customers:write', status: 'available', description: '按客户编码维护资料、联系人与 Excel 导入导出。' },
   { key: 'suppliers', title: '供应商', group: 'business', path: '/api/v1/suppliers', readPermission: 'suppliers:read', writePermission: 'suppliers:write', status: 'available', description: '维护采购入库使用的供应商档案。' },
-  { key: 'warehouses', title: '仓库', group: 'business', path: '/api/v1/warehouse/items', readPermission: 'warehouse:read', writePermission: 'warehouse:write', status: 'available', description: '查看单仓库库存，并在具体物品中办理出入库。' },
-  { key: 'molds', title: '模具', group: 'business', path: '/api/v1/molds', readPermission: 'mold:read', writePermission: 'mold:write', status: 'available', description: '维护模具编号、产品型号、图片资料与固定位置。' },
+  { key: 'warehouses', title: '仓库', group: 'business', path: '/api/v1/warehouse/products', readPermission: 'warehouse:read', writePermission: 'warehouse:write', status: 'available', description: '查看产品数量、库位和数量操作记录。' },
+  { key: 'molds', title: '模具', group: 'business', path: '/api/v1/molds', readPermission: 'mold:read', writePermission: 'mold:write', status: 'available', description: '维护产品型号下的模具类型、模穴数、图片、图纸与固定位置。' },
   { key: 'workorder', title: '任务单', group: 'business', path: '/api/v1/workorder', readPermission: 'workorder:read', writePermission: 'workorder:write', status: 'available', description: '创建生产单，多部门流转并确认结单。' },
   { key: 'statistics', title: '统计报表', group: 'business', path: '/api/v1/statistics', readPermission: 'statistics:read', status: 'available', description: '查看库存、任务、模具和业务数据统计。' },
 ]

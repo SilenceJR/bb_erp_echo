@@ -10,8 +10,7 @@
     </PropertyList>
   </section>
   <template v-else>
-    <WorkorderTemporaryProductStep v-if="temporaryProductDialogVisible" />
-    <el-form v-else id="module-editor" class="module-editor" label-position="top" :disabled="loading || Boolean(moduleUnavailable) || !canWriteActive" @submit.prevent="submitForm">
+    <el-form id="module-editor" class="module-editor" label-position="top" :disabled="loading || Boolean(moduleUnavailable) || !canWriteActive" @submit.prevent="submitForm">
       <FormPanelContent>
         <el-alert v-if="moduleUnavailable" :title="moduleUnavailable.message || '此功能暂不可用，当前无法保存'" type="warning" :closable="false" show-icon />
         <el-alert v-else-if="!canWriteActive" title="当前账号没有该功能的写入权限，表单仅保留当前内容。" type="warning" :closable="false" show-icon />
@@ -46,7 +45,6 @@
                 <el-date-picker v-else-if="field.kind === 'date'" v-model="formState[field.key]" value-format="YYYY-MM-DD" type="date" placeholder="请选择日期" />
                 <el-input v-else-if="field.kind === 'textarea'" v-model="formState[field.key]" type="textarea" :rows="3" />
                 <el-input v-else-if="field.kind === 'workorder-quantity'" v-model="formState[field.key]" inputmode="decimal" placeholder="请输入计划数量，最多 4 位小数">
-                  <template #append>{{ workorderProductStock?.unit || '单位' }}</template>
                 </el-input>
                 <el-input v-else v-model="formState[field.key]" :type="field.kind === 'password' ? 'password' : 'text'" :show-password="field.kind === 'password'" />
               </el-form-item>
@@ -63,13 +61,9 @@
         <el-button v-if="hasAssignmentAction" type="primary" plain :disabled="assignmentTargetDisabled(savedItem)" :title="assignmentTargetHint(savedItem)" @click="openSavedAssignment">{{ assignmentConfigs[activeKey]?.buttonLabel }}</el-button>
         <el-button v-if="activeKey === 'users' && canWriteActive" type="primary" plain :disabled="!canEditUserAffiliation" @click="openSavedAffiliation">账号归属</el-button>
       </template>
-      <template v-else-if="temporaryProductDialogVisible">
-        <el-button :disabled="temporaryProductSubmitting" @click="closeTemporaryProductWithGuard()">返回任务单</el-button>
-        <el-button type="primary" native-type="submit" form="temporary-product-form" :loading="temporaryProductSubmitting" :disabled="!temporaryProductForm.operator_employee_id || Boolean(operatorDirectory.unavailableReason.value)">保存并选择</el-button>
-      </template>
       <template v-else>
         <el-button @click="toggleCreateForm">取消</el-button>
-        <el-button type="primary" form="module-editor" native-type="submit" :loading="loading" :disabled="Boolean(moduleUnavailable) || !canWriteActive || (['warehouses', 'workorder'].includes(activeKey) && Boolean(operatorDirectory.unavailableReason.value))">保存</el-button>
+        <el-button type="primary" form="module-editor" native-type="submit" :loading="loading" :disabled="Boolean(moduleUnavailable) || !canWriteActive || (activeKey === 'workorder' && Boolean(operatorDirectory.unavailableReason.value))">保存</el-button>
       </template>
     </template>
   </ResponsiveDetailCarrier>
@@ -78,11 +72,9 @@
 <script setup lang="ts">
 import {computed, nextTick, ref, watch} from 'vue'
 import {useWorkspaceContext} from '../../../composables/workspaceContext'
-import {useWorkorderContext} from '../../../composables/workorderContext'
 import type {FormField} from '../../../composables/useModuleConfiguration'
 import OperatorSelect from '../../ui/OperatorSelect.vue'
 import WorkorderProductField from '../WorkorderProductField.vue'
-import WorkorderTemporaryProductStep from '../WorkorderTemporaryProductStep.vue'
 import ResponsiveDetailCarrier from '../../ui/ResponsiveDetailCarrier.vue'
 import {useResponsiveDetailPanel} from '../../../composables/useResponsiveDetailPanel'
 import type {BasicItem} from '../../../types'
@@ -103,13 +95,11 @@ const {
   openAssignment, canEditUserAffiliation, openUserAffiliation, assignmentTargetDisabled, assignmentTargetHint,
   accountAssignmentDetail,
 } = useWorkspaceContext()
-const {workorderProductStock, temporaryProductDialogVisible, temporaryProductSubmitting, temporaryProductForm, closeTemporaryProductWithGuard} = useWorkorderContext().product
 const savedItem = ref<BasicItem | null>(null)
 const {docked, size} = useResponsiveDetailPanel(showCreateForm, computed(() => !savedItem.value ? {complexity: 'standard-form' as const} : {complexity: 'detail' as const}))
 const savedDetailTitle = computed(() => `${createEntityTitle.value}详情`)
-const panelTitle = computed(() => temporaryProductDialogVisible.value ? '临时添加产品档案' : savedItem.value ? savedDetailTitle.value : editingSupplier.value ? '编辑供应商' : `新增${createEntityTitle.value}`)
-const panelBusy = computed(() => loading.value || temporaryProductSubmitting.value)
-let workorderFormScrollTop = 0
+const panelTitle = computed(() => savedItem.value ? savedDetailTitle.value : editingSupplier.value ? '编辑供应商' : `新增${createEntityTitle.value}`)
+const panelBusy = computed(() => loading.value)
 const savedDetailPrimary = computed(() => {
   const item = savedItem.value
   return String(item?.name || item?.username || item?.code || `${createEntityTitle.value} #${item?.id || ''}`)
@@ -212,20 +202,6 @@ watch([showCreateForm, activeKey], ([open, key], [wasOpen, previousKey]) => {
   if (!open || key !== previousKey || (!wasOpen && open)) savedItem.value = null
 })
 
-watch(temporaryProductDialogVisible, async (open, wasOpen) => {
-  const body = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
-  if (open) workorderFormScrollTop = body?.scrollTop || 0
-  await nextTick()
-  if (open) {
-    document.querySelector<HTMLElement>('#temporary-product-name input, #temporary-product-name')?.focus({preventScroll: true})
-    return
-  }
-  if (!wasOpen) return
-  const restoredBody = document.querySelector<HTMLElement>('.workspace-detail-aside .detail-body')
-  if (restoredBody) restoredBody.scrollTop = workorderFormScrollTop
-  document.querySelector<HTMLElement>('.workorder-temporary-product-trigger, #workorder-product-select input, #workorder-product-select')?.focus({preventScroll: true})
-})
-
 async function submitForm() {
   const saved = await createItem()
   if (!saved) return
@@ -254,14 +230,6 @@ function editSavedSupplier() {
 }
 
 async function closeForm(done: () => void) {
-  if (temporaryProductDialogVisible.value) {
-    let allowed = false
-    await closeTemporaryProductWithGuard(() => {
-      allowed = true
-      temporaryProductDialogVisible.value = false
-    })
-    if (!allowed) return
-  }
   await toggleCreateForm()
   if (!showCreateForm.value) done()
 }

@@ -15,7 +15,6 @@ import (
 
 var (
 	ErrMoldNotFound          = errors.New("mold not found")
-	ErrMoldNumberConflict    = errors.New("mold number already exists")
 	ErrMoldInvalidType       = errors.New("invalid mold type")
 	ErrMoldGroupRequired     = errors.New("common group number required")
 	ErrMoldGroupForbidden    = errors.New("single mold cannot have common group number")
@@ -26,31 +25,34 @@ var (
 	ErrMoldSelectionRequired = errors.New("mold selection required")
 	ErrMoldLocationZone      = errors.New("mold location zone invalid")
 	ErrMoldLocationRange     = errors.New("mold location range invalid")
+	ErrProductRequired       = errors.New("product required")
+	ErrProductNotFound       = errors.New("product not found")
+	ErrProductDisabled       = errors.New("product disabled")
 )
 
 type Input struct {
-	MoldNumber    string `json:"mold_number" validate:"required"`
-	Model         string `json:"model" validate:"required"`
+	ProductID     uint   `json:"product_id" validate:"required"`
 	MoldType      string `json:"mold_type" validate:"required,oneof=single common"`
+	CavityCount   string `json:"cavity_count" validate:"required,max=60"`
 	LocationID    uint   `json:"location_id" validate:"required"`
-	LocationCode  string `json:"-"`
 	CommonGroupNo string `json:"common_group_no"`
 	Remark        string `json:"remark"`
 }
 
 type ListFilter struct {
-	Type       string
-	LocationID uint
-	GroupNo    string
+	ProductModel string
+	Type         string
+	LocationID   uint
+	GroupNo      string
 }
 
 type MoldResponse struct {
 	model.Mold
-	ImageCount   int64 `json:"image_count"`
-	DrawingCount int64 `json:"drawing_count"`
+	ProductModel string `json:"product_model"`
+	ImageCount   int64  `json:"image_count"`
+	DrawingCount int64  `json:"drawing_count"`
 }
 
-// MoldPageResponse 是模具列表分页响应的 Swagger 具体类型。
 type MoldPageResponse struct {
 	Items    []MoldResponse `json:"items"`
 	Total    int64          `json:"total"`
@@ -67,14 +69,12 @@ type LocationStatusInput struct {
 	Status string `json:"status" validate:"required,oneof=active disabled"`
 }
 
-// BulkLocationInput 是按区批量补充货架位置的请求参数。
 type BulkLocationInput struct {
 	Zone    string `json:"zone" validate:"required"`
 	Rows    int    `json:"rows"`
 	Columns int    `json:"columns"`
 }
 
-// BulkLocationResult 是批量位置接口返回的实际新增数量。
 type BulkLocationResult struct {
 	Created int `json:"created"`
 }
@@ -84,29 +84,13 @@ type BulkMoveInput struct {
 	LocationID uint   `json:"location_id" validate:"required"`
 }
 
-type Service interface {
-	List(query pagination.Query, filter ListFilter) (pagination.Result[MoldResponse], error)
-	Get(id uint) (MoldResponse, error)
-	Create(input Input) (model.Mold, error)
-	Update(id uint, input Input) (model.Mold, error)
-	Delete(id uint) error
-	Locations(includeDisabled bool) ([]model.MoldLocation, error)
-	CreateLocation(input LocationInput) (model.MoldLocation, error)
-	UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error)
-	BulkCreateLocations(input BulkLocationInput) (BulkLocationResult, error)
-	BulkMove(input BulkMoveInput) error
-}
-
 type gormService struct {
 	db          *gorm.DB
 	storageRoot string
 }
 
-var _ Service = (*gormService)(nil)
-
-func NewService(db *gorm.DB) Service { return &gormService{db: db} }
-
-func NewServiceWithStorage(db *gorm.DB, storageRoot string) Service {
+func NewService(db *gorm.DB) *gormService { return &gormService{db: db} }
+func NewServiceWithStorage(db *gorm.DB, storageRoot string) *gormService {
 	return &gormService{db: db, storageRoot: storageRoot}
 }
 
@@ -118,8 +102,6 @@ func SeedLocations(db *gorm.DB) error {
 	})
 }
 
-// defaultMoldLocations 返回默认的 100 个货架位和 1 个卡板位。
-// 返回新切片，调用方可以安全地修改 ID 或状态后写入数据库。
 func defaultMoldLocations() []model.MoldLocation {
 	locations := make([]model.MoldLocation, 0, 101)
 	for _, zone := range []string{"A", "B", "C", "D"} {
@@ -133,76 +115,73 @@ func defaultMoldLocations() []model.MoldLocation {
 			}
 		}
 	}
-	locations = append(locations, model.MoldLocation{Code: model.MoldLocationPallet, Status: model.MoldLocationActive})
-	return locations
+	return append(locations, model.MoldLocation{Code: model.MoldLocationPallet, Status: model.MoldLocationActive})
 }
 
 func (s *gormService) List(query pagination.Query, filter ListFilter) (pagination.Result[MoldResponse], error) {
-	db := s.db.Model(&model.Mold{}).Preload("Location")
+	db := s.db.Model(&model.Mold{}).Joins("JOIN products ON products.id = molds.product_id AND products.deleted_at IS NULL")
+	if query.Keyword != "" {
+		db = pagination.ApplyKeyword(db, query.Keyword, "products.product_model", "molds.remark", "molds.common_group_no")
+	}
+	if filter.ProductModel != "" {
+		db = db.Where("products.product_model = ?", strings.TrimSpace(filter.ProductModel))
+	}
 	if filter.Type != "" {
-		db = db.Where("mold_type = ?", filter.Type)
+		db = db.Where("molds.mold_type = ?", filter.Type)
 	}
 	if filter.LocationID != 0 {
-		db = db.Where("location_id = ?", filter.LocationID)
+		db = db.Where("molds.location_id = ?", filter.LocationID)
 	}
 	if filter.GroupNo != "" {
-		db = db.Where("common_group_no LIKE ?", "%"+strings.TrimSpace(filter.GroupNo)+"%")
+		db = db.Where("molds.common_group_no = ?", strings.TrimSpace(filter.GroupNo))
 	}
-	db = pagination.ApplyKeyword(db, query.Keyword, "mold_number", "model", "mold_type", "common_group_no", "remark")
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		return pagination.Result[MoldResponse]{}, err
-	}
-	var molds []model.Mold
-	if err := db.Order("id desc").Offset(query.Offset).Limit(query.PageSize).Find(&molds).Error; err != nil {
-		return pagination.Result[MoldResponse]{}, err
-	}
-	items, err := s.withCounts(molds)
+	result, err := pagination.Page[model.Mold](db.Preload("Product").Preload("Location"), query, "molds.id desc", nil)
 	if err != nil {
 		return pagination.Result[MoldResponse]{}, err
 	}
-	return pagination.Result[MoldResponse]{Items: items, Total: total, Page: query.Page, PageSize: query.PageSize, Keyword: query.Keyword}, nil
+	items := make([]MoldResponse, 0, len(result.Items))
+	for _, item := range result.Items {
+		response := MoldResponse{Mold: item, ProductModel: item.Product.ProductModel}
+		if err := s.db.Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Count(&response.ImageCount).Error; err != nil {
+			return pagination.Result[MoldResponse]{}, err
+		}
+		if err := s.db.Model(&model.MoldDrawing{}).Where("mold_id = ?", item.ID).Count(&response.DrawingCount).Error; err != nil {
+			return pagination.Result[MoldResponse]{}, err
+		}
+		items = append(items, response)
+	}
+	return pagination.Result[MoldResponse]{Items: items, Total: result.Total, Page: result.Page, PageSize: result.PageSize, Keyword: result.Keyword}, nil
 }
 
 func (s *gormService) Get(id uint) (MoldResponse, error) {
 	var item model.Mold
-	if err := s.db.Preload("Location").First(&item, id).Error; err != nil {
+	if err := s.db.Preload("Product").Preload("Location").First(&item, id).Error; err != nil {
 		return MoldResponse{}, mapMoldError(err)
 	}
-	items, err := s.withCounts([]model.Mold{item})
-	if err != nil {
+	response := MoldResponse{Mold: item, ProductModel: item.Product.ProductModel}
+	if err := s.db.Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Count(&response.ImageCount).Error; err != nil {
 		return MoldResponse{}, err
 	}
-	return items[0], nil
-}
-
-func (s *gormService) withCounts(molds []model.Mold) ([]MoldResponse, error) {
-	items := make([]MoldResponse, len(molds))
-	for i, item := range molds {
-		items[i].Mold = item
-		if err := s.db.Model(&model.ImageFile{}).Where("owner_type = ? AND owner_id = ?", "mold", item.ID).Count(&items[i].ImageCount).Error; err != nil {
-			return nil, err
-		}
-		if err := s.db.Model(&model.MoldDrawing{}).Where("mold_id = ?", item.ID).Count(&items[i].DrawingCount).Error; err != nil {
-			return nil, err
-		}
+	if err := s.db.Model(&model.MoldDrawing{}).Where("mold_id = ?", item.ID).Count(&response.DrawingCount).Error; err != nil {
+		return MoldResponse{}, err
 	}
-	return items, nil
+	return response, nil
 }
 
 func (s *gormService) Create(input Input) (model.Mold, error) {
-	unlock := filemodule.LockMoldAssetMutation()
-	defer unlock()
 	input = normalizeInput(input)
-	if err := validateInput(input); err != nil {
+	if err := s.validateInput(input); err != nil {
+		return model.Mold{}, err
+	}
+	if _, err := s.validateProduct(input.ProductID); err != nil {
 		return model.Mold{}, err
 	}
 	if err := s.validateLocation(input.LocationID, false); err != nil {
 		return model.Mold{}, err
 	}
-	item := model.Mold{MoldNumber: input.MoldNumber, Model: input.Model, MoldType: input.MoldType, LocationID: input.LocationID, CommonGroupNo: input.CommonGroupNo, Remark: input.Remark}
+	item := model.Mold{ProductID: input.ProductID, MoldType: input.MoldType, CavityCount: input.CavityCount, LocationID: input.LocationID, CommonGroupNo: input.CommonGroupNo, Remark: input.Remark}
 	if err := s.db.Create(&item).Error; err != nil {
-		return model.Mold{}, mapMoldError(err)
+		return item, err
 	}
 	return item, nil
 }
@@ -211,7 +190,10 @@ func (s *gormService) Update(id uint, input Input) (model.Mold, error) {
 	unlock := filemodule.LockMoldAssetMutation()
 	defer unlock()
 	input = normalizeInput(input)
-	if err := validateInput(input); err != nil {
+	if err := s.validateInput(input); err != nil {
+		return model.Mold{}, err
+	}
+	if _, err := s.validateProduct(input.ProductID); err != nil {
 		return model.Mold{}, err
 	}
 	if err := s.validateLocation(input.LocationID, false); err != nil {
@@ -221,12 +203,9 @@ func (s *gormService) Update(id uint, input Input) (model.Mold, error) {
 	if err := s.db.First(&item, id).Error; err != nil {
 		return model.Mold{}, mapMoldError(err)
 	}
-	item.MoldNumber, item.Model, item.MoldType = input.MoldNumber, input.Model, input.MoldType
+	item.ProductID, item.MoldType, item.CavityCount = input.ProductID, input.MoldType, input.CavityCount
 	item.LocationID, item.CommonGroupNo, item.Remark = input.LocationID, input.CommonGroupNo, input.Remark
-	if err := s.db.Save(&item).Error; err != nil {
-		return model.Mold{}, mapMoldError(err)
-	}
-	return item, nil
+	return item, s.db.Save(&item).Error
 }
 
 func (s *gormService) Delete(id uint) error {
@@ -286,13 +265,9 @@ func (s *gormService) CreateLocation(input LocationInput) (model.MoldLocation, e
 	if item.Code == "" {
 		return item, ErrMoldLocationRequired
 	}
-	if err := s.db.Create(&item).Error; err != nil {
-		return item, err
-	}
-	return item, nil
+	return item, s.db.Create(&item).Error
 }
 
-// BulkCreateLocations 按区和行列上限幂等补充货架位置。
 func (s *gormService) BulkCreateLocations(input BulkLocationInput) (BulkLocationResult, error) {
 	input.Zone = strings.ToUpper(strings.TrimSpace(input.Zone))
 	if !validLocationZone(input.Zone) {
@@ -316,10 +291,7 @@ func (s *gormService) BulkCreateLocations(input BulkLocationInput) (BulkLocation
 		result.Created = int(created.RowsAffected)
 		return nil
 	})
-	if err != nil {
-		return BulkLocationResult{}, err
-	}
-	return result, nil
+	return result, err
 }
 
 func (s *gormService) UpdateLocation(id uint, input LocationStatusInput) (model.MoldLocation, error) {
@@ -348,7 +320,7 @@ func (s *gormService) BulkMove(input BulkMoveInput) error {
 		return err
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.Mold{}).Where("id IN ?", input.MoldIDs).Update("location_id", input.LocationID)
+		result := tx.Model(&model.Mold{}).Where("id IN ?", uniqueIDs(input.MoldIDs)).Update("location_id", input.LocationID)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -359,35 +331,15 @@ func (s *gormService) BulkMove(input BulkMoveInput) error {
 	})
 }
 
-func (s *gormService) validateLocation(id uint, includeDisabled bool) error {
-	if id == 0 {
-		return ErrMoldLocationRequired
-	}
-	var item model.MoldLocation
-	if err := s.db.First(&item, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrMoldLocationNotFound
-		}
-		return err
-	}
-	if !includeDisabled && item.Status != model.MoldLocationActive {
-		return ErrMoldLocationDisabled
-	}
-	return nil
-}
-
-func normalizeInput(input Input) Input {
-	input.MoldNumber, input.Model, input.MoldType = strings.TrimSpace(input.MoldNumber), strings.TrimSpace(input.Model), strings.ToLower(strings.TrimSpace(input.MoldType))
-	input.CommonGroupNo, input.Remark = strings.TrimSpace(input.CommonGroupNo), strings.TrimSpace(input.Remark)
-	return input
-}
-
-func validateInput(input Input) error {
-	if input.MoldNumber == "" || input.Model == "" {
-		return errors.New("模具编号和模具型号不能为空")
+func (s *gormService) validateInput(input Input) error {
+	if input.ProductID == 0 {
+		return ErrProductRequired
 	}
 	if input.MoldType != model.MoldTypeSingle && input.MoldType != model.MoldTypeCommon {
 		return ErrMoldInvalidType
+	}
+	if input.CavityCount == "" {
+		return errors.New("模穴数不能为空")
 	}
 	if input.MoldType == model.MoldTypeCommon && input.CommonGroupNo == "" {
 		return ErrMoldGroupRequired
@@ -398,38 +350,70 @@ func validateInput(input Input) error {
 	return nil
 }
 
-func uniqueIDs(ids []uint) []uint {
-	seen := map[uint]struct{}{}
-	result := make([]uint, 0, len(ids))
-	for _, id := range ids {
-		if id > 0 {
-			if _, ok := seen[id]; !ok {
-				seen[id] = struct{}{}
-				result = append(result, id)
-			}
-		}
+func (s *gormService) validateProduct(id uint) (model.Product, error) {
+	var item model.Product
+	if err := s.db.First(&item, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return item, ErrProductNotFound
+	} else if err != nil {
+		return item, err
 	}
-	return result
+	if item.Status != model.StatusActive {
+		return item, ErrProductDisabled
+	}
+	return item, nil
 }
 
-func validLocationZone(value string) bool {
-	if len(value) < 1 || len(value) > 8 {
-		return false
+func (s *gormService) validateLocation(id uint, includeDisabled bool) error {
+	if id == 0 {
+		return ErrMoldLocationRequired
 	}
-	for i := 0; i < len(value); i++ {
-		if value[i] < 'A' || value[i] > 'Z' {
-			return false
-		}
+	var item model.MoldLocation
+	if err := s.db.First(&item, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrMoldLocationNotFound
+	} else if err != nil {
+		return err
 	}
-	return true
+	if !includeDisabled && item.Status != model.MoldLocationActive {
+		return ErrMoldLocationDisabled
+	}
+	return nil
+}
+
+func normalizeInput(input Input) Input {
+	input.CavityCount = strings.TrimSpace(input.CavityCount)
+	input.CommonGroupNo = strings.TrimSpace(input.CommonGroupNo)
+	input.Remark = strings.TrimSpace(input.Remark)
+	return input
 }
 
 func mapMoldError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrMoldNotFound
 	}
-	if strings.Contains(strings.ToLower(err.Error()), "unique") {
-		return ErrMoldNumberConflict
-	}
 	return err
+}
+
+func validLocationZone(value string) bool {
+	if len(value) < 1 || len(value) > 8 {
+		return false
+	}
+	for _, r := range value {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+func uniqueIDs(ids []uint) []uint {
+	seen := make(map[uint]struct{}, len(ids))
+	result := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }

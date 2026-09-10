@@ -3,6 +3,7 @@ package notification
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -226,7 +227,7 @@ func pathHasAction(path string) bool {
 
 func descriptorForPath(path string) (mutationDescriptor, bool) {
 	// 预览只创建一次性校验会话，不改变业务资料，不应通知在线用户。
-	if hasPathPrefix(path, "/api/v1/customers/import/preview") || hasPathPrefix(path, "/api/v1/molds/import/preview") {
+	if hasPathPrefix(path, "/api/v1/customers/import/preview") || hasPathPrefix(path, "/api/v1/products/import/preview") || hasPathPrefix(path, "/api/v1/molds/import/preview") {
 		return mutationDescriptor{}, false
 	}
 	if hasPathPrefix(path, "/api/v1/customers/import/commit") {
@@ -234,6 +235,9 @@ func descriptorForPath(path string) (mutationDescriptor, bool) {
 	}
 	if hasPathPrefix(path, "/api/v1/molds/import/commit") {
 		return descriptor("molds", "模具", "mold", []PermissionRequirement{{Object: "/api/v1/molds", Action: "read"}}, OperationImport, true), true
+	}
+	if hasPathPrefix(path, "/api/v1/products/import/commit") {
+		return descriptor("products", "产品资料", "product", []PermissionRequirement{{Object: "/api/v1/products", Action: "read"}}, OperationImport, true), true
 	}
 
 	switch {
@@ -260,7 +264,7 @@ func descriptorForPath(path string) (mutationDescriptor, bool) {
 	case hasPathPrefix(path, "/api/v1/materials"):
 		return descriptor("warehouses", "仓库", "material", []PermissionRequirement{{Object: "/api/v1/materials", Action: "read"}, {Object: "/api/v1/warehouse", Action: "read"}}, "", false), true
 	case hasPathPrefix(path, "/api/v1/products"):
-		return descriptor("warehouses", "仓库", "product", []PermissionRequirement{{Object: "/api/v1/products", Action: "read"}, {Object: "/api/v1/warehouse", Action: "read"}}, "", false), true
+		return descriptor("products", "产品资料", "product", []PermissionRequirement{{Object: "/api/v1/products", Action: "read"}}, "", false), true
 	case hasPathPrefix(path, "/api/v1/mold-locations") || hasPathPrefix(path, "/api/v1/molds"):
 		return descriptor("molds", "模具", "mold", []PermissionRequirement{{Object: "/api/v1/molds", Action: "read"}}, "", false), true
 	case hasPathPrefix(path, "/api/v1/workorder"):
@@ -273,7 +277,7 @@ func descriptorForPath(path string) (mutationDescriptor, bool) {
 func descriptorForOwner(ownerType string) (mutationDescriptor, bool) {
 	switch strings.TrimSpace(ownerType) {
 	case "product":
-		return descriptor("warehouses", "仓库", "product", []PermissionRequirement{{Object: "/api/v1/warehouse", Action: "read"}}, "", false), true
+		return descriptor("products", "产品资料", "product", []PermissionRequirement{{Object: "/api/v1/products", Action: "read"}}, "", false), true
 	case "mold":
 		return descriptor("molds", "模具", "mold", []PermissionRequirement{{Object: "/api/v1/molds", Action: "read"}}, "", false), true
 	case "workorder", "department_task":
@@ -429,7 +433,7 @@ func countFromObject(object map[string]any) (int, bool) {
 }
 
 func labelFromObject(object map[string]any) string {
-	for _, key := range []string{"code", "name", "short_name", "mold_number", "model", "username"} {
+	for _, key := range []string{"product_model", "customer_model", "material", "code", "name", "short_name", "username"} {
 		if value, ok := object[key].(string); ok && strings.TrimSpace(value) != "" {
 			value = strings.TrimSpace(value)
 			if len(value) > 160 {
@@ -443,9 +447,12 @@ func labelFromObject(object map[string]any) string {
 
 func fieldsFromObject(object map[string]any) map[string]string {
 	fields := make(map[string]string)
-	for _, key := range []string{"code", "name", "short_name", "status", "type", "mold_number", "model"} {
-		if value, ok := object[key].(string); ok && strings.TrimSpace(value) != "" {
-			fields[key] = strings.TrimSpace(value)
+	for _, key := range []string{"product_model", "customer_model", "material", "status", "type", "mold_type", "cavity_count", "common_group_no", "code", "name", "short_name"} {
+		if value, ok := object[key]; ok {
+			text := strings.TrimSpace(fmt.Sprint(value))
+			if text != "" && text != "<nil>" {
+				fields[key] = text
+			}
 		}
 	}
 	if len(fields) == 0 {

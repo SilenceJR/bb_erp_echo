@@ -326,103 +326,56 @@ GET /api/v1/client-updates/artifacts/<sha256>
 }
 ```
 
-## 库存前置闭环接口
+## 产品资料与库存数量接口
+
+产品资料字段固定为：
+
+- `product_model`：产品型号，必填、唯一，产品与模具、任务单、库存统一使用该业务标识。
+- `customer_model`：客户型号，可空。
+- `material`：产品材料，可空，客户端提供可输入下拉建议。
+- `ink_required`：是否刷墨。
+- `status`：`active` 或 `disabled`。
+
+```text
+GET    /api/v1/products?page=&page_size=&q=&material=&ink_required=&status=
+POST   /api/v1/products
+GET    /api/v1/products/:id
+PATCH  /api/v1/products/:id
+DELETE /api/v1/products/:id
+GET    /api/v1/products/:id/molds
+GET    /api/v1/products/import-template
+POST   /api/v1/products/import/preview
+POST   /api/v1/products/import/commit
+GET    /api/v1/products/export
+```
+
+产品删除前会检查模具、库存余额、库存流水和任务单引用；存在引用时返回 `409`。产品图片使用 `owner_type=product`，使用 `product:read/write` 权限。
+
+产品 ZIP 包含 `products.xlsx` 和以产品型号命名的图片目录：
+
+```text
+products.xlsx          产品型号、客户型号、产品材料、是否刷墨、状态、图片数量
+<产品型号>/             该产品的全部图片，文件名只用于展示和排序
+```
+
+产品导入按产品型号新增或更新，不删除文件外的产品；有图片目录时替换该产品图片，没有目录时保留原图片。字段或图片任一校验失败时整包不提交。
+
+仓库只管理产品数量和库位，不再维护产品、物料和成本资料：
 
 ```text
 GET  /api/v1/warehouses
 POST /api/v1/warehouses
-GET  /api/v1/warehouse/tabs
-GET  /api/v1/warehouse/items?tab=product
-POST /api/v1/warehouse/items
-GET  /api/v1/warehouse/items/:itemType/:itemID
-GET  /api/v1/warehouse/items/:itemType/:itemID/movements
-POST /api/v1/warehouse/items/:itemType/:itemID/movements
-GET  /api/v1/suppliers
-POST /api/v1/suppliers
-PATCH /api/v1/suppliers/:id
+GET  /api/v1/warehouse/products?page=&page_size=&q=
+GET  /api/v1/warehouse/products/:id
+GET  /api/v1/warehouse/products/:id/movements
+POST /api/v1/warehouse/products/:id/movements
 GET  /api/v1/locations
 POST /api/v1/locations
-GET  /api/v1/materials
-POST /api/v1/materials
-GET  /api/v1/products
-POST /api/v1/products
-GET  /api/v1/inventory-documents
-POST /api/v1/inventory-documents
-POST /api/v1/inventory-documents/:id/post
-POST /api/v1/inventory-documents/:id/reverse
-GET  /api/v1/inventory-balances
-GET  /api/v1/inventory-ledgers
 ```
 
-`GET /api/v1/warehouse/items` 和 `GET /api/v1/suppliers` 支持 `page`、`page_size`、`q`，返回统一分页结构。
+数量操作 `action` 只接受 `inbound`、`outbound`、`transfer`、`adjustment`。数量使用 4 位定点整数，例如 `1000000` 表示 100。入库、出库和库位调整提交 `quantity`；库位调整另需 `from_location_id`、`to_location_id`；盘点修正提交目标数量 `target_quantity`。所有操作在同一事务内更新余额并写入流水，库存不足返回 `409`。
 
-供应商、仓库、库位、库存单据/余额/流水和任务单相关表已暂停加入新数据库的自动迁移。已有数据库中表存在时上述接口保持原行为；新数据库访问缺少数据结构的模块时返回 `503`：
-
-```json
-{
-  "code": "module_not_initialized",
-  "message": "仓库模块的数据结构尚未初始化，待后续重构完成后再使用",
-  "request_id": "..."
-}
-```
-
-该响应表示模块暂缓，并不代表真实业务数据为空。服务不会删除已有表或数据。以下仓库业务契约只适用于相关表已存在的已有数据库；全新数据库在后续仓库重构完成前返回上述模块状态。
-
-`GET /api/v1/warehouse/items/:itemType/:itemID` 在仓库模块可用时返回默认仓库内所有库位的库存合计；没有余额记录时数量为 `0`。无 `cost:view` 权限时不返回成本字段。
-
-已有数据库的既有仓库模块按单仓库使用，`/api/v1/warehouses` 只返回默认仓库。系统编码固定为 `MAIN`，更新接口只允许修改名称；请求省略 `code` 或传 `MAIN`，传入其他编码返回 `400`，避免库存被拆到两个仓库。新数据库本轮不创建默认仓库。仓库内物品采用标签策略统一管理：
-
-```text
-product              产品，写入 products 表
-production_material  生产物资，写入 materials 表且 category=生产物资
-regular_product      常规产品，写入 materials 表且 category=常规产品
-daily_supply         生活物资，写入 materials 表且 category=生活物资
-```
-
-仓库标签物品创建示例：
-
-```json
-{
-  "tab": "production_material",
-  "name": "ABS 原料",
-  "code": "ABS-001",
-  "unit": "kg",
-  "spec": "通用",
-  "safety_stock": 100000,
-  "default_cost": 250,
-  "operator_employee_id": 12
-}
-```
-
-库存数量使用 4 位定点整数，例如 `10000` 表示 1 个单位。金额和单价使用分。无 `cost:view` 权限时，库存余额、流水和单据明细不返回 `avg_cost`、`unit_cost`、`amount`、`balance_amount` 等成本字段。
-
-Web/Tauri 入库数量支持直接输入 `0–999999999` 范围内、最多 4 位小数的校准值；提交时仍转换为上述四位定点整数。数量为 0 或超过上限时不会创建库存流水。
-
-新界面从具体物品办理出入库。接口自动使用默认仓库、生成单据编号并立即过账，支持 `Idempotency-Key`：
-
-```json
-{
-  "business_type": "purchase_inbound",
-  "supplier_id": 1,
-  "quantity": 1000000,
-  "unit_cost": 250,
-  "reason": "采购到货",
-  "operator_employee_id": 12
-}
-```
-
-同一 `Idempotency-Key` 只有在接口范围、登录账号、组织、操作员工及规范化业务请求内容全部一致时才返回首次结果；跨接口复用，或物品、数量、单价、供应商/客户/部门、原因等任一字段不同，均返回 `409`，不会静默复用旧单据。
-
-`business_type` 支持：
-
-```text
-purchase_inbound       采购入库，supplier_id 必填
-return_rework_inbound  退货返工入库，customer_id 或 department_id 二选一
-customer_outbound      客户出库，customer_id 必填
-department_outbound    部门出库，department_id 必填
-```
-
-退货返工可选填 `original_document_id`；填写时原单必须为同一物品、同一客户或部门的已过账出库记录。即时出入库的创建和立即过账使用同一操作员工；库存单据创建、过账、冲销可以分别选择员工，并分别保存员工与部门快照。
+供应商、成本、安全库存、物料、常规产品和生活物资不进入本版本仓库页面与接口；相关模型保留供后续开发。
 
 ## 图片文件接口
 
@@ -431,7 +384,7 @@ department_outbound    部门出库，department_id 必填
 `owner_type` 只接受以下四种值：
 
 ```text
-product          仓库产品，权限继承 product=warehouse
+product          产品资料，权限单独使用 product
 mold             模具，权限继承 mold
 workorder        任务单，权限继承 workorder
 department_task  部门子任务，权限继承 workorder
@@ -470,41 +423,17 @@ category    可选，图片分类
 
 软删除图片元数据并在提交后清理对应物理文件，成功返回 HTTP 204；瞬时清理失败不会恢复出指向残缺文件的可见记录，而是写入待清理任务并在服务下次启动时重试。
 
-权限规则：产品图片使用仓库权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
+权限规则：产品图片使用产品资料权限，模具图片使用模具权限，任务单和部门子任务图片使用任务单权限。部门子任务的写入操作还限制为该子任务所属部门；读取不增加此部门限制。
 
 模具导入需要额外的 `mold:import` 权限；导出、位置字典读取使用 `mold:read`，模具和位置写入、图片/DWG 删除使用 `mold:write`。
 
 ## 任务单接口
 
-任务单支持生产单和通用任务。主任务由办公室控制，部门只更新各自的子任务状态。
-
-主任务状态：
-
-```text
-draft              草稿
-processing         正在处理
-paused             暂停
-pending_close      待办公室确认
-completed_normal   完成（正常完成）
-completed_forced   完成（强制完成）
-cancelled          取消
-```
-
-部门子任务状态：
-
-```text
-received           已收到
-processing         正在处理
-partial_completed  部分完成
-completed          完成
-```
-
-接口清单：
+任务单支持生产单和通用任务。生产单必须从产品资料选择启用产品，服务端保存产品型号快照；通用任务不关联产品。
 
 ```text
 GET  /api/v1/workorder?page=&page_size=&q=&status=&type=&department_id=&priority=
 POST /api/v1/workorder
-POST /api/v1/workorder/products
 POST /api/v1/workorder/:id/dispatch
 POST /api/v1/workorder/:id/pause
 POST /api/v1/workorder/:id/resume
@@ -516,7 +445,7 @@ POST /api/v1/workorder/department-tasks/:id/complete
 GET  /api/v1/workorder/:id/logs
 ```
 
-创建生产单时必须从仓库产品列表（`GET /api/v1/warehouse/items?tab=product&q=关键字`）中选择启用产品并提交 `product_id`。服务端根据产品主数据保存 `product_name` 和 `unit` 快照；请求中的名称和单位不作为自由文本接受。数量使用 4 位定点整数，例如 `1000000` 表示 100 个：
+生产单创建请求示例：
 
 ```json
 {
@@ -532,27 +461,9 @@ GET  /api/v1/workorder/:id/logs
 }
 ```
 
-成功响应中的 `product_id`、`product_name` 和 `unit` 分别是关联产品 ID 及创建时的名称、单位快照；产品后续改名不会改写历史任务单。生产单详情需要实时库存时，按 `product_id` 调用 `GET /api/v1/warehouse/items/product/:product_id`，响应中的 `quantity` 是默认仓库全部库位合计。
+成功响应中的 `product_id` 是产品资料内部关联 ID，`product_model` 是创建时保存的产品型号快照。实时库存通过 `GET /api/v1/warehouse/products/:id` 查询。临时产品建档接口和 `workorder:temporary-product:write` 已移除。
 
-### POST /api/v1/workorder/products
-
-在生产单内临时建立尚未入库产品的正式仓库产品档案。接口同时需要 `workorder:write` 和 `workorder:temporary-product:write`，默认只有超级管理员拥有后者；管理员可在角色权限中显式分配。新产品立即启用，安全库存和当前库存为 `0`，不会创建库存余额或库存流水。
-
-请求：
-
-```json
-{
-  "name": "白色外壳",
-  "code": "P-001",
-  "spec": "标准",
-  "unit": "个",
-  "operator_employee_id": 12
-}
-```
-
-`name`、`code` 必填，`spec` 可选，`unit` 缺省为 `个`；编码重复返回 `409`。创建成功返回标准 `model.Product`，前端可立即用返回的 ID 选中产品并查询库存。
-
-派发、暂停、恢复、加急、正常/强制完成，以及部门开始、部分完成、完成的 JSON 请求体都必须携带 `operator_employee_id`；强制完成还必须填写原因。部门部分完成提交的是累计完成数量，必须严格大于当前累计值且小于计划数量，重复提交相同累计值返回 `400`。派发后系统自动把每个目标部门子任务置为 `received`，主任务置为 `processing`。部门可执行开始处理、部分完成和完成；全部部门完成后主任务自动进入 `pending_close`。流转日志保存操作员工、当前账号部门、登录账号和终端快照，员工改名、调部门或停用不会改写历史。
+派发、暂停、恢复、加急、正常/强制完成，以及部门开始、部分完成、完成的 JSON 请求体都必须携带 `operator_employee_id`。强制完成必须填写原因；部门部分完成提交累计完成数量，必须大于当前累计值且小于计划数量。
 
 ## 统计报表接口
 
@@ -562,22 +473,14 @@ GET  /api/v1/statistics
 
 `GET /api/v1/statistics` 返回 Web/Tauri 统计首页聚合数据，包含：
 
-- 顶部汇总：客户编码、供应商、仓库物品、库存总量、低库存、进行中任务、加急任务、待办公室确认任务和模具总数。
-- 库存统计：按物品类型汇总、按物料分类汇总、低库存明细、近 14 天库存流水趋势。
+- 顶部汇总：客户编码、供应商、产品资料、仓库总数量、进行中任务、加急任务、待办公室确认任务和模具总数。
+- 库存统计：按产品型号汇总、按仓库库位汇总和近 14 天库存数量流水趋势。
 - 任务统计：按主任务状态、任务类型、部门子任务处理情况、近 14 天任务创建趋势。
 - 模具统计：按单模/共模和固定位置汇总。
-- 业务数据：客户编码、供应商、产品、物料、模具、任务单数量。
+- 业务数据：客户编码、供应商、产品、模具、任务单数量。
 - 审计统计：按结果汇总和近 14 天趋势。
 
-无 `cost:view` 权限时，响应中不会返回可用金额，`inventory_amount`、库存分类 `amount`、低库存 `amount` 和趋势 `amount` 均裁剪为 `0`。
-
-统计依赖的数据表尚未初始化时仍返回 `200`，并增加：
-
-- `data_status`：`ready` 或 `sources_unavailable`。
-- `unavailable_sources`：不可用来源列表，当前可能包含 `suppliers`、`inventory`、`workorders`。
-- `message`：说明空值不是实际经营零值。
-
-服务端不会执行针对缺失表的聚合 SQL；仍可用的客户、产品、物料、模具和审计统计继续返回。客户端必须将不可用指标显示为“—”或待重构说明，不能展示成真实零值。
+统计依赖的数据表尚未初始化时仍返回 `200`，并增加 `data_status`、`unavailable_sources` 和 `message`。客户端必须将不可用指标显示为“—”或待重构说明，不能展示成真实零值。
 
 响应片段：
 
@@ -585,16 +488,15 @@ GET  /api/v1/statistics
 {
   "data_status": "ready",
   "unavailable_sources": [],
-  "can_view_cost": false,
   "summary": {
     "customers": 10,
     "warehouse_items": 36,
     "inventory_quantity": 1280000,
-    "low_stock_items": 2,
     "open_workorders": 5
   },
   "inventory": {
-    "by_item_type": [{"name": "product", "value": 800000}],
+    "by_item_type": [{"name": "P-100", "value": 800000}],
+    "by_location": [{"name": "A1-1", "value": 800000}],
     "low_stock": []
   },
   "workorders": {
@@ -606,92 +508,41 @@ GET  /api/v1/statistics
 
 ## 模具接口
 
-模具是一条产品/型号档案，字段为：`id`、`mold_number`（手工填写且全局唯一）、`model`、`mold_type`（`single` 单模或 `common` 共模）、`location_id`、`common_group_no`、`remark`。共模必须填写共模组号，单模不得填写。
-
-位置由位置字典维护，默认包含 100 个货架位置（A 区 `1-7 × 1-4`，B/C/D 区各 `1-6 × 1-4`）和独立位置 `卡板`。`卡板` 不需要编号，与货架位置互斥。正在使用的位置不能停用；停用位置不能分配给新模具。
+模具绑定产品资料，产品型号是唯一业务定位字段。
 
 ```text
-GET    /api/v1/molds
-GET    /api/v1/molds/:id
+GET    /api/v1/molds?page=&page_size=&q=&product_model=&mold_type=&location_id=&common_group_no=
 POST   /api/v1/molds
+GET    /api/v1/molds/:id
 PATCH  /api/v1/molds/:id
 DELETE /api/v1/molds/:id
 POST   /api/v1/molds/bulk-location
-GET    /api/v1/mold-locations
-POST   /api/v1/mold-locations
-POST   /api/v1/mold-locations/bulk
-PATCH  /api/v1/mold-locations/:id
 GET    /api/v1/molds/:id/drawings
 POST   /api/v1/molds/:id/drawings
 GET    /api/v1/molds/:id/drawings/:drawing_id/content
 DELETE /api/v1/molds/:id/drawings/:drawing_id
-GET    /api/v1/molds/export
 GET    /api/v1/molds/import-template
 POST   /api/v1/molds/import/preview
 POST   /api/v1/molds/import/commit
+GET    /api/v1/molds/export
+GET    /api/v1/mold-locations?include_disabled=
+POST   /api/v1/mold-locations
+POST   /api/v1/mold-locations/bulk
+PATCH  /api/v1/mold-locations/:id
 ```
 
-`GET /api/v1/molds` 支持 `page`、`page_size`、`q`、`mold_type`、`location_id`、`common_group_no`，返回 `image_count` 和 `drawing_count`。图片分为 `product_material`、`supplement` 两组，界面分别显示为“产品图”“模具图”，数量不限且总数自动统计。图纸只允许 `.dwg`、`.fdwg`，本期提供上传、下载、删除，暂不预览。
+创建和更新请求字段为 `product_id`、`mold_type`、`cavity_count`、`location_id`、`common_group_no`、`remark`。响应同时返回 `product_model`。单模不能填写共模组号，共模必须填写共模组号。
 
-创建示例：
-
-```json
-{
-  "mold_number": "CYF1809-2-1",
-  "model": "CYF1809-2",
-  "mold_type": "common",
-  "location_id": 1,
-  "common_group_no": "G-001",
-  "remark": "前后模一组"
-}
-```
-
-按区批量补充货架位置：
-
-```http
-POST /api/v1/mold-locations/bulk
-Content-Type: application/json
-
-{"zone":"E","rows":2,"columns":2}
-```
-
-`zone` 会去除首尾空格并转为大写，只允许 1-8 个英文字母；`rows` 和 `columns` 均为 1-100 的正整数。接口在事务中幂等补充 `<区><行>-<列>`，已存在的位置（包括停用项）保留原 ID、状态和关联，响应为 `{"created":4}`。参数校验失败返回 400。
-
-### 模具资料包
-
-`GET /api/v1/molds/import-template` 下载可直接编辑并回导的 ZIP 模板；
-`GET /api/v1/molds/export` 下载当前模具全量资料 ZIP。两者遵循同一目录规范，
-模板不包含真实图片或 DWG 文件，正式导出按实际资料填充对应目录。
-
-模板文件名为 `博邦模具导入模板.zip`，内容如下：
+模具 ZIP 包含 `molds.xlsx`、`locations.json`，资料目录按产品型号和三位序号组织：
 
 ```text
-博邦模具导入模板.zip
-├── molds.xlsx
-├── locations.json
-├── MOLD-001/
-└── MOLD-002+MOLD-003/
+molds.xlsx       序号、产品型号、模具类型、模穴数、模具位置、共模组号、图片数量、备注
+locations.json   模具位置字典
+<产品型号>/001/   第一条模具的图片和 DWG/FDWG
+<产品型号>/002/   第二条模具的图片和 DWG/FDWG
 ```
 
-正式导出文件名为 `博邦模具资料包.zip`，内容如下：
-
-```text
-博邦模具资料包.zip
-├── molds.xlsx
-├── locations.json
-├── <单模完整模具编号>/
-│   └── <图片与 DWG 直接混放>
-└── <共模组全部成员用 + 连接>/
-    └── <成员或全组编号前缀的图片与 DWG>
-```
-
-`molds.xlsx` 列为：序号、模具编号、模具型号、模具类型、模具位置、共模组号、图片总数、备注。模具位置使用 `A1-1` 等字符串，卡板写作 `卡板`；序号和图片总数在导入时忽略并重新计算。单模目录使用完整模具型号；共模目录使用同一共模组的全部成员型号以 `+` 连接，成员顺序不限。目录内直接混放图片与 DWG/FDWG；共模文件优先按完整型号匹配成员，并兼容忽略 `-` 及型号字母前缀与数字之间的单个 `S` 工艺变体，例如 `XR5129` 可匹配 `XRS5129`、`XR-S5129`，`XR4245` 可匹配 `XRS-4245`。容错结果唯一时自动归属，多个真实型号可能命中时不猜测并进入待修正列表。若含 `+` 的单个模具型号与共模目录同名，预览返回候选，由用户逐项确认归属；同一目录内不能混合选择单模解释和共模解释。待修正项通过 `allowed_molds` 返回内部编号 `code` 与用户可见型号 `model`，同时保留 `allowed_codes`；界面按型号选择，提交仍使用 `corrections.codes` 内部编号。文件名去除扩展名后，包含“产品刷墨图”或以 `-正整数` 结尾时归为产品图，其他合法图片默认归为模具图。API 分组值仍为 `product_material`、`supplement`。允许 ZIP 外套一层统一包装目录；ZIP 中合法 UTF-8 文件名直接保留，仅对无效 UTF-8 字节尝试 Windows GBK 转换；忽略 `desktop.ini`、`Thumbs.db`、`.DS_Store` 和 `__MACOSX`。旧 `images/`、`drawings/` 资料包和图片分类子目录不再支持。
-
-导出时，普通产品图按自然顺序命名为 `<模具型号>-1.ext`、`-2.ext`……；原名含“产品刷墨图”的产品图保留该业务标识。模具图与图纸尽量保留有意义原名；共模成员专属资料确保只带该成员型号，共用资料带全组型号前缀。同组同分类、同原名且内容一致的全组资料只输出一次。发生重名时使用稳定的“副本 + 记录 ID”后缀，且保证回导后图片分类和成员归属不变。
-
-导入采用“预览—修正—确认—提交”，预览阶段即解码真实图片内容。模具档案和位置字典按 Excel 全量更新；ZIP 中出现资料目录的模具替换其产品图、模具图和 DWG，Excel 仍保留但 ZIP 无目录的模具保留原资料，Excel 删除的模具及资料一并删除。仅替换 `owner_type=mold` 的图片，不影响其他业务模块。资料包最多 2000 个源条目，共模复制后最多落盘 5000 个图片/图纸；解压总量最多 4 GiB，ZIP 最多 2 GiB，`molds.xlsx`、`locations.json` 和人工修正参数分别不超过 64/4/4 MiB。资产变更使用同一互斥边界，旧物理文件在事务提交后清理，失败时进入启动重试任务。
-
-本期未单独开放“图片文件夹只追加”接口；如需更新资料，将对应模具目录放入完整 ZIP 后预览导入。
+模具导入全量替换模具、位置、模具图片和图纸；缺少产品型号时自动建立仅含产品型号的启用产品占位记录。任一字段、图片或图纸校验失败时整包回滚。模具图片和图纸分别使用 `owner_type=mold`，权限为 `mold:read/write`；导入需要 `mold:import`。
 
 ## 错误响应
 

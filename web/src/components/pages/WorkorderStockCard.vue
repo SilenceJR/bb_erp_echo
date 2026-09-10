@@ -3,7 +3,7 @@
     <div class="workorder-stock-card__heading">
       <div>
         <small>仓库实时库存</small>
-        <strong>{{ product?.name || '已关联产品' }}</strong>
+        <strong>{{ product?.product_model || '已关联产品型号' }}</strong>
         <span>{{ productSubtitle }}</span>
       </div>
       <div class="workorder-stock-card__actions">
@@ -22,8 +22,7 @@
     <el-skeleton v-if="loading && !product" :rows="2" animated />
     <template v-else-if="product">
       <dl class="workorder-stock-card__metrics">
-        <div><dt>当前库存</dt><dd>{{ formatQuantity(product.quantity) }} {{ product.unit || '' }}</dd></div>
-        <div><dt>安全库存</dt><dd>{{ formatQuantity(product.safety_stock) }} {{ product.unit || '' }}</dd></div>
+        <div><dt>当前库存</dt><dd>{{ formatQuantity(product.quantity) }}</dd></div>
         <div><dt>更新时间</dt><dd>{{ updatedAtLabel }}</dd></div>
       </dl>
       <small v-if="loading" class="workorder-stock-card__refreshing">正在刷新，当前保留上次成功数据。</small>
@@ -63,9 +62,7 @@ const {formatQuantity, stockState} = useWorkorderContext().product
 
 const productSubtitle = computed(() => {
   if (!props.product) return '库存只用于计划参考，不阻止创建生产单。'
-  const code = String(props.product.code || '').trim()
-  const spec = String(props.product.spec || '').trim()
-  return [code, spec || '无规格'].filter(Boolean).join(' · ')
+  return String(props.product.product_model || '')
 })
 
 const updatedAtLabel = computed(() => {

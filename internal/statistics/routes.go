@@ -5,9 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"bb_erp_echo/internal/auth"
 	"bb_erp_echo/internal/model"
-	"bb_erp_echo/internal/role"
 	"bb_erp_echo/internal/shared/response"
 
 	"github.com/labstack/echo/v5"
@@ -28,7 +26,6 @@ type DashboardResponse struct {
 	UnavailableSources []string            `json:"unavailable_sources"`
 	Message            string              `json:"message,omitempty"`
 	GeneratedAt        time.Time           `json:"generated_at"`
-	CanViewCost        bool                `json:"can_view_cost"`
 	Summary            Summary             `json:"summary"`
 	Inventory          InventoryStatistics `json:"inventory"`
 	WorkOrders         WorkOrderStatistics `json:"workorders"`
@@ -44,8 +41,6 @@ type Summary struct {
 	Suppliers          int64 `json:"suppliers"`
 	WarehouseItems     int64 `json:"warehouse_items"`
 	InventoryQuantity  int64 `json:"inventory_quantity"`
-	InventoryAmount    int64 `json:"inventory_amount,omitempty"`
-	LowStockItems      int64 `json:"low_stock_items"`
 	OpenWorkOrders     int64 `json:"open_workorders"`
 	UrgentWorkOrders   int64 `json:"urgent_workorders"`
 	PendingCloseOrders int64 `json:"pending_close_orders"`
@@ -56,7 +51,7 @@ type Summary struct {
 type InventoryStatistics struct {
 	ByItemType     []NameValue `json:"by_item_type"`
 	ByMaterialType []NameValue `json:"by_material_type"`
-	LowStock       []StockItem `json:"low_stock"`
+	ByLocation     []NameValue `json:"by_location"`
 	Trend          []TrendItem `json:"trend"`
 }
 
@@ -87,9 +82,8 @@ type AuditStatistics struct {
 
 // NameValue 是通用名称数量统计。
 type NameValue struct {
-	Name   string `json:"name"`
-	Value  int64  `json:"value"`
-	Amount int64  `json:"amount,omitempty"`
+	Name  string `json:"name"`
+	Value int64  `json:"value"`
 }
 
 // DepartmentStat 是部门任务处理统计。
@@ -103,25 +97,12 @@ type DepartmentStat struct {
 	Received     int64  `json:"received"`
 }
 
-// StockItem 是低库存明细。
-type StockItem struct {
-	ItemType    string `json:"item_type"`
-	ItemID      uint   `json:"item_id"`
-	Name        string `json:"name"`
-	Code        string `json:"code"`
-	Category    string `json:"category"`
-	Quantity    int64  `json:"quantity"`
-	SafetyStock int64  `json:"safety_stock"`
-	Amount      int64  `json:"amount,omitempty"`
-}
-
 // TrendItem 是按日期聚合的趋势项。
 type TrendItem struct {
 	Date     string `json:"date"`
 	Name     string `json:"name,omitempty"`
 	Value    int64  `json:"value"`
 	Quantity int64  `json:"quantity,omitempty"`
-	Amount   int64  `json:"amount,omitempty"`
 }
 
 // RegisterRoutes 注册统计报表模块路由。
@@ -141,11 +122,10 @@ func RegisterRoutes(v1 *echo.Group, db *gorm.DB, require func(string, string) ec
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/statistics [get]
 func (h *Handler) Dashboard(c *echo.Context) error {
-	canViewCost := hasCostView(c)
 	supplierAvailable := h.DB.Migrator().HasTable(&model.Supplier{})
 	inventoryAvailable := h.DB.Migrator().HasTable(&model.InventoryBalance{}) && h.DB.Migrator().HasTable(&model.InventoryLedger{})
 	workorderAvailable := h.DB.Migrator().HasTable(&model.WorkOrder{}) && h.DB.Migrator().HasTable(&model.DepartmentTask{})
-	result := newDashboardResponse(canViewCost)
+	result := newDashboardResponse()
 	if !supplierAvailable {
 		result.UnavailableSources = append(result.UnavailableSources, "suppliers")
 	}
@@ -163,7 +143,7 @@ func (h *Handler) Dashboard(c *echo.Context) error {
 		return err
 	}
 	if inventoryAvailable {
-		if err := h.fillInventory(&result, canViewCost); err != nil {
+		if err := h.fillInventory(&result); err != nil {
 			return err
 		}
 	}
@@ -186,25 +166,13 @@ func (h *Handler) Dashboard(c *echo.Context) error {
 			return err
 		}
 	}
-	if !canViewCost {
-		result.Summary.InventoryAmount = 0
-		for index := range result.Inventory.ByItemType {
-			result.Inventory.ByItemType[index].Amount = 0
-		}
-		for index := range result.Inventory.LowStock {
-			result.Inventory.LowStock[index].Amount = 0
-		}
-		for index := range result.Inventory.Trend {
-			result.Inventory.Trend[index].Amount = 0
-		}
-	}
 	return c.JSON(http.StatusOK, result)
 }
 
-func newDashboardResponse(canViewCost bool) DashboardResponse {
+func newDashboardResponse() DashboardResponse {
 	return DashboardResponse{
-		DataStatus: "ready", UnavailableSources: []string{}, GeneratedAt: time.Now(), CanViewCost: canViewCost,
-		Inventory:  InventoryStatistics{ByItemType: []NameValue{}, ByMaterialType: []NameValue{}, LowStock: []StockItem{}, Trend: []TrendItem{}},
+		DataStatus: "ready", UnavailableSources: []string{}, GeneratedAt: time.Now(),
+		Inventory:  InventoryStatistics{ByItemType: []NameValue{}, ByMaterialType: []NameValue{}, ByLocation: []NameValue{}, Trend: []TrendItem{}},
 		WorkOrders: WorkOrderStatistics{ByStatus: []NameValue{}, ByType: []NameValue{}, ByDepartment: []DepartmentStat{}, Trend: []TrendItem{}},
 		Molds:      MoldStatistics{ByType: []NameValue{}, ByLocation: []NameValue{}},
 		Business:   BusinessStatistics{ByMasterData: []NameValue{}}, Audit: AuditStatistics{ByResult: []NameValue{}, Trend: []TrendItem{}},
@@ -231,31 +199,19 @@ func (h *Handler) fillSummary(result *DashboardResponse, supplierAvailable, inve
 			return err
 		}
 	}
-	var products, materials int64
+	var products int64
 	if err := h.DB.Model(&model.Product{}).Count(&products).Error; err != nil {
 		return err
 	}
-	if err := h.DB.Model(&model.Material{}).Count(&materials).Error; err != nil {
-		return err
-	}
-	result.Summary.WarehouseItems = products + materials
+	result.Summary.WarehouseItems = products
 	if inventoryAvailable {
-		var inventoryTotal struct {
-			InventoryQuantity int64
-			InventoryAmount   int64
-		}
+		var inventoryTotal struct{ InventoryQuantity int64 }
 		if err := h.DB.Model(&model.InventoryBalance{}).
-			Select("COALESCE(SUM(quantity), 0) AS inventory_quantity, COALESCE(SUM(amount), 0) AS inventory_amount").
+			Select("COALESCE(SUM(quantity), 0) AS inventory_quantity").
 			Scan(&inventoryTotal).Error; err != nil {
 			return err
 		}
 		result.Summary.InventoryQuantity = inventoryTotal.InventoryQuantity
-		result.Summary.InventoryAmount = inventoryTotal.InventoryAmount
-		lowStock, err := h.lowStockItems(true)
-		if err != nil {
-			return err
-		}
-		result.Summary.LowStockItems = int64(len(lowStock))
 	}
 	if workorderAvailable {
 		if err := h.DB.Model(&model.WorkOrder{}).
@@ -274,28 +230,24 @@ func (h *Handler) fillSummary(result *DashboardResponse, supplierAvailable, inve
 	return nil
 }
 
-func (h *Handler) fillInventory(result *DashboardResponse, canViewCost bool) error {
-	selectByType := "item_type AS name, COALESCE(SUM(quantity), 0) AS value"
-	if canViewCost {
-		selectByType += ", COALESCE(SUM(amount), 0) AS amount"
-	}
-	if err := h.DB.Model(&model.InventoryBalance{}).
-		Select(selectByType).Group("item_type").Scan(&result.Inventory.ByItemType).Error; err != nil {
+func (h *Handler) fillInventory(result *DashboardResponse) error {
+	if err := h.DB.Table("inventory_balances").
+		Select("products.product_model AS name, COALESCE(SUM(inventory_balances.quantity), 0) AS value").
+		Joins("JOIN products ON products.id = inventory_balances.item_id AND products.deleted_at IS NULL").
+		Where("inventory_balances.item_type = ?", "product").
+		Group("products.id, products.product_model").Order("value desc").Scan(&result.Inventory.ByItemType).Error; err != nil {
 		return err
 	}
-	if err := h.DB.Model(&model.Material{}).Select("category AS name, COUNT(*) AS value").Group("category").Scan(&result.Inventory.ByMaterialType).Error; err != nil {
+	result.Inventory.ByMaterialType = []NameValue{}
+	if err := h.DB.Table("inventory_balances").
+		Select("COALESCE(locations.code, '未分配') AS name, COALESCE(SUM(inventory_balances.quantity), 0) AS value").
+		Joins("LEFT JOIN locations ON locations.id = inventory_balances.location_id").
+		Where("inventory_balances.item_type = ?", "product").
+		Group("locations.code").Order("value desc").Scan(&result.Inventory.ByLocation).Error; err != nil {
 		return err
 	}
-	lowStock, err := h.lowStockItems(false)
-	if err != nil {
-		return err
-	}
-	result.Inventory.LowStock = lowStock
 	query := h.DB.Model(&model.InventoryLedger{}).
 		Select("DATE(created_at) AS date, type AS name, COUNT(*) AS value, COALESCE(SUM(quantity), 0) AS quantity")
-	if canViewCost {
-		query = query.Select("DATE(created_at) AS date, type AS name, COUNT(*) AS value, COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount")
-	}
 	return query.Where("created_at >= ?", time.Now().AddDate(0, 0, -14)).
 		Group("DATE(created_at), type").Order("date asc").Scan(&result.Inventory.Trend).Error
 }
@@ -370,37 +322,4 @@ func (h *Handler) fillAudit(result *DashboardResponse) error {
 	return h.DB.Model(&model.AuditLog{}).Select("DATE(created_at) AS date, result AS name, COUNT(*) AS value").
 		Where("created_at >= ?", time.Now().AddDate(0, 0, -14)).
 		Group("DATE(created_at), result").Order("date asc").Scan(&result.Audit.Trend).Error
-}
-
-func (h *Handler) lowStockItems(summaryOnly bool) ([]StockItem, error) {
-	limit := 10
-	if summaryOnly {
-		limit = 100000
-	}
-	var rows []StockItem
-	productQuery := h.DB.Table("products").
-		Select("'product' AS item_type, products.id AS item_id, products.name, products.code, '产品' AS category, COALESCE(SUM(inventory_balances.quantity), 0) AS quantity, products.safety_stock, COALESCE(SUM(inventory_balances.amount), 0) AS amount").
-		Joins("LEFT JOIN inventory_balances ON inventory_balances.item_type = 'product' AND inventory_balances.item_id = products.id").
-		Group("products.id").Having("products.safety_stock > 0 AND COALESCE(SUM(inventory_balances.quantity), 0) <= products.safety_stock")
-	materialQuery := h.DB.Table("materials").
-		Select("'material' AS item_type, materials.id AS item_id, materials.name, materials.code, materials.category, COALESCE(SUM(inventory_balances.quantity), 0) AS quantity, materials.safety_stock, COALESCE(SUM(inventory_balances.amount), 0) AS amount").
-		Joins("LEFT JOIN inventory_balances ON inventory_balances.item_type = 'material' AND inventory_balances.item_id = materials.id").
-		Group("materials.id").Having("materials.safety_stock > 0 AND COALESCE(SUM(inventory_balances.quantity), 0) <= materials.safety_stock")
-	if err := h.DB.Raw("? UNION ALL ? ORDER BY quantity ASC LIMIT ?", productQuery, materialQuery, limit).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-func hasCostView(c *echo.Context) bool {
-	current := auth.GetCurrentUser(c)
-	if current == nil {
-		return false
-	}
-	for _, permission := range current.Permissions {
-		if permission == role.CostViewCode {
-			return true
-		}
-	}
-	return false
 }

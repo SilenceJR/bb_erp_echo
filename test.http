@@ -161,46 +161,21 @@ Authorization: Bearer {{token}}
 
 > {% client.global.set("warehouse_id", response.body.id); %}
 
-### 查看仓库标签
-GET http://127.0.0.1:8080/api/v1/warehouse/tabs
+### 查询产品库存
+GET http://127.0.0.1:8080/api/v1/warehouse/products?page=1&page_size=10
 Authorization: Bearer {{token}}
 
-### 分页模糊查询生产物资
-GET http://127.0.0.1:8080/api/v1/warehouse/items?tab=production_material&page=1&page_size=10&q=ABS
-Authorization: Bearer {{token}}
-
-### 在生产物资标签创建物品
-POST http://127.0.0.1:8080/api/v1/warehouse/items
+### 创建测试产品资料
+POST http://127.0.0.1:8080/api/v1/products
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "tab": "production_material",
-  "name": "ABS 原料",
-  "code": "ABS-001",
-  "unit": "kg",
-  "spec": "通用",
-  "safety_stock": 100000,
-  "default_cost": 250,
-  "operator_employee_id": {{operator_employee_id}}
-}
-
-> {% client.global.set("material_id", response.body.id); %}
-
-### 在产品标签创建测试产品
-POST http://127.0.0.1:8080/api/v1/warehouse/items
-Content-Type: application/json
-Authorization: Bearer {{token}}
-
-{
-  "tab": "product",
-  "name": "图片测试产品",
-  "code": "IMAGE-TEST-001",
-  "unit": "个",
-  "spec": "图片接口链路",
-  "safety_stock": 10,
-  "default_cost": 100,
-  "operator_employee_id": {{operator_employee_id}}
+  "product_model": "IMAGE-TEST-001",
+  "customer_model": "C-001",
+  "material": "ABS 白",
+  "ink_required": false,
+  "status": "active"
 }
 
 > {% client.global.set("product_id", response.body.id); %}
@@ -218,10 +193,6 @@ product
 Content-Disposition: form-data; name="owner_id"
 
 {{product_id}}
---image-boundary
-Content-Disposition: form-data; name="category"
-
-main
 --image-boundary
 Content-Disposition: form-data; name="file"; filename="bobang-logo-hd.png"
 Content-Type: image/png
@@ -323,19 +294,22 @@ Authorization: Bearer {{token}}
   "operator_employee_id": {{operator_employee_id}}
 }
 
-### 从物品详情即时办理部门出库（创建与过账记录同一操作员工）
-POST http://127.0.0.1:8080/api/v1/warehouse/items/material/{{material_id}}/movements
+### 办理产品入库
+POST http://127.0.0.1:8080/api/v1/warehouse/products/{{product_id}}/movements
 Content-Type: application/json
 Authorization: Bearer {{token}}
-Idempotency-Key: demo-department-out-001
 
 {
-  "business_type": "department_outbound",
+  "action": "inbound",
   "quantity": 10000,
-  "department_id": {{operator_department_id}},
-  "reason": "测试领用",
+  "location_id": 1,
+  "reason": "测试入库",
   "operator_employee_id": {{operator_employee_id}}
 }
+
+### 查询产品库存流水
+GET http://127.0.0.1:8080/api/v1/warehouse/products/{{product_id}}/movements
+Authorization: Bearer {{token}}
 
 ### 查询库存余额
 GET http://127.0.0.1:8080/api/v1/inventory-balances
@@ -351,17 +325,18 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "mold_number": "MOLD-001",
-  "model": "白壳前模",
+  "product_id": {{product_id}},
   "mold_type": "single",
+  "cavity_count": "1*2",
   "location_id": 1,
-  "remark": "白壳产品常用模具"
+  "common_group_no": "",
+  "remark": "产品常用模具"
 }
 
 > {% client.global.set("mold_id", response.body.id); %}
 
 ### 分页模糊查询模具
-GET http://127.0.0.1:8080/api/v1/molds?page=1&page_size=10&q=MOLD
+GET http://127.0.0.1:8080/api/v1/molds?page=1&page_size=10&q=IMAGE-TEST-001
 Authorization: Bearer {{token}}
 
 ### 查询模具详情

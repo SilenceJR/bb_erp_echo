@@ -4,7 +4,7 @@
  * 这些信息属于客户端交互契约，不从服务端动态读取。领域模型、列定义或
  * 资料包目录发生变化时，应与对应的后端处理器一起更新这里的声明和回归测试。
  */
-export type TransferModule = 'customers' | 'molds'
+export type TransferModule = 'customers' | 'products' | 'molds'
 export type TransferKind = 'template' | 'export'
 export type TransferFormat = 'xlsx' | 'zip'
 
@@ -83,6 +83,34 @@ const moldTemplate: TransferDefinition = {
   failureLabel: '模具导入模板下载失败',
 }
 
+const productTemplate: TransferDefinition = {
+  module: 'products',
+  kind: 'template',
+  path: '/api/v1/products/import-template',
+  fileName: '博邦产品资料导入模板.zip',
+  format: 'zip',
+  mimeType: 'application/zip',
+  accept: '.zip,application/zip',
+  permission: 'product:import',
+  label: '下载产品资料模板',
+  successLabel: '产品资料模板',
+  failureLabel: '产品资料模板下载失败',
+}
+
+const productExport: TransferDefinition = {
+  module: 'products',
+  kind: 'export',
+  path: '/api/v1/products/export',
+  fileName: '博邦产品资料包.zip',
+  format: 'zip',
+  mimeType: 'application/zip',
+  accept: '',
+  permission: 'product:read',
+  label: '导出产品资料包',
+  successLabel: '产品资料包 ZIP',
+  failureLabel: '产品资料包导出失败',
+}
+
 const moldExport: TransferDefinition = {
   module: 'molds',
   kind: 'export',
@@ -110,6 +138,22 @@ export const transferRegistry: Readonly<Record<TransferModule, TransferModuleDef
       label: '导入客户资料',
     }),
   }),
+  products: Object.freeze({
+    template: Object.freeze(productTemplate),
+    export: Object.freeze(productExport),
+    import: Object.freeze({
+      accept: '.zip,application/zip',
+      format: 'zip' as const,
+      permission: 'product:import',
+      previewPath: '/api/v1/products/import/preview',
+      commitPath: '/api/v1/products/import/commit',
+      label: '导入产品资料包',
+    }),
+    archiveLayout: Object.freeze({
+      rootFiles: Object.freeze(['products.xlsx']),
+      directories: Object.freeze(['PRODUCT-001/']),
+    }),
+  }),
   molds: Object.freeze({
     template: Object.freeze(moldTemplate),
     export: Object.freeze(moldExport),
@@ -124,8 +168,8 @@ export const transferRegistry: Readonly<Record<TransferModule, TransferModuleDef
     archiveLayout: Object.freeze({
       rootFiles: Object.freeze(['molds.xlsx', 'locations.json']),
       directories: Object.freeze([
-        'MOLD-001/',
-        'MOLD-002+MOLD-003/',
+        'PRODUCT-001/001/',
+        'PRODUCT-001/002/',
       ]),
     }),
   }),

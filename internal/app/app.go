@@ -25,9 +25,7 @@ import (
 	"bb_erp_echo/internal/employee"
 	filemodule "bb_erp_echo/internal/file"
 	"bb_erp_echo/internal/frontend"
-	"bb_erp_echo/internal/inventory"
 	erplogger "bb_erp_echo/internal/logger"
-	"bb_erp_echo/internal/material"
 	erpmiddleware "bb_erp_echo/internal/middleware"
 	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/mold"
@@ -237,6 +235,9 @@ func New() (created *App, resultErr error) {
 	if err := mold.SeedLocations(db); err != nil {
 		return nil, fmt.Errorf("seed mold locations: %w", err)
 	}
+	if err := warehouse.SeedDefaults(db); err != nil {
+		return nil, fmt.Errorf("seed default warehouse: %w", err)
+	}
 	if err := roleService.ReloadPolicies(); err != nil {
 		return nil, err
 	}
@@ -266,6 +267,7 @@ func (a *App) configureEcho() {
 			path, method := c.Request().URL.Path, c.Request().Method
 			return method == http.MethodPost && path == "/api/v1/files/images" ||
 				method == http.MethodPut && strings.HasPrefix(path, "/api/v1/files/") && strings.HasSuffix(path, "/content") ||
+				method == http.MethodPost && (path == "/api/v1/products/import/preview" || path == "/api/v1/products/import/commit") ||
 				method == http.MethodPost && (path == "/api/v1/molds/import/preview" || path == "/api/v1/molds/import/commit") ||
 				method == http.MethodPost && strings.HasPrefix(path, "/api/v1/molds/") && strings.HasSuffix(path, "/drawings")
 		},
@@ -328,9 +330,7 @@ func (a *App) registerRoutes() error {
 	customer.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	supplier.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
 	warehouse.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	inventory.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	material.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
-	product.NewHandler(a.DB).RegisterRoutes(protected, require, auditMiddleware)
+	product.NewHandlerWithStorage(a.DB, a.Config.Files.RootDir).RegisterRoutes(protected, require, auditMiddleware)
 	workorder.RegisterRoutes(protected, a.DB, require, auditMiddleware)
 	imageService := filemodule.NewService(a.Config.Files.RootDir, a.DB)
 	if err := imageService.EnsureRoot(); err != nil {

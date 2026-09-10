@@ -151,10 +151,6 @@
 .workorder-stock-card__refreshing { color: var(--bb-text-regular); font-size: var(--bb-font-size-12); }
 .workorder-stock-card__error { margin-top: 0; }
 .workorder-drawer-stock { margin-bottom: var(--bb-space-4); }
-.temporary-product-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--bb-space-3); margin-top: var(--bb-space-4); }
-.temporary-product-form .el-form-item { margin-bottom: 0; }
-.temporary-product-form .el-alert { grid-column: 1/-1; }
-.temporary-product-actions { display: flex; justify-content: flex-end; gap: var(--bb-space-2); }
 .table-action { min-height: 32px; border: 1px solid var(--bb-info-border); border-radius: 8px; background: var(--bb-info-bg); color: var(--bb-accent-text); padding: 0 10px; white-space: nowrap; }
 .table-action:hover { background: var(--bb-brand-50); }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }

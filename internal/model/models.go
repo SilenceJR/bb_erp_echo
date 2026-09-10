@@ -280,17 +280,14 @@ type Material struct {
 	OperatorSnapshot `gorm:"embedded"`
 }
 
-// Product 是产品主数据模型，记录生产单和库存业务使用的规格、单位及成本属性。
+// Product 是产品资料主档，产品型号是唯一业务标识。
 type Product struct {
 	BaseModel
-	Name             string `json:"name" gorm:"size:160;not null"`
-	Code             string `json:"code" gorm:"size:80;not null;uniqueIndex"`
-	Unit             string `json:"unit" gorm:"size:30;not null;default:个"`
-	Spec             string `json:"spec" gorm:"size:160"`
-	SafetyStock      int64  `json:"safety_stock" gorm:"not null;default:0"`
-	DefaultCost      int64  `json:"default_cost,omitempty" gorm:"not null;default:0"`
-	Status           string `json:"status" gorm:"size:30;not null;default:active"`
-	OperatorSnapshot `gorm:"embedded"`
+	ProductModel  string `json:"product_model" gorm:"size:160;not null;uniqueIndex"`
+	CustomerModel string `json:"customer_model" gorm:"size:160"`
+	Material      string `json:"material" gorm:"size:120"`
+	InkRequired   bool   `json:"ink_required" gorm:"not null;default:false"`
+	Status        string `json:"status" gorm:"size:30;not null;default:active;index"`
 }
 
 // InventoryDocument 是库存业务单据表。
@@ -383,9 +380,8 @@ type WorkOrder struct {
 	CustomerID      *uint            `json:"customer_id" gorm:"index"`
 	Customer        CustomerProfile  `json:"-" gorm:"foreignKey:CustomerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	ProductID       *uint            `json:"product_id" gorm:"index"`
-	ProductName     string           `json:"product_name" gorm:"size:160"`
+	ProductModel    string           `json:"product_model" gorm:"size:160"`
 	PlannedQuantity int64            `json:"planned_quantity" gorm:"not null;default:0"`
-	Unit            string           `json:"unit" gorm:"size:30"`
 	DueAt           *time.Time       `json:"due_at"`
 	Description     string           `json:"description" gorm:"size:1000"`
 	CreatedBy       uint             `json:"created_by" gorm:"index"`
@@ -460,6 +456,15 @@ func AllModels() []any {
 		&Mold{},
 		&MoldLocation{},
 		&MoldDrawing{},
+		&Warehouse{},
+		&Location{},
+		&InventoryDocument{},
+		&InventoryDocumentLine{},
+		&InventoryBalance{},
+		&InventoryLedger{},
+		&WorkOrder{},
+		&DepartmentTask{},
+		&WorkOrderFlowLog{},
 		&ImageFile{},
 		&FileCleanupTask{},
 	}

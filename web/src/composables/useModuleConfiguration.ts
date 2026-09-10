@@ -87,7 +87,7 @@ export function useModuleConfiguration(deps: ConfigurationDependencies) {
         {key: 'type', label: '任务类型', kind: 'select', options: [{label: '生产单', value: 'production'}, {label: '通用任务', value: 'general'}], required: true},
         {key: 'code', label: '任务编号'}, {key: 'title', label: '标题', required: deps.formState.type === 'general'},
         {key: 'customer_id', label: '客户', kind: 'select', options: deps.rowsFor('customers').map((item) => ({label: item.name || item.code || `#${item.id}`, value: item.id}))},
-        ...(deps.formState.type === 'production' ? [{key: 'product_id', label: '仓库产品', kind: 'workorder-product' as const, required: true}] : []),
+        ...(deps.formState.type === 'production' ? [{key: 'product_id', label: '产品型号', kind: 'workorder-product' as const, required: true}] : []),
         {key: 'planned_quantity', label: '计划数量', kind: deps.formState.type === 'production' ? 'workorder-quantity' : 'text', required: deps.formState.type === 'production'},
         {key: 'due_at', label: '交期', kind: 'date'},
         {key: 'priority', label: '优先级', kind: 'select', options: [{label: '普通', value: 'normal'}, {label: '加急', value: 'urgent'}]},

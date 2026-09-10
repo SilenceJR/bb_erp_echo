@@ -168,7 +168,9 @@ func auditModule(path string) string {
 		return "suppliers"
 	case hasAuditPrefix(path, "/api/v1/inventory-documents") || hasAuditPrefix(path, "/api/v1/inventory-balances") || hasAuditPrefix(path, "/api/v1/inventory-ledgers"):
 		return "warehouses"
-	case hasAuditPrefix(path, "/api/v1/warehouse") || hasAuditPrefix(path, "/api/v1/warehouses") || hasAuditPrefix(path, "/api/v1/locations") || hasAuditPrefix(path, "/api/v1/materials") || hasAuditPrefix(path, "/api/v1/products"):
+	case hasAuditPrefix(path, "/api/v1/products"):
+		return "products"
+	case hasAuditPrefix(path, "/api/v1/warehouse") || hasAuditPrefix(path, "/api/v1/warehouses") || hasAuditPrefix(path, "/api/v1/locations") || hasAuditPrefix(path, "/api/v1/materials"):
 		return "warehouses"
 	case hasAuditPrefix(path, "/api/v1/mold-locations") || hasAuditPrefix(path, "/api/v1/molds"):
 		return "molds"

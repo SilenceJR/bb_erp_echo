@@ -146,18 +146,20 @@ func TestAssignmentServiceRejectsSuperAdminForTerminalAccount(t *testing.T) {
 	}
 }
 
-func TestDefaultPermissionsIncludeTemporaryProductWrite(t *testing.T) {
+func TestDefaultPermissionsUseProductProfileImport(t *testing.T) {
 	permissions := DefaultPermissions()
 	for _, permission := range permissions {
-		if permission.Code != TemporaryProductWriteCode {
-			continue
+		if permission.Code == "workorder:temporary-product:write" {
+			t.Fatal("temporary product permission must be removed")
 		}
-		if permission.Object != "/api/v1/workorder/products" || permission.Action != "write" {
-			t.Fatalf("temporary product permission = %+v", permission)
+		if permission.Code == "product:import" {
+			if permission.Object != "/api/v1/products/import" || permission.Action != "import" {
+				t.Fatalf("product import permission = %+v", permission)
+			}
+			return
 		}
-		return
 	}
-	t.Fatalf("default permissions do not include %q", TemporaryProductWriteCode)
+	t.Fatal("default permissions do not include product:import")
 }
 
 func TestDefaultPermissionsUseNewCustomerMatrix(t *testing.T) {

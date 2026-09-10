@@ -6,7 +6,9 @@
           <DashboardPage v-if="activeKey === 'dashboard'" />
           <DepartmentPage v-else-if="activeKey === 'departments'" />
           <EmployeePage v-else-if="activeKey === 'employees'" />
+          <ProductPage v-else-if="activeKey === 'products'" />
           <CustomerPage v-else-if="activeKey === 'customers'" />
+          <WarehousePage v-else-if="activeKey === 'warehouses'" />
           <ModulePage v-else />
       </div>
     </template>
@@ -29,6 +31,8 @@ import {useDesktopUpdate} from '../../composables/useDesktopUpdate'
 const DashboardPage = defineAsyncComponent(() => import('../pages/DashboardPage.vue'))
 const DepartmentPage = defineAsyncComponent(() => import('../pages/DepartmentPage.vue'))
 const EmployeePage = defineAsyncComponent(() => import('../pages/EmployeePage.vue'))
+const ProductPage = defineAsyncComponent(() => import('../pages/ProductPage.vue'))
+const WarehousePage = defineAsyncComponent(() => import('../pages/WarehousePage.vue'))
 const CustomerPage = defineAsyncComponent(() => import('../pages/CustomerPage.vue'))
 const DetailPanels = defineAsyncComponent(() => import('../pages/DetailPanels.vue'))
 const ModulePage = defineAsyncComponent(() => import('../pages/ModulePage.vue'))

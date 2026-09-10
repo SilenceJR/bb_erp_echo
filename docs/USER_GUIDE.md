@@ -289,19 +289,11 @@ daily_supply         生活物资
 
 ### 模具
 
-可维护：
-
-- 模具编号、名称、客户、产品、穴数、成型材料、钢材、尺寸、重量、制造商、所有权、存放位置、当前位置、保养周期和备注。
-- 模具状态：在库、已借出、维修中、保养中、报废。
-- 借出、归还、维修、保养履历。
-- 完成保养后会按保养周期计算下次保养日期。
-
-资料包导入与导出：
-
-- 有 `mold:import` 权限时，在“导入模具资料包”中下载 `博邦模具导入模板.zip`。根目录含 `molds.xlsx`、`locations.json` 和扁平模具目录：单模用完整模具型号，共模用同组全部型号以 `+` 连接，图片和 DWG 直接混放。
-- 文件名含“产品刷墨图”或以 `-正整数` 结尾的图片归为产品图，其他图片归为模具图；型号别名或拼写差异不自动猜测，预览时需人工确认未识别图片或图纸的归属，图片还需明确选择产品图或模具图。
-- 开始前先导出当前资料备份。导入时模具档案和位置按 Excel 全量更新；ZIP 中出现目录的模具覆盖资料，无目录的保留原资料，Excel 删除的模具及资料一并删除。
-- 有 `mold:read` 权限时可导出 `博邦模具资料包.zip`；其目录结构与模板一致，并只包含当前实际资料。
+- 模具通过“产品型号”关联产品资料，不再维护其他模具业务编码。
+- 可维护模具类型（单模/共模）、模穴数、模具位置、共模组号和备注。
+- 每条模具只有一个模具图片组，可以上传、替换和删除图片；DWG/FDWG 图纸单独管理。
+- 模具 ZIP 根目录包含 `molds.xlsx`、`locations.json`，资料目录为 `<产品型号>/<三位序号>/`。
+- 缺少产品型号时，导入会建立仅含产品型号的启用产品占位记录；任一字段或文件失败时整包回滚。
 
 ### 任务单
 
@@ -388,20 +380,17 @@ Windows Tauri 客户端通过当前已验证的内网 ERP 服务检查并安装�
 | 操作审计 | `system:audits:read` | - |
 | 客户资料 | `customers:read` | `customers:write`；批量导入另需 `customers:import` |
 | 供应商 | `suppliers:read` | `suppliers:write` |
-| 仓库物品 | `warehouse:read` | `warehouse:write` |
-| 库存单据 | `inventory:documents:read` | `inventory:documents:write` |
-| 库存余额 | `inventory:balances:read` | - |
-| 库存流水 | `inventory:ledgers:read` | - |
+| 产品资料 | `product:read`（查看和导出） | `product:write`（维护和图片）；资料包模板、预览和导入另需 `product:import` |
+| 仓库数量 | `warehouse:read` | `warehouse:write`（入库、出库、库位调整、盘点修正） |
 | 模具 | `mold:read`（查看与导出资料包） | `mold:write`（维护档案、位置、图片和图纸）；资料包模板下载、ZIP 预览与确认导入另需 `mold:import` |
-| 任务单 | `workorder:read` | `workorder:write` |
-| 生产单临时产品建档 | - | `workorder:temporary-product:write`（同时需要 `workorder:write`） |
+| 任务单 | `workorder:read` | `workorder:write`（生产单选品还需 `product:read`） |
 | 统计报表 | `statistics:read` | `statistics:write` |
 | 成本金额 | `cost:view` | - |
 
 建议：
 
 - 普通员工只给与岗位相关的查看和维护权限。
-- `workorder:temporary-product:write` 默认只分配给 `super_admin`；确需在任务单内建档时，由管理员显式分配给对应角色。
+- 生产单只能选择产品资料中的启用产品，不再提供任务内临时建档。
 - 车间公共电脑优先使用部门终端账号，不使用老板或超级管理员账号。
 - 成本金额单独用 `cost:view` 控制，不要默认给所有管理账号。
 

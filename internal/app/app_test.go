@@ -59,7 +59,7 @@ func TestInitializationHealthReadyAndSQLiteWAL(t *testing.T) {
 	}
 }
 
-func TestCanonicalWarehouseRoutesReportDeferredSchemaWithoutRestoringRootAlias(t *testing.T) {
+func TestCanonicalProductWarehouseRoutesReplaceLegacyCatalog(t *testing.T) {
 	erp := newTestApp(t)
 	token := erp.login(t, "admin", "admin123456")
 	for _, test := range []struct {
@@ -75,11 +75,14 @@ func TestCanonicalWarehouseRoutesReportDeferredSchemaWithoutRestoringRootAlias(t
 		}
 	}
 
-	if rec := erp.request(http.MethodGet, "/api/v1/warehouses", token, nil); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "module_not_initialized") {
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouses", token, nil); rec.Code != http.StatusOK {
 		t.Fatalf("canonical warehouse management route status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/tabs", token, nil); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "module_not_initialized") {
-		t.Fatalf("warehouse tabs route status = %d body=%s", rec.Code, rec.Body.String())
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/tabs", token, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("legacy warehouse tabs route status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := erp.request(http.MethodGet, "/api/v1/warehouse/products", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("product stock route status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -125,10 +128,10 @@ func TestCreateDepartmentTerminalStartsWithoutAutomaticRole(t *testing.T) {
 	if rec = erp.request(http.MethodGet, "/api/v1/workorder", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("new terminal workorder read status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
-	if rec = erp.request(http.MethodGet, "/api/v1/warehouse/items?tab=product", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
+	if rec = erp.request(http.MethodGet, "/api/v1/warehouse/products", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("new terminal warehouse read status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
-	if rec = erp.request(http.MethodPost, "/api/v1/warehouse/items", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
+	if rec = erp.request(http.MethodPost, "/api/v1/warehouse/products/1/movements", terminalSession.AccessToken, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("new terminal warehouse write status = %d, want %d body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 }

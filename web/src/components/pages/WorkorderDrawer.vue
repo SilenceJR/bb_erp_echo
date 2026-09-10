@@ -19,12 +19,12 @@
             <div>
               <small>{{ selectedWorkOrder.code }} · {{ workorderTypeLabel(selectedWorkOrder.type) }}</small>
               <h2>{{ selectedWorkOrder.title }}</h2>
-              <span>{{ selectedWorkOrder.product_name || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
+              <span>{{ selectedWorkOrder.product_model || '通用任务' }} · {{ workorderStatusLabel(selectedWorkOrder.status) }}</span>
             </div>
           </div>
 
           <div class="stock-summary">
-            <div><span>计划数量</span><strong>{{ formatQuantity(selectedWorkOrder.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</strong></div>
+            <div><span>计划数量</span><strong>{{ formatQuantity(selectedWorkOrder.planned_quantity) }}</strong></div>
             <div><span>优先级</span><strong>{{ selectedWorkOrder.priority === 'urgent' ? '加急' : '普通' }}</strong></div>
             <div><span>交期</span><strong>{{ formatDate(selectedWorkOrder.due_at) }}</strong><StatusTag v-if="workorderDueState(selectedWorkOrder).overdue" :label="workorderDueState(selectedWorkOrder).label" tone="danger"/></div>
           </div>
@@ -49,8 +49,8 @@
           <el-alert
             v-else-if="selectedWorkOrder.type === 'production'"
             class="workorder-drawer-stock"
-            title="历史生产单未关联仓库产品"
-            :description="`保留创建时产品名称“${selectedWorkOrder.product_name || '未记录'}”，无法据此查询实时库存。`"
+            title="历史生产单未关联产品资料"
+            :description="`保留创建时产品型号“${selectedWorkOrder.product_model || '未记录'}”，无法据此查询实时库存。`"
             type="info"
             :closable="false"
             show-icon
@@ -94,7 +94,7 @@
                   <strong>{{ departmentName(task.department_id) }}</strong>
                   <StatusTag :label="departmentTaskStatusLabel(task.status)" :tone="departmentTaskStatusTone(task.status)"/>
                 </div>
-                <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }} {{ selectedWorkOrder.unit || '' }}</p>
+                <p>{{ formatQuantity(task.completed_quantity) }} / {{ formatQuantity(task.planned_quantity) }}</p>
                 <el-progress :percentage="Number(task.progress || 0)" :stroke-width="8"/>
                 <small>{{ task.remark || '暂无备注' }}</small>
                 <ImageGallery owner-type="department_task" :owner-id="task.id" :token="token" :can-write="!moduleUnavailable && canOperateDepartmentTask(task)" category="department_task"/>

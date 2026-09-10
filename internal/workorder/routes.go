@@ -73,15 +73,6 @@ type createRequest struct {
 	OperatorEmployeeID  uint   `json:"operator_employee_id" validate:"required"`
 }
 
-// temporaryProductRequest 是生产单内临时建立仓库产品档案的请求体。
-type temporaryProductRequest struct {
-	Name               string `json:"name" validate:"required" example:"白色外壳"`
-	Code               string `json:"code" validate:"required" example:"P-001"`
-	Spec               string `json:"spec" example:"标准"`
-	Unit               string `json:"unit" example:"个"`
-	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
-}
-
 type reasonRequest struct {
 	Reason             string `json:"reason"`
 	OperatorEmployeeID uint   `json:"operator_employee_id" validate:"required"`
@@ -124,10 +115,7 @@ func (h *Handler) register(v1 *echo.Group, path string, require func(string, str
 	deferred := moduleavailability.Middleware(h.DB, "任务单", workorderModuleRequirements()...)
 	group := v1.Group("/"+path, audit)
 	group.GET("", h.List, require(object, "read"), deferred)
-	group.POST("", h.Create, require(object, "write"), deferred)
-	if path == "workorder" {
-		group.POST("/products", h.CreateTemporaryProduct, require(object, "write"), require(temporaryProductObject, "write"), deferred)
-	}
+	group.POST("", h.Create, require(object, "write"), require("/api/v1/products", "read"), deferred)
 	group.POST("/:id/dispatch", h.Dispatch, require(object, "write"), deferred)
 	group.POST("/:id/pause", h.Pause, require(object, "write"), deferred)
 	group.POST("/:id/resume", h.Resume, require(object, "write"), deferred)
@@ -149,8 +137,6 @@ func workorderModuleRequirements() []moduleavailability.Requirement {
 	}
 }
 
-const temporaryProductObject = "/api/v1/workorder/products"
-
 // List 分页查询任务单，并返回部门子任务摘要。
 // @Summary 分页查询任务单
 // @Tags workorder
@@ -170,7 +156,7 @@ const temporaryProductObject = "/api/v1/workorder/products"
 func (h *Handler) List(c *echo.Context) error {
 	query := pagination.FromEcho(c)
 	db := h.DB.Model(&model.WorkOrder{})
-	db = pagination.ApplyKeyword(db, query.Keyword, "work_orders.code", "work_orders.title", "work_orders.product_name", "work_orders.description")
+	db = pagination.ApplyKeyword(db, query.Keyword, "work_orders.code", "work_orders.title", "work_orders.product_model", "work_orders.description")
 	if status := strings.TrimSpace(c.QueryParam("status")); status != "" {
 		db = db.Where("status = ?", status)
 	}
@@ -198,7 +184,7 @@ func (h *Handler) List(c *echo.Context) error {
 
 // Create 创建草稿任务单。
 // @Summary 创建草稿任务单
-// @Description 创建生产单时必须提供启用仓库产品的 product_id；服务端会从产品主数据写入 product_name 和 unit 快照。通用任务不会关联产品。
+// @Description 创建生产单时必须提供启用产品资料的 product_id；服务端会保存产品型号快照。通用任务不会关联产品。
 // @Tags workorder
 // @Security BearerAuth
 // @Param body body createRequest true "任务单创建参数"
@@ -236,7 +222,8 @@ func (h *Handler) Create(c *echo.Context) error {
 	if item.Code == "" {
 		item.Code = fmt.Sprintf("WO-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano())
 	}
-	if item.Title == "" {
+	titleWasEmpty := item.Title == ""
+	if titleWasEmpty {
 		item.Title = titleFromRequest(item)
 	}
 	if current != nil {
@@ -264,8 +251,10 @@ func (h *Handler) Create(c *echo.Context) error {
 				return err
 			}
 			item.ProductID = &product.ID
-			item.ProductName = product.Name
-			item.Unit = product.Unit
+			item.ProductModel = product.ProductModel
+			if titleWasEmpty {
+				item.Title = "生产单 - " + product.ProductModel
+			}
 		}
 		item.DepartmentTasks = make([]model.DepartmentTask, 0, len(req.TargetDepartmentIDs))
 		for _, departmentID := range uniqueUint(req.TargetDepartmentIDs) {
@@ -290,91 +279,23 @@ func (h *Handler) Create(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
-// CreateTemporaryProduct 在生产单内创建尚未建档的仓库产品。
-//
-// @Summary 临时建立仓库产品档案
-// @Description 创建启用状态的正式产品档案；初始安全库存和当前库存均为 0，不创建库存流水。接口同时需要 workorder:write 和 workorder:temporary-product:write 权限。
-// @Tags workorder
-// @Security BearerAuth
-// @Accept json
-// @Produce json
-// @Param body body temporaryProductRequest true "产品建档参数"
-// @Success 201 {object} model.Product
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
-// @Failure 503 {object} ErrorResponse
-// @Router /api/v1/workorder/products [post]
-func (h *Handler) CreateTemporaryProduct(c *echo.Context) error {
-	var req temporaryProductRequest
-	if err := request.BindAndValidate(c, &req); err != nil {
-		return err
-	}
-	req.Name = strings.TrimSpace(req.Name)
-	req.Code = strings.TrimSpace(req.Code)
-	req.Spec = strings.TrimSpace(req.Spec)
-	req.Unit = defaultString(req.Unit, "个")
-	if req.Name == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "产品名称不能为空")
-	}
-	if req.Code == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "产品编码不能为空")
-	}
-
-	var item model.Product
-	if err := h.DB.WithContext(c.Request().Context()).Transaction(func(tx *gorm.DB) error {
-		if _, err := operator.Resolve(c, tx, req.OperatorEmployeeID); err != nil {
-			return err
-		}
-		var existing model.Product
-		err := tx.Where("code = ?", req.Code).First(&existing).Error
-		if err == nil {
-			return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-
-		item = model.Product{
-			Name:             req.Name,
-			Code:             req.Code,
-			Spec:             req.Spec,
-			Unit:             req.Unit,
-			Status:           model.StatusActive,
-			OperatorSnapshot: operator.Snapshot(c),
-		}
-		if err := tx.Create(&item).Error; err != nil {
-			if isUniqueConstraintError(err) {
-				return echo.NewHTTPError(http.StatusConflict, "产品编码已存在")
-			}
-			return err
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	return c.JSON(http.StatusCreated, item)
-}
-
 func (h *Handler) loadActiveProduct(id *uint) (*model.Product, error) {
 	return h.loadActiveProductDB(h.DB, id)
 }
 
 func (h *Handler) loadActiveProductDB(db *gorm.DB, id *uint) (*model.Product, error) {
 	if id == nil || *id == 0 {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择仓库产品")
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择产品资料")
 	}
 	var product model.Product
 	if err := db.First(&product, *id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, echo.NewHTTPError(http.StatusNotFound, "仓库产品不存在")
+			return nil, echo.NewHTTPError(http.StatusNotFound, "产品资料不存在")
 		}
 		return nil, err
 	}
 	if product.Status != model.StatusActive {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "仓库产品已停用，不能用于生产单")
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "产品资料已停用，不能用于生产单")
 	}
 	return &product, nil
 }
@@ -945,7 +866,7 @@ func validateCreateRequest(req createRequest) error {
 	}
 	if itemType == TypeProduction {
 		if req.ProductID == nil || *req.ProductID == 0 {
-			return echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择仓库产品")
+			return echo.NewHTTPError(http.StatusBadRequest, "生产单必须选择产品资料")
 		}
 		if req.PlannedQuantity <= 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "生产单计划数量必须大于 0")
@@ -1026,7 +947,7 @@ func defaultString(value string, fallback string) string {
 
 func titleFromRequest(item model.WorkOrder) string {
 	if item.Type == TypeProduction {
-		return "生产单 - " + item.ProductName
+		return "生产单 - " + item.ProductModel
 	}
 	return "通用任务"
 }

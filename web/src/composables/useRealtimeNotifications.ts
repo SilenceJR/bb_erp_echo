@@ -276,6 +276,11 @@ export function useRealtimeNotifications(host: RealtimeWorkspaceHost): Notificat
       setPanelMessage('已同步外部更新')
       return !refreshDetail?.deferred
     }
+    if (module.module === 'products' || module.module === 'warehouses') {
+      window.dispatchEvent(new CustomEvent(module.module === 'products' ? 'bb-product-refresh' : 'bb-warehouse-refresh'))
+      setPanelMessage('已同步外部更新')
+      return true
+    }
     if (!refreshDetail?.handled) await host.loadActiveModule()
     if (module.module === 'warehouses') {
       const selected = host.selectedWarehouseItem?.value
@@ -465,6 +470,7 @@ export function useRealtimeNotifications(host: RealtimeWorkspaceHost): Notificat
       await host.loadActiveModule()
     }
     await nextTick()
+    if (target.module === 'products' || target.module === 'warehouses') return
     if (target.action.type !== 'open_entity') return
     const targetID = target.action.entity_id ?? target.items[0]?.entity_id
     const item = target.items.find((candidate) => sameEntity(candidate.entity_id, targetID)) || target.items[0]

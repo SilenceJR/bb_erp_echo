@@ -1,4 +1,4 @@
-// Package mold 负责模具产品档案、固定位置、图片和图纸资料。
+// Package mold 负责产品资料下的模具档案、位置、图片和图纸接口。
 package mold
 
 import (
@@ -8,7 +8,6 @@ import (
 	"time"
 
 	erpmiddleware "bb_erp_echo/internal/middleware"
-	"bb_erp_echo/internal/model"
 	"bb_erp_echo/internal/shared/pagination"
 	"bb_erp_echo/internal/shared/request"
 	"bb_erp_echo/internal/shared/response"
@@ -19,18 +18,17 @@ import (
 )
 
 type Handler struct {
-	Service     Service
+	Service     *gormService
 	DB          *gorm.DB
 	StorageRoot string
 }
+
 type ErrorResponse = response.ErrorBody
-type moldModel = model.Mold
 
 func NewHandler(db *gorm.DB) *Handler { return NewHandlerWithStorage(db, "") }
 func NewHandlerWithStorage(db *gorm.DB, storageRoot string) *Handler {
 	return &Handler{Service: NewServiceWithStorage(db, storageRoot), DB: db, StorageRoot: storageRoot}
 }
-func NewHandlerWithService(service Service) *Handler { return &Handler{Service: service} }
 
 func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) echo.MiddlewareFunc, audit echo.MiddlewareFunc) {
 	group := v1.Group("/molds", audit)
@@ -63,7 +61,8 @@ func (h *Handler) RegisterRoutes(v1 *echo.Group, require func(string, string) ec
 // @Produce json
 // @Param page query int false "页码"
 // @Param page_size query int false "每页条数"
-// @Param q query string false "编号、型号或备注"
+// @Param q query string false "产品型号、共模组号或备注"
+// @Param product_model query string false "产品型号"
 // @Param mold_type query string false "single 或 common"
 // @Param location_id query int false "位置 ID"
 // @Param common_group_no query string false "共模组号"
@@ -74,9 +73,14 @@ func (h *Handler) ListMolds(c *echo.Context) error {
 	if c.QueryParam("location_id") != "" && err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "位置 ID 无效")
 	}
-	result, err := h.Service.List(pagination.FromEcho(c), ListFilter{Type: c.QueryParam("mold_type"), LocationID: uint(locationID), GroupNo: c.QueryParam("common_group_no")})
+	result, err := h.Service.List(pagination.FromEcho(c), ListFilter{
+		ProductModel: c.QueryParam("product_model"),
+		Type:         c.QueryParam("mold_type"),
+		LocationID:   uint(locationID),
+		GroupNo:      c.QueryParam("common_group_no"),
+	})
 	if err != nil {
-		return err
+		return moldHTTPError(err)
 	}
 	return c.JSON(http.StatusOK, result)
 }
@@ -119,7 +123,11 @@ func (h *Handler) CreateMold(c *echo.Context) error {
 	if err != nil {
 		return moldHTTPError(err)
 	}
-	return c.JSON(http.StatusCreated, item)
+	response, err := h.Service.Get(item.ID)
+	if err != nil {
+		return moldHTTPError(err)
+	}
+	return c.JSON(http.StatusCreated, response)
 }
 
 // UpdateMold 更新模具档案。
@@ -141,14 +149,17 @@ func (h *Handler) UpdateMold(c *echo.Context) error {
 	if err := request.BindAndValidate(c, &input); err != nil {
 		return err
 	}
-	item, err := h.Service.Update(id, input)
+	if _, err := h.Service.Update(id, input); err != nil {
+		return moldHTTPError(err)
+	}
+	item, err := h.Service.Get(id)
 	if err != nil {
 		return moldHTTPError(err)
 	}
 	return c.JSON(http.StatusOK, item)
 }
 
-// DeleteMold 物理删除模具及其图片、DWG 文件记录。
+// DeleteMold 物理删除模具及其图片和图纸。
 // @Summary 删除模具档案
 // @Tags mold
 // @Security BearerAuth
@@ -222,14 +233,14 @@ func (h *Handler) CreateLocation(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
-// BulkCreateLocations 按区和行列上限幂等补充货架位置。
+// BulkCreateLocations 批量补充货架位置。
 // @Summary 批量新增模具位置
 // @Tags mold
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param body body BulkLocationInput true "区名及行列上限"
-// @Success 200 {object} BulkLocationResult
+// @Param body body BulkLocationInput true "批量位置参数"
+// @Success 201 {object} BulkLocationResult
 // @Router /api/v1/mold-locations/bulk [post]
 func (h *Handler) BulkCreateLocations(c *echo.Context) error {
 	var input BulkLocationInput
@@ -240,15 +251,14 @@ func (h *Handler) BulkCreateLocations(c *echo.Context) error {
 	if err != nil {
 		return moldHTTPError(err)
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusCreated, result)
 }
 
-// UpdateLocation 启用或停用固定位置。
+// UpdateLocation 更新位置状态。
 // @Summary 更新模具位置状态
 // @Tags mold
 // @Security BearerAuth
 // @Accept json
-// @Produce json
 // @Param id path int true "位置 ID"
 // @Param body body LocationStatusInput true "位置状态"
 // @Success 200 {object} model.MoldLocation
@@ -271,15 +281,53 @@ func (h *Handler) UpdateLocation(c *echo.Context) error {
 
 func moldHTTPError(err error) error {
 	switch {
-	case errors.Is(err, ErrMoldNotFound), errors.Is(err, ErrMoldLocationNotFound):
-		return echo.NewHTTPError(http.StatusNotFound, "模具或位置不存在")
-	case errors.Is(err, ErrMoldNumberConflict):
-		return echo.NewHTTPError(http.StatusConflict, "模具编号已存在")
-	case errors.Is(err, ErrMoldInvalidType), errors.Is(err, ErrMoldGroupRequired), errors.Is(err, ErrMoldGroupForbidden), errors.Is(err, ErrMoldLocationRequired), errors.Is(err, ErrMoldLocationDisabled), errors.Is(err, ErrMoldSelectionRequired), errors.Is(err, ErrMoldLocationZone), errors.Is(err, ErrMoldLocationRange):
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrMoldNotFound), errors.Is(err, ErrProductNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, publicMoldError(err))
+	case errors.Is(err, ErrProductRequired), errors.Is(err, ErrProductDisabled), errors.Is(err, ErrMoldInvalidType),
+		errors.Is(err, ErrMoldGroupRequired), errors.Is(err, ErrMoldGroupForbidden), errors.Is(err, ErrMoldLocationRequired),
+		errors.Is(err, ErrMoldLocationNotFound), errors.Is(err, ErrMoldLocationDisabled), errors.Is(err, ErrMoldLocationZone),
+		errors.Is(err, ErrMoldLocationRange):
+		return echo.NewHTTPError(http.StatusBadRequest, publicMoldError(err))
 	case errors.Is(err, ErrMoldLocationInUse):
-		return echo.NewHTTPError(http.StatusConflict, "位置仍被模具使用，不能停用")
+		return echo.NewHTTPError(http.StatusConflict, publicMoldError(err))
+	case errors.Is(err, ErrMoldSelectionRequired):
+		return echo.NewHTTPError(http.StatusBadRequest, publicMoldError(err))
 	default:
 		return err
+	}
+}
+
+func publicMoldError(err error) string {
+	switch {
+	case errors.Is(err, ErrMoldNotFound):
+		return "模具不存在"
+	case errors.Is(err, ErrProductRequired):
+		return "请选择产品型号"
+	case errors.Is(err, ErrProductNotFound):
+		return "产品资料不存在"
+	case errors.Is(err, ErrProductDisabled):
+		return "产品资料已停用"
+	case errors.Is(err, ErrMoldInvalidType):
+		return "模具类型无效"
+	case errors.Is(err, ErrMoldGroupRequired):
+		return "共模必须填写共模组号"
+	case errors.Is(err, ErrMoldGroupForbidden):
+		return "单模不能填写共模组号"
+	case errors.Is(err, ErrMoldLocationRequired):
+		return "请选择模具位置"
+	case errors.Is(err, ErrMoldLocationNotFound):
+		return "模具位置不存在"
+	case errors.Is(err, ErrMoldLocationDisabled):
+		return "模具位置已停用"
+	case errors.Is(err, ErrMoldLocationInUse):
+		return "模具位置正在使用，不能停用"
+	case errors.Is(err, ErrMoldSelectionRequired):
+		return "请选择模具"
+	case errors.Is(err, ErrMoldLocationZone):
+		return "位置区名无效"
+	case errors.Is(err, ErrMoldLocationRange):
+		return "位置范围无效"
+	default:
+		return err.Error()
 	}
 }

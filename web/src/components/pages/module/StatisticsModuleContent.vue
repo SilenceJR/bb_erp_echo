@@ -29,10 +29,14 @@
         </section>
       </div>
 
-      <div v-if="statisticsData?.inventory?.low_stock?.length || statisticsData?.molds?.by_location?.length || statisticsData?.recent_workorders?.length" class="report-grid lower">
-        <section v-if="!statisticsSourceUnavailable('inventory') && statisticsData?.inventory?.low_stock?.length" class="report-panel">
-          <div class="drawer-section-title"><h3>低库存</h3><small>安全库存预警</small></div>
-          <div v-if="statisticsData?.inventory?.low_stock?.length" class="report-table"><article v-for="item in statisticsData.inventory.low_stock" :key="`${item.item_type}-${item.item_id}`"><div><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.category }}</small></div><div class="report-table__status"><StatusTag :label="stockState(item).label" :tone="stockState(item).tone" /><small>{{ formatQuantity(item.quantity) }} / {{ formatQuantity(item.safety_stock) }}</small></div></article></div><p v-else class="drawer-empty">暂无低库存预警</p>
+      <div v-if="statisticsData?.inventory?.by_item_type?.length || statisticsData?.inventory?.by_location?.length || statisticsData?.molds?.by_location?.length || statisticsData?.recent_workorders?.length" class="report-grid lower">
+        <section v-if="!statisticsSourceUnavailable('inventory') && statisticsData?.inventory?.by_item_type?.length" class="report-panel">
+          <div class="drawer-section-title"><h3>产品数量</h3><small>按产品型号</small></div>
+          <div class="metric-list"><article v-for="item in statisticsData.inventory.by_item_type" :key="String(item.name)"><span>{{ item.name || '未设置' }}</span><strong>{{ formatQuantity(item.value) }}</strong></article></div>
+        </section>
+        <section v-if="!statisticsSourceUnavailable('inventory') && statisticsData?.inventory?.by_location?.length" class="report-panel">
+          <div class="drawer-section-title"><h3>库位数量</h3><small>按仓库库位</small></div>
+          <div class="metric-list"><article v-for="item in statisticsData.inventory.by_location" :key="String(item.name)"><span>{{ item.name || '未分配' }}</span><strong>{{ formatQuantity(item.value) }}</strong></article></div>
         </section>
         <section v-if="statisticsData?.molds?.by_location?.length" class="report-panel">
           <div class="drawer-section-title"><h3>模具位置</h3><small>固定位置分布</small></div>
@@ -40,7 +44,7 @@
         </section>
         <section v-if="!statisticsSourceUnavailable('workorders') && statisticsData?.recent_workorders?.length" class="report-panel">
           <div class="drawer-section-title"><h3>最近任务</h3><small>按创建时间</small></div>
-          <div v-if="statisticsData?.recent_workorders?.length" class="report-table"><article v-for="item in statisticsData.recent_workorders" :key="Number(item.id)"><div><strong>{{ item.title }}</strong><small>{{ item.code }} · {{ item.product_name || workorderTypeLabel(item.type) }}</small></div><StatusTag :label="workorderStatusLabel(item.status)" :tone="workorderStatusTone(item.status)" /></article></div><p v-else class="drawer-empty">暂无任务单</p>
+          <div v-if="statisticsData?.recent_workorders?.length" class="report-table"><article v-for="item in statisticsData.recent_workorders" :key="Number(item.id)"><div><strong>{{ item.title }}</strong><small>{{ item.code }} · {{ item.product_model || workorderTypeLabel(item.type) }}</small></div><StatusTag :label="workorderStatusLabel(item.status)" :tone="workorderStatusTone(item.status)" /></article></div><p v-else class="drawer-empty">暂无任务单</p>
         </section>
       </div>
       <PageState v-if="!hasRecords && !statisticsSourcesUnavailable" kind="empty" title="暂无记录" />
@@ -56,11 +60,11 @@ import {useWorkorderContext} from '../../../composables/workorderContext'
 import PageState from '../../ui/PageState.vue'
 import StatusTag from '../../ui/StatusTag.vue'
 
-const {loading, listError, statisticsData, statisticsSourcesUnavailable, statisticsSourceUnavailable, formatDate, statisticsCards, inventoryItemTypeLabel, formatQuantity, formatMoney, departmentName, departmentCompletionRate, stockState, compactTrendItems, trendNameLabel, trendBarPercentage} = useWorkspaceContext()
+const {loading, listError, statisticsData, statisticsSourcesUnavailable, statisticsSourceUnavailable, formatDate, formatQuantity, departmentName, departmentCompletionRate} = useWorkspaceContext()
 const {workorderStatusLabel, workorderTypeLabel, workorderStatusTone} = useWorkorderContext().list
 const hasRecords = computed(() => {
   const data = statisticsData.value
-  return !!(data?.molds?.by_type?.length || data?.molds?.by_location?.length || (!statisticsSourceUnavailable('workorders') && (data?.workorders?.by_status?.length || data?.workorders?.by_department?.length || data?.recent_workorders?.length)) || (!statisticsSourceUnavailable('inventory') && data?.inventory?.low_stock?.length))
+  return !!(data?.molds?.by_type?.length || data?.molds?.by_location?.length || (!statisticsSourceUnavailable('workorders') && (data?.workorders?.by_status?.length || data?.workorders?.by_department?.length || data?.recent_workorders?.length)) || (!statisticsSourceUnavailable('inventory') && (data?.inventory?.by_item_type?.length || data?.inventory?.by_location?.length)))
 })
 const unavailableSourceLabels = computed(() => {
   const labels: Record<string, string> = {suppliers: '供应商', supplier: '供应商', inventory: '仓库与库存', warehouse: '仓库与库存', workorders: '任务单', workorder: '任务单'}

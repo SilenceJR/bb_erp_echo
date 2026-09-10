@@ -10,12 +10,13 @@ const (
 	MoldLocationPallet = "卡板"
 )
 
-// Mold 是按产品型号维护的模具档案。
+// Mold 是产品资料下的模具档案。
 type Mold struct {
 	BaseModel
-	MoldNumber    string       `json:"mold_number" gorm:"size:120;not null;uniqueIndex"`
-	Model         string       `json:"model" gorm:"size:160;not null"`
+	ProductID     uint         `json:"product_id" gorm:"not null;index"`
+	Product       Product      `json:"-" gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	MoldType      string       `json:"mold_type" gorm:"size:20;not null;index"`
+	CavityCount   string       `json:"cavity_count" gorm:"size:60;not null"`
 	LocationID    uint         `json:"location_id" gorm:"not null;index"`
 	Location      MoldLocation `json:"location,omitempty" gorm:"foreignKey:LocationID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	CommonGroupNo string       `json:"common_group_no,omitempty" gorm:"size:120;index"`

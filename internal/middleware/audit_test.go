@@ -76,7 +76,7 @@ func TestAuditActionUsesStableBusinessCodes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/system/users/9/roles", want: "users:assign_roles", record: true},
 		{method: http.MethodPost, path: "/api/v1/system/roles/9/permissions", want: "roles:assign_permissions", record: true},
 		{method: http.MethodPost, path: "/api/v1/molds/9/drawings", want: "molds:drawing_upload", record: true},
-		{method: http.MethodPost, path: "/api/v1/warehouse/items/product/9/movements", want: "warehouses:movement", record: true},
+		{method: http.MethodPost, path: "/api/v1/warehouse/products/9/movements", want: "warehouses:movement", record: true},
 		{method: http.MethodPost, path: "/api/v1/customers/import/commit", want: "customers:import", record: true},
 		{method: http.MethodPost, path: "/api/v1/customers/import/preview", record: false},
 		{method: http.MethodGet, path: "/api/v1/customers", record: false},

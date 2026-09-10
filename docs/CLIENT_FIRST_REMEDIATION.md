@@ -254,7 +254,7 @@ design-system.css
 - 模块页、任务领域和通用目录领域已拆分；任务组件使用四切片窄域 Context，工作台控制器已从 3296 行降至 1516 行并只承担会话、导航和领域组合。
 - 设计令牌和 UI 原语已成为唯一共享视觉入口，旧兼容令牌搜索为零。
 - 旧兼容、公网、代理、macOS、移动端原生客户端与旧更新代码和文档无残留；低频移动 Web 适配保持在共享 Vue/CSS 层。
-- Go API 已完成 canonical 路径收敛：删除 `/api/v1/tasks`、单数 `/material`/`/product`/`/mold`、旧 `/api/v1/inventory`、`/api/v1/warehouse` 根别名和重复 `molds:*` 权限，仅保留 `/api/v1/warehouses`、`/api/v1/warehouse/items`、`/tabs` 及 `mold:*` 正式权限；同时移除图片权限回退，新库直接创建幂等部分唯一索引，账号/JWT 密码版本从 1 开始，管理员重置密码会撤销目标账号全部 refresh token。
+- Go API 已完成 canonical 路径收敛：删除 `/api/v1/tasks`、单数 `/material`/`/product`/`/mold`、旧 `/api/v1/inventory`、`/api/v1/warehouse` 根别名和重复 `molds:*` 权限，仅保留当前产品、模具、仓库数量及 `product:*`、`mold:*`、`warehouse:*` 正式权限；同时移除图片权限回退，新库直接创建幂等部分唯一索引，账号/JWT 密码版本从 1 开始，管理员重置密码会撤销目标账号全部 refresh token。
 - Go、Web、Tauri、API、用户与状态文档描述一致。
 - Go 测试、Web/Client 构建、Rust 检查与测试全部通过。
 - 完成并记录 Windows 10/11 真机发现、连接、关闭守卫、文件保存、更新和 1080p 缩放验收；静态构建不能替代。

@@ -29,8 +29,7 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     workorderProductOptions, workorderProductSearchLoading, workorderProductSearchError,
     workorderProductStock, workorderProductStockLoading, workorderProductStockError, workorderProductStockUpdatedAt,
     workorderDrawerProductStock, workorderDrawerProductStockLoading, workorderDrawerProductStockError,
-    workorderDrawerProductStockUpdatedAt, temporaryProductDialogVisible, temporaryProductSubmitting,
-    temporaryProductError, temporaryProductForm,
+    workorderDrawerProductStockUpdatedAt,
     actionDialogVisible, actionKind, actionTarget, actionSubmitting, actionError,
     actionFieldErrors, actionForm,
   } = state
@@ -48,20 +47,15 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
 
   function safeProduct(item: BasicItem): BasicItem {
     const safe = {...item}
-    delete safe.default_cost
-    delete safe.avg_cost
-    delete safe.amount
     return safe
   }
 
   function normalizeProduct(data: BasicItem, fallback?: BasicItem): BasicItem {
     const nested = data.item && typeof data.item === 'object' && !Array.isArray(data.item) ? data.item as BasicItem : data
-    return safeProduct({
-      ...(fallback || {}), ...nested,
-      quantity: data.quantity ?? nested.quantity ?? fallback?.quantity ?? 0,
-      safety_stock: nested.safety_stock ?? data.safety_stock ?? fallback?.safety_stock ?? 0,
-      item_type: 'product',
-    })
+    const balances = Array.isArray((data as any).balances) ? (data as any).balances as Array<{quantity?: number}> : []
+    const baseQuantity = Number(data.quantity ?? nested.quantity ?? fallback?.quantity ?? 0)
+    const quantity = balances.reduce((sum, item) => sum + Number(item.quantity || 0), baseQuantity)
+    return safeProduct({...(fallback || {}), ...nested, quantity})
   }
 
   function isProductionCreateActive() {
@@ -77,7 +71,7 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
 
   async function searchWorkorderProducts(keyword = '') {
     if (!isProductionCreateActive()) return
-    if (!hasPermission('warehouse:read')) {
+    if (!hasPermission('product:read')) {
       workorderProductOptions.value = []
       workorderProductSearchError.value = ''
       return
@@ -89,12 +83,12 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     workorderProductSearchLoading.value = true
     workorderProductSearchError.value = ''
     try {
-      const path = appendQuery('/api/v1/warehouse/items', {tab: 'product', q: keyword.trim(), page: 1, page_size: 50})
+      const path = appendQuery('/api/v1/products', {status: 'active', q: keyword.trim(), page: 1, page_size: 50})
       const data = await request<PaginatedResponse<BasicItem> | BasicItem[]>(path, {signal: abortController.signal}, token.value)
       if (requestToken !== searchToken || !isProductionCreateActive()) return
       workorderProductOptions.value = (Array.isArray(data) ? data : data.items).map(safeProduct)
     } catch (error) {
-      if (requestToken === searchToken && isProductionCreateActive()) workorderProductSearchError.value = error instanceof Error ? error.message : '仓库产品搜索失败，请重试。'
+      if (requestToken === searchToken && isProductionCreateActive()) workorderProductSearchError.value = error instanceof Error ? error.message : '产品型号搜索失败，请重试。'
     } finally {
       if (searchAbort === abortController) searchAbort = null
       if (requestToken === searchToken) workorderProductSearchLoading.value = false
@@ -134,7 +128,7 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     workorderProductStockError.value = ''
     const fallback = workorderProductOptions.value.find((item) => Number(item.id) === productID) || workorderProductStock.value || undefined
     try {
-      const data = await request<BasicItem>(`/api/v1/warehouse/items/product/${productID}`, {signal: abortController.signal}, token.value)
+      const data = await request<BasicItem>(`/api/v1/warehouse/products/${productID}`, {signal: abortController.signal}, token.value)
       if (requestToken !== stockToken || !isProductionCreateActive() || Number(formState.product_id) !== productID) return
       workorderProductStock.value = normalizeProduct(data, fallback)
       workorderProductStockUpdatedAt.value = new Date().toISOString()
@@ -144,59 +138,6 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
       if (stockAbort === abortController) stockAbort = null
       if (requestToken === stockToken && Number(formState.product_id) === productID) workorderProductStockLoading.value = false
     }
-  }
-
-  function openTemporaryProductDialog() {
-    if (!hasPermission('warehouse:read') || !hasPermission('workorder:write') || !hasPermission('workorder:temporary-product:write')) return
-    Object.assign(temporaryProductForm, {name: '', code: '', unit: '个', spec: '', operator_employee_id: undefined})
-    formState.operator_employee_id = undefined
-    temporaryProductError.value = ''
-    temporaryProductDialogVisible.value = true
-    void operatorDirectory.load(true)
-  }
-
-  function closeTemporaryProductDialog() {
-    if (temporaryProductSubmitting.value) return
-    temporaryProductDialogVisible.value = false
-    temporaryProductError.value = ''
-  }
-
-  async function closeTemporaryProductWithGuard(done?: () => void) {
-    if (temporaryProductSubmitting.value) return
-    const dirty = Boolean(temporaryProductForm.name || temporaryProductForm.code || temporaryProductForm.spec || temporaryProductForm.operator_employee_id || temporaryProductForm.unit !== '个')
-    if (dirty) {
-      try { await appMessageBox.confirm('临时产品信息尚未保存，确认关闭？', '放弃修改', {type: 'warning'}) } catch { return }
-    }
-    temporaryProductError.value = ''
-    if (done) done(); else temporaryProductDialogVisible.value = false
-  }
-
-  async function createTemporaryProduct() {
-    if (!hasPermission('warehouse:read') || !hasPermission('workorder:write') || !hasPermission('workorder:temporary-product:write')) { temporaryProductError.value = '当前账号没有临时新增产品的权限。'; return }
-    const name = temporaryProductForm.name.trim()
-    const code = temporaryProductForm.code.trim()
-    const unit = temporaryProductForm.unit.trim()
-    if (!name || !code || !unit) { temporaryProductError.value = '请填写产品名称、产品编码和单位。'; return }
-    if (!temporaryProductForm.operator_employee_id || operatorDirectory.unavailableReason.value) { temporaryProductError.value = operatorDirectory.unavailableReason.value || '请选择本次操作人。'; return }
-    invalidateWorkorderProductSearch()
-    temporaryProductSubmitting.value = true
-    temporaryProductError.value = ''
-    try {
-      const created = await request<BasicItem>('/api/v1/workorder/products', {method: 'POST', body: {name, code, unit, spec: temporaryProductForm.spec.trim(), operator_employee_id: Number(temporaryProductForm.operator_employee_id)}}, token.value)
-      const product = normalizeProduct(created)
-      if (!isProductionCreateActive()) return
-      invalidateWorkorderProductSearch()
-      workorderProductOptions.value = [product, ...workorderProductOptions.value.filter((item) => Number(item.id) !== Number(product.id))]
-      formState.product_id = Number(product.id)
-      workorderProductStock.value = product
-      temporaryProductDialogVisible.value = false
-      operatorDirectory.invalidate()
-      ElMessage.success('产品档案已新增并选中，初始库存为 0。')
-      await loadWorkorderProductStock()
-    } catch (error) {
-      if (operatorDirectory.handleSubmitError(error)) temporaryProductForm.operator_employee_id = undefined
-      temporaryProductError.value = error instanceof Error ? error.message : '临时产品建档失败，请检查编码后重试。'
-    } finally { temporaryProductSubmitting.value = false }
   }
 
   function invalidateWorkorderDrawerProductStock() {
@@ -217,9 +158,9 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
     const requestToken = ++drawerStockToken
     workorderDrawerProductStockLoading.value = true
     workorderDrawerProductStockError.value = ''
-    const fallback = workorderDrawerProductStock.value || {id: productID, name: String(selectedWorkOrder.value?.product_name || ''), unit: String(selectedWorkOrder.value?.unit || '')}
+    const fallback = workorderDrawerProductStock.value || {id: productID, product_model: String(selectedWorkOrder.value?.product_model || '')}
     try {
-      const data = await request<BasicItem>(`/api/v1/warehouse/items/product/${productID}`, {signal: abortController.signal}, token.value)
+      const data = await request<BasicItem>(`/api/v1/warehouse/products/${productID}`, {signal: abortController.signal}, token.value)
       if (requestToken !== drawerStockToken || !workorderDrawerVisible.value || Number(selectedWorkOrder.value?.id) !== workorderID || Number(selectedWorkOrder.value?.product_id) !== productID) return
       workorderDrawerProductStock.value = normalizeProduct(data, fallback)
       workorderDrawerProductStockUpdatedAt.value = new Date().toISOString()
@@ -440,7 +381,6 @@ export function useWorkorderOperations(state: WorkorderState, dependencies: Work
 
   return {
     invalidateWorkorderProductSearch, searchWorkorderProducts, handleWorkorderProductSelect, resetWorkorderProductSelection, loadWorkorderProductStock,
-    openTemporaryProductDialog, closeTemporaryProductDialog, closeTemporaryProductWithGuard, createTemporaryProduct,
     loadWorkorderDrawerProductStock, loadWorkOrderByID, openWorkOrder, closeWorkOrder, handleWorkOrderBeforeClose, resetWorkOrder,
     loadWorkOrderLogs, dispatchWorkOrder, pauseWorkOrder, resumeWorkOrder, toggleWorkOrderUrgent,
     completeWorkOrder, startDepartmentTask, partialCompleteDepartmentTask, completeDepartmentTask,

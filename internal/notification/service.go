@@ -291,7 +291,7 @@ func sanitizeFields(fields map[string]string) map[string]string {
 	// boundary avoids accidentally serializing arbitrary model fields if a new
 	// caller passes a large map in the future.
 	allowed := map[string]struct{}{
-		"code": {}, "name": {}, "short_name": {}, "status": {}, "type": {}, "mold_number": {}, "model": {},
+		"product_model": {}, "customer_model": {}, "material": {}, "ink_required": {}, "status": {}, "mold_type": {}, "cavity_count": {}, "common_group_no": {},
 	}
 	result := make(map[string]string)
 	for key, value := range fields {
